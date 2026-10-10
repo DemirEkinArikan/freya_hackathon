@@ -53,6 +53,11 @@ class SourceDialogueGuidanceTests(unittest.TestCase):
         context, api, policy, sources = source_context()
         old = next(rule for rule in policy["rules"] if rule["kind"] == "closing_speech")
         old["value"] = {"farewell": "Historical superseded speech marker."}
+        old_source = next(source for source in sources if source["id"] == "dialogue")
+        old_source["text"] = json.dumps(old["value"])
+        old_source["sha256"] = digest(old_source["text"])
+        old["source"]["quote"] = old_source["text"]
+        next(source for source in policy["sources"] if source["id"] == "dialogue")["sha256"] = old_source["sha256"]
         amendment = {"id": "dialogue-amendment", "file": "synthetic-amendment.txt",
                      "text": json.dumps(SPEECH, ensure_ascii=False)}
         amendment["sha256"] = digest(amendment["text"])

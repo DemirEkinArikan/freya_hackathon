@@ -12,7 +12,15 @@ import time
 from typing import Any, Callable
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Python puts this script's directory first for direct execution. Leaving it
+    # there makes imports of stdlib ``platform`` resolve to builder/platform.py.
+    # Load our package from its parent and remove only these duplicate roots.
+    _builder_directory = Path(__file__).resolve().parent
+    _project_directory = _builder_directory.parent
+    sys.path[:] = [str(_project_directory), *(
+        entry for entry in sys.path
+        if Path(entry or os.curdir).resolve() not in {_builder_directory, _project_directory}
+    )]
     __package__ = "builder"
 
 from .platform import FreyaClient, PlatformError

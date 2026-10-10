@@ -250,6 +250,66 @@ class CoworkTests(unittest.TestCase):
         self.assertIn("merge it directly without a separate review step", body)
         self.assertIn("--pr <merged-pr-number-or-url>", body)
 
+    def legacy_protocol(self, body):
+        return body.replace(" --pr <merged-pr-number-or-url>", "").replace(cowork.COMPLETION_PROTOCOL + "\n", "")
+
+    def test_targeted_protocol_sync_preserves_closed_tasks_metadata_and_custom_text(self):
+        parent, found = self.make_board()
+        closed = self.gh.issues[found["T01"]["number"]]
+        closed["state"] = "closed"
+        for task in self.manifest["tasks"]:
+            issue = self.gh.issues[found[task["id"]]["number"]]
+            issue["body"] = self.legacy_protocol(issue["body"]) + "\nCustom handoff note: preserve this text.\n"
+        metadata = {number: {k: copy.deepcopy(v) for k, v in issue.items() if k != "body"}
+                    for number, issue in self.gh.issues.items()}
+        original_parent = copy.deepcopy(self.gh.issues[parent["number"]])
+        comments = copy.deepcopy(self.gh.comments)
+        self.gh.mutations.clear()
+        changes = cowork.sync_protocol(self.gh, self.manifest, found)
+        self.assertEqual(len(changes), 18)
+        self.assertTrue(all(method == "PATCH" and set(data) == {"body"} for method, _, data in self.gh.mutations))
+        self.assertEqual(self.gh.issues[parent["number"]], original_parent)
+        self.assertEqual(self.gh.comments, comments)
+        for task in self.manifest["tasks"]:
+            issue = self.gh.issues[found[task["id"]]["number"]]
+            self.assertEqual({k: v for k, v in issue.items() if k != "body"}, metadata[issue["number"]])
+            self.assertIn("Custom handoff note: preserve this text.", issue["body"])
+            self.assertIn(cowork.COMPLETION_PROTOCOL, issue["body"])
+            self.assertIn("--pr <merged-pr-number-or-url>", issue["body"])
+        self.gh.mutations.clear()
+        self.assertEqual(cowork.sync_protocol(self.gh, self.manifest, found), [])
+        self.assertEqual(self.gh.mutations, [])
+
+    def test_protocol_sync_preflights_all_templates_before_any_write(self):
+        _, found = self.make_board()
+        for task in self.manifest["tasks"]:
+            issue = self.gh.issues[found[task["id"]]["number"]]
+            issue["body"] = self.legacy_protocol(issue["body"])
+        self.gh.issues[found["T07"]["number"]]["body"] = "Custom issue description with no known template"
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "not recognized"):
+            cowork.sync_protocol(self.gh, self.manifest, found)
+        self.assertEqual(self.gh.mutations, [])
+
+    def test_protocol_sync_does_not_overwrite_a_concurrent_description_edit(self):
+        _, found = self.make_board()
+        issue = self.gh.issues[found["T01"]["number"]]
+        issue["body"] = self.legacy_protocol(issue["body"])
+        path = self.gh.repo(f"issues/{issue['number']}")
+        original_api, reads = self.gh.api, []
+        def api(method, current_path, data=None):
+            if method == "GET" and current_path == path:
+                reads.append(current_path)
+                if len(reads) == 2:
+                    issue["body"] += "\nConcurrent worker note.\n"
+            return original_api(method, current_path, data)
+        self.gh.api = api
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "changed during"):
+            cowork.sync_protocol(self.gh, self.manifest, found)
+        self.assertEqual(self.gh.mutations, [])
+        self.assertIn("Concurrent worker note.", issue["body"])
+
 
 if __name__ == "__main__":
     unittest.main()

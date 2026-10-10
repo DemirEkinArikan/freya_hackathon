@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 
 from .policy import rule_value, validate_policy
 from .safety import assert_no_secrets
+from .call_variables import CallVariablesError, declared_call_variables
 
 NODE_TYPES = {"conversation", "api_request", "code", "end_call", "transfer_call",
               "integration", "knowledge_base", "reschedule_call", "invoke_agent", "exit"}
@@ -473,6 +474,7 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
 def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
                       *, guard_context: Mapping[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
+    readonly_call_inputs: set[str] = set()
     for value, label in ((workflow, "workflow"), (openapi, "openapi"), (policy, "policy"),
                          (guard_context, "guard_context")):
         errors.extend(_json_errors(value, label))
@@ -491,6 +493,10 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             # No candidate execution or expensive source inspection is needed
             # once correspondence to the frozen controller has failed.
             return sorted(set(errors))
+        try:
+            readonly_call_inputs.update(declared_call_variables(guard_context["contract"]))
+        except (CallVariablesError, KeyError) as exc:
+            return [str(exc)]
     if not isinstance(workflow, dict):
         return ["workflow must be an object"]
     _nulls(workflow, "workflow", errors)
@@ -517,6 +523,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     # Public data bindings are declarations, not evidence of runtime persistence.
     # Exact trusted recompilation separately seals all protected code and state.
     declared = {"customer_id", "now", "BANK_TOKEN"}
+    declared.update(readonly_call_inputs)
     declared.update(_obj(workflow.get("test_variables")))
     if any(name.startswith("bg_") for name in _obj(workflow.get("test_variables"))):
         errors.append("workflow.test_variables cannot override protected guard values")
@@ -552,6 +559,8 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             for match in re.finditer(r"\{\{([^{}]+)\}\}", value):
                 binding = match[1]
                 root = binding.split(".")[0]
+                if root in readonly_call_inputs and binding not in readonly_call_inputs:
+                    errors.append(path + ": call-input template must reference one declared variable exactly")
                 if root not in declared and not binding.startswith("extractor."):
                     errors.append(path + ": unresolved required binding " + binding)
                 if (root == "customer_id" or root.startswith("bg_") and root != "bg_facts" and not (readback and root == "bg_readback")

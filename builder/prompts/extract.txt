@@ -14,6 +14,16 @@ kinds. Resolve only explicit amendments; conflicting requirements without a
 supported replacement belong in unsupported_constraints, never a guessed rule.
 Keep JSON compact. Copy source identifiers, filenames and hashes exactly.
 
+When supplied sources declare variables available at call start, retain their
+exact names in a source-backed call_variables array, including the declaration
+in its literal quotation. These are read-only inputs, not customer answers or
+tool results. Declare names only, never values, examples or defaults. Do not
+invent names or initial inputs absent from the source. An existing source-backed
+name-to-description mapping is also accepted; descriptions are never target
+values or defaults. The rule is optional
+when the source declares none. Keep controller credentials and protected state
+out of this declaration; existing customer_id/now restrictions still apply.
+
 The supplied execution_interface is controller format metadata, not bank policy.
 Select all sealed action roles needed to implement the supplied goal in a
 source-backed execution_actions rule (a nonempty unique array). Use only listed

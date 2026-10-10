@@ -15,6 +15,7 @@ from .policy import _active_rules, validate_policy
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
 from .policy_conflicts import ConditionalConflictError, compile_conditional_conflicts
+from .call_variables import CallVariablesError, declared_call_variables
 
 
 class PolicyContractError(ValueError):
@@ -233,4 +234,8 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
             raise PolicyContractError(["conditional policy conflicts require runtime enforcement; only inspection is currently supported"])
         contract["conditional_conflicts"] = conditional
     contract["sha256"] = digest(contract)
+    try:
+        declared_call_variables(contract)
+    except CallVariablesError as exc:
+        raise PolicyContractError([str(exc)]) from exc
     return contract

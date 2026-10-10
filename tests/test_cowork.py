@@ -112,6 +112,8 @@ class FakeGitHub:
 class CoworkTests(unittest.TestCase):
     def setUp(self):
         self.manifest = json.loads(cowork.TASKS.read_text())
+        # Legacy protocol tests remain independent of the real work window.
+        self.manifest.pop("ownership_window", None)
         self.gh = FakeGitHub()
         self.temp = tempfile.TemporaryDirectory()
         self.board_patch = patch.object(cowork, "BOARD", Path(self.temp.name) / "board.json")
@@ -175,6 +177,57 @@ class CoworkTests(unittest.TestCase):
         cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
         issue = self.owner_checkpoint(found, 1, offline=True)
         cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
+
+    def test_planned_handoff_protects_solo_owner_then_allows_recent_takeover(self):
+        _, found = self.make_board(); task = self.manifest["tasks"][0]
+        now = cowork.utcnow()
+        end = now + timedelta(minutes=60)
+        self.manifest["ownership_window"] = {
+            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
+            "starts_at": now.isoformat(), "handoff_at": end.isoformat(),
+            "scope": "all_open_tasks", "authorized_by": "user"}
+        issue = self.owner_checkpoint(found, 1)
+        self.gh.branch_at = now
+        args = SimpleNamespace(branch="task/t01-planned-handoff", commit="abcdef0", takeover=True)
+        mutations = len(self.gh.mutations)
+        with patch.object(cowork, "utcnow", return_value=now):
+            with self.assertRaisesRegex(RuntimeError, "solo work window"):
+                cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
+        self.assertEqual(len(self.gh.mutations), mutations)
+        # Exact handoff time ends the window, even with a recent pushed branch.
+        self.gh.branch_at = end
+        with patch.object(cowork, "utcnow", return_value=end):
+            cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
+        self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": "burhan-launchway"}])
+
+    def test_planned_window_does_not_bypass_dependencies_or_bad_authorization(self):
+        _, found = self.make_board()
+        now = cowork.utcnow()
+        self.manifest["ownership_window"] = {
+            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
+            "starts_at": (now - timedelta(hours=2)).isoformat(),
+            "handoff_at": (now - timedelta(hours=1)).isoformat(),
+            "scope": "all_open_tasks", "authorized_by": "user"}
+        args = SimpleNamespace(branch="task/t02-next", commit="abcdef0", takeover=True)
+        with self.assertRaisesRegex(RuntimeError, "Dependencies"):
+            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][1], found["T02"], found, args, "burhan-launchway")
+        self.manifest["ownership_window"]["authorized_by"] = "inferred"
+        with self.assertRaisesRegex(RuntimeError, "authorization"):
+            cowork.ownership_window(self.manifest)
+
+    def test_parent_sync_preserves_window_and_displays_live_owner(self):
+        _, found = self.make_board()
+        now = cowork.utcnow()
+        self.manifest["ownership_window"] = {
+            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
+            "starts_at": now.isoformat(), "handoff_at": (now + timedelta(hours=1)).isoformat(),
+            "scope": "all_open_tasks", "authorized_by": "user"}
+        found["T02"]["assignees"] = [{"login": "DemirEkinArikan"}]
+        body = cowork.parent_body(self.manifest, found)
+        self.assertIn("User-authorized ownership window", body)
+        self.assertIn("@burhan-launchway continues afterwards", body)
+        self.assertIn("Reproducible runtime — @DemirEkinArikan", body)
+        self.assertIn("Istanbul", body)
 
     def test_completion_unblocks_dependencies_without_changing_other_claims(self):
         parent, found = self.make_board()

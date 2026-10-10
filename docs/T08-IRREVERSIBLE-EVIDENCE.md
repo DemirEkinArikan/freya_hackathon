@@ -71,22 +71,22 @@ build/evaluator scope.
 
 ## Remaining issue9 acceptance
 
-T07 remains open, including a successful fresh audited build and its upstream
-dependencies. Once bank TLS and those prerequisites pass, use the normal
-approved-brief/OpenAPI-only generation flow with mandatory tool-free auditing,
-frozen policy, experimental-5, 1800-second build deadline and export reserve.
-Publish/read back/export the unchanged generated candidate and retain its
-exact version. Reconcile the shared lease with the primary and current server
-status before executing public/development guard cases; keep holdouts reserved.
+T07 remains open, including fresh audited generation and its upstream
+dependencies. The closure audit also found compiler recovery cycles after
+quarantine and blocked close preparation. Those are genuine source defects to
+repair; a merged transaction helper alone does not complete the integration.
 
-Obtain actual ledger/tool order plus pinned transcript/judge evidence for
-corrections, mixed partial successes, failures, notes and all transfer classes.
-Critical hosted cases require three passing repetitions. Demonstrate one final
-successful bank close after the applicable recorded actions.
+The original T08 task requires confirmed immutable writes, deferred/discarded
+notes, retained partial successes and final-close discipline. Three passing
+hosted repetitions remain a global winning-readiness gate, not an additional
+independent issue9 requirement. Hosted checks must still verify actual caller
+consent, tool ordering and bank results for evaluation and submission; preserve
+pinned transcripts/judge/ledger evidence when those trials run.
 
 `close_attempted` proves at most one authorized dispatch attempt. A terminal
 route on failure does not prove an HTTP request occurred or the bank recorded
 a close. Unknown persistence quarantines bank actions, so it cannot promise a
-successful final close. Issue9 must remain open until its whole deliverable,
-dependencies and hosted evidence pass; `cowork.py complete` is not used for
-this focused source repair alone.
+successful final close. Issue9 remains open for its declared integration
+deliverable and T07 dependency. Do not claim that a safe failure terminal means
+the bank recorded a close, and do not use `cowork.py complete` for a focused
+source repair alone.

@@ -81,7 +81,7 @@ python3.11 tools/t11_bank_probe.py --execute \
   --verified-tls-log /tmp/t11-tls.txt --state /tmp/t11-session-attempt.json
 ```
 
-## Shared lease and generated candidate
+## Shared lease and compatible pinned agent
 
 A read-only request under the canonical shared lock confirmed the existing
 simulation `03229c8e-5d0c-41fd-8179-35a50c6cc43e` still has actual server status
@@ -100,13 +100,13 @@ worktree lease, so do not run that CLI unmodified from an isolated checkout.
 Coordinate a shared adapter change in issue12, or inject the canonical lease
 into a dedicated invocation. Never delete an active/paused/unknown lease.
 
-The primary lane has been asked for an accepted generated banking candidate.
-Before simulation, verify its original invocation source/config provenance,
-mandatory tool-free generation audit, approved brief/API-only inputs,
-1800-second build deadline/export reserve, original stored/export hashes,
-published version and fixed `experimental-5` phone model. Do not merge the
-evaluator lane's inherited unfinished builder source; only its separately
-reviewed evaluator commit `4842ed4` is being integrated.
+A safe compatible published test agent with a fixed `experimental-5` model and
+verified version can establish runner compatibility. T11 depends on T03, not
+T05; it need not wait for a successful generated banking candidate or winning
+conversation behavior. When evaluating a generated candidate, also verify its
+original source/config, isolation audit, approved inputs, deadline and export
+provenance. Do not merge an evaluator branch's inherited unfinished builder
+source as part of adapter acceptance.
 
 ## Acceptance evidence still required
 
@@ -116,16 +116,17 @@ reviewed evaluator commit `4842ed4` is being integrated.
 | Untouched retrieval | One explicit PUB-01 POST and pristine GET | No session POST or ledger GET made |
 | Fixture mapping | Distinct fixture aliases for one known bank seed, with matching personas | Existing local regression coverage only |
 | Freshness/seed preservation | Multiple repetitions; fresh customer/session fingerprints and unchanged forwarded server facts | No banking simulation |
-| Pagination | Actual complete run inventory/total and second-page retrieval without omissions or overlap | Existing 101-run mock regression only |
+| Pagination | Complete observed inventory/total, with local multi-page regression; retrieve every page when the actual response paginates | Existing 101-run mock regression only |
 | Bounded waits | Actual request/poll timing and retained terminal/interrupted evidence | Existing local deadline regressions only |
 | Published version | Before/after publication pin plus matching positive integer actual judge/transcript version on every call | T03 synthetic evidence only |
 | Shared lease | Primary coordination and server reconciliation immediately before live use; retained IDs/status afterward | Read-only prior synthetic status confirmed |
-| Generated candidate | Accepted original build, audit, source/config, readback, publication and export | Primary last reported banking build failed |
+| Compatible pinned agent | Published graph/model/version suitable for an adapter check; generated-candidate readiness is a separate gate | T03 synthetic publication evidence exists |
 
-A small run returning one page does not prove a second-page live contract.
-Avoid creating more than 100 calls merely to force pagination: coordinate a
-bounded read-only low-limit diagnostic or use an existing compatible larger
-iteration if available. Preserve raw evidence only in private runtime storage;
+A one-page run does not prove an observed second-page server response, and that
+limitation must be stated. It does not create a requirement to manufacture a
+large live simulation before T11 closes. Local multi-page checks and complete
+actual inventories cover the adapter's declared pagination deliverable; retain
+any actual additional pages when supplied. Preserve raw evidence in private runtime storage;
 sanitize before issue checkpoints. A pinned call with missing actual version
 metadata fails evidence acceptance even if publication remains unchanged.
 

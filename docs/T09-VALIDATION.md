@@ -45,12 +45,13 @@ commitments/fee/interest claims, final closing, persisted platform variables
 and conversation termination. Recompiling authored prose proves correspondence,
 not semantic compliance. Evaluator records remain outside generator inputs.
 
-Issue #10 depends on complete T07 and T08 acceptance. Their source merges and
-local tests do not establish a successful generated banking workflow or hosted
-conversation acceptance. Do not run `cowork.py complete T09` until both
-prerequisites and the whole task's evidence are complete. Exact checked/pushed
-head and matching merged PR will be recorded in the issue and a local evidence
-file so dependency satisfaction does not require rediscovery.
+Issue #10's own validator deliverable is complete in PR70. It explicitly reports
+unproven dialogue as requiring hosted evidence; the task does not independently
+require hosted trials or three repetitions. Closure currently waits for T07 and
+T08 acceptance. After those dependencies complete, use the checked/pushed merged
+validator head to record completion without adding another conversation gate.
+Global hosted correctness and repetition requirements remain evaluation and
+submission gates.
 
 Local checks use Python 3.11, the focused validator/guard regressions, the full
 suite, `tools/verify_kit.py`, `tools/package_submission.py --check` and

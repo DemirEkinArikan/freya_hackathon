@@ -159,14 +159,31 @@ def persona_for(row):
 
 
 class HostedBackend:
-    def __init__(self, client, deadline=None, opener=None, team_key=None, *, reserve=0):
+    def __init__(self, client, deadline=None, opener=None, team_key=None, *, reserve=0, bank_connect_address=None, max_call_seconds=420):
         if type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0:
             raise ValueError("hosted request reserve must be a finite nonnegative number")
         if reserve and deadline is None:
             raise ValueError("a hosted request reserve requires a shared deadline")
+        if type(max_call_seconds) is not int or not 1 <= max_call_seconds <= 3600:
+            raise ValueError("hosted call duration must be an integer between 1 and 3600 seconds")
+        self.max_call_seconds = max_call_seconds
         self.client, self.deadline = client, deadline
         self.reserve = reserve
-        self.opener = opener or urllib.request.build_opener(NoRedirect()).open
+        address = bank_connect_address if bank_connect_address is not None else os.environ.get("FREYA_BANK_CONNECT_ADDRESS", "")
+        if opener is not None and bank_connect_address is not None:
+            raise ValueError("explicit opener and bank connect address are mutually exclusive")
+        if opener is not None:
+            self.opener = opener
+            self.bank_transport_configuration = {"mode": "injected_opener"}
+        elif address:
+            from .bank_transport import BankConnectTransport
+            self.opener = BankConnectTransport(BANK, address)
+            self.bank_transport_configuration = self.opener.configuration()
+        else:
+            self.opener = urllib.request.build_opener(NoRedirect()).open
+            self.bank_transport_configuration = {"mode": "system_dns", "certificate_verification": True,
+                                                 "hostname_verification": True, "redirects": False, "retries": 0,
+                                                 "proxies": any(key in {"http", "https", "all"} for key in urllib.request.getproxies())}
         self.team_key = team_key or os.environ.get("FREYA_BANK_TEAM_KEY", "")
         if len(self.team_key) < 16:
             raise ValueError("FREYA_BANK_TEAM_KEY must contain at least 16 characters")
@@ -185,7 +202,7 @@ class HostedBackend:
     def ledger(self, customer): return self.bank("/v1/practice/ledger/" + urllib.parse.quote(customer, safe=""))
     def create_personas(self, personas): return self.client.create_personas(personas)
     def simulate(self, agent_id, name, variables, concurrency=5):
-        return self.client.run_simulation(agent_id, name, variables, concurrency=concurrency)
+        return self.client.run_simulation(agent_id, name, variables, max_seconds=self.max_call_seconds, concurrency=concurrency)
     @property
     def simulation_handoff(self):
         return getattr(self.client, "simulation_handoff", None)
@@ -360,12 +377,14 @@ def run_builder_tests(client, deployment, cases_path, output_dir, deadline):
     backend = HostedBackend(client, deadline, reserve=300)
     pinned = deployment if all(k in deployment for k in ("workflow_id", "workflow", "version_id", "version_number")) else None
     result = evaluate(backend, deployment["agent_id"], rows, reps=1, deployment=pinned)
+    result["bank_transport"] = deepcopy(getattr(backend, "bank_transport_configuration", {"mode": "unrecorded"}))
+    result["max_call_seconds"] = getattr(backend, "max_call_seconds", None)
     output.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, indent=2) + "\n")
     return result
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--agent-id")
     ap.add_argument("--cases", default=str(ROOT / "fixtures/hosted.json"))
@@ -374,12 +393,16 @@ def main():
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--concurrency", type=int, default=5)
     ap.add_argument("--budget-seconds", type=int, default=1800)
-    ap.add_argument("--out", default=str(ROOT / "runs/hosted-results.json"))
+    ap.add_argument("--max-call-seconds", type=int, default=420)
+    ap.add_argument("--out", default=str(ROOT.parent / "artifacts/hosted-results.json"))
+    ap.add_argument("--evidence-dir", default=str(ROOT.parent / "artifacts/evaluations"))
+    ap.add_argument("--simulation-lease", help="Shared canonical primary .simulation.lock; required for execution")
+    ap.add_argument("--bank-connect-address", help="Optional trusted bank-only literal IP; retains Host/SNI/public CA")
     ap.add_argument("--deployment-manifest", help="Verified builder manifest/export; required for held-out execution")
     actions = ap.add_mutually_exclusive_group()
     actions.add_argument("--execute", action="store_true")
     actions.add_argument("--dry-run", action="store_true")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     manifest, rows = load_cases(args.cases, args.split, args.brief)
     if not args.execute:
         print(json.dumps({"mode": "dry_run", "cases": len(rows), "repetitions": args.reps,
@@ -387,9 +410,14 @@ def main():
                           "briefs": sorted({r["brief"] for r in rows}), "network": "none"}, indent=2))
         return
     if not args.agent_id: ap.error("--agent-id is required with --execute")
+    if not args.simulation_lease: ap.error("--simulation-lease is required with --execute")
+    if not 1 <= args.reps <= 100 or not 1 <= args.concurrency <= 5 or not 1 <= args.budget_seconds <= 86400 or not 1 <= args.max_call_seconds <= 3600:
+        ap.error("invalid repetitions, concurrency or bounded evaluation budget")
     from .paths import output_path
     target = output_path(args.out)
     if target.suffix != ".json": ap.error("--out must be a JSON result path")
+    if target.exists(): raise FileExistsError("evaluation output already exists; retain the original attempt")
+    evidence_directory = output_path(args.evidence_dir)
     deployment = load_deployment(args.deployment_manifest) if args.deployment_manifest else None
     if any(r["split"] == "holdout" for r in rows):
         from .freeze import verify_freeze
@@ -397,19 +425,32 @@ def main():
         frozen = verify_freeze(manifest["freeze"]["record"])
         if not deployment: raise ValueError("held-out execution requires --deployment-manifest")
         if frozen["candidate_sha256"] != manifest["freeze"]["candidate_sha256"]: raise ValueError("manifest freeze hash mismatch")
-        check_holdout_config(frozen, deployment, {"concurrency": args.concurrency, "reps": args.reps, "budget_seconds": args.budget_seconds})
+        check_holdout_config(frozen, deployment, {"concurrency": args.concurrency, "reps": args.reps, "budget_seconds": args.budget_seconds, "max_call_seconds": args.max_call_seconds})
     from builder.platform import FreyaClient
     from builder.runtime import Deadline
     from builder.config import load_local_environment
     load_local_environment(ROOT.parent / ".env")
     deadline = Deadline(args.budget_seconds)
-    client = FreyaClient(deadline=deadline, lease_path=ROOT.parent / "artifacts/.simulation.lock")
-    result = evaluate(HostedBackend(client, deadline), args.agent_id, rows, reps=args.reps, concurrency=args.concurrency, deployment=deployment)
+    client = FreyaClient(deadline=deadline, lease_path=Path(args.simulation_lease))
+    backend = HostedBackend(client, deadline, bank_connect_address=args.bank_connect_address, max_call_seconds=args.max_call_seconds)
+    from builder.platform import AGENT_LLM, SIM_LLM
+    from .evidence import backend_secrets, record_evaluation
+    conditions = {"builder_model": deployment.get("model") if deployment else None,
+                  "reasoning_effort": deployment.get("reasoning_effort") if deployment else None,
+                  "reps": args.reps, "concurrency": args.concurrency, "budget_seconds": args.budget_seconds,
+                  "max_call_seconds": args.max_call_seconds,
+                  "agent_llm": AGENT_LLM, "persona_llm": SIM_LLM, "analysis_llm": SIM_LLM,
+                  "platform_base_url": client.base_url, "bank_base_url": BANK,
+                  "bank_transport": deepcopy(getattr(backend, "bank_transport_configuration", {"mode": "unrecorded"}))}
+    result, evidence_path = record_evaluation(backend, args.agent_id, rows, directory=evidence_directory,
+                                            conditions=conditions, kind="live", deployment=deployment)
     from builder.safety import sanitize
-    result = sanitize(result, secrets=[os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])
+    result = sanitize(result, secrets=backend_secrets(backend) + [os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps({k: result[k] for k in ("passed", "total", "reps", "status")}, indent=2))
+    with target.open("x", encoding="utf-8") as stream:
+        stream.write(json.dumps(result, indent=2, allow_nan=False) + "\n")
+    print(json.dumps({**{k: result[k] for k in ("passed", "total", "reps", "status")},
+                      "evidence_record": str(evidence_path)}, indent=2))
     if result["passed"] != result["total"]: raise SystemExit(1)
 
 

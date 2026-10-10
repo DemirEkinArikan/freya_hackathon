@@ -74,7 +74,7 @@ JSON file or replace server-side evidence.
 
 The conditions object requires `builder_model`, `reasoning_effort`, integer
 `reps` (at least three), integer `concurrency` (1–5), and integer
-`budget_seconds` (1–1,800 for each evaluation). It also requires the actual
+`budget_seconds` (1–86,400 for each evaluation; this resource bound is separate from the 1,800-second builder deadline). It also requires the actual
 `platform_base_url`, `bank_base_url`, `agent_llm`, `persona_llm`, `analysis_llm`
 and `calendar_sha256`. The calendar hash identifies the recorded per-fixture
 bank-supplied call dates/times and relevant timezone conditions, excluding fresh

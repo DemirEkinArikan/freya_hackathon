@@ -114,8 +114,12 @@ def _trial(value, conditions, brief):
         sessions.add(session)
         ledger, judge, transcript = row.get("ledger"), row.get("judge"), row.get("transcript")
         _require(isinstance(ledger, dict) and all(isinstance(ledger.get(key), list) for key in
-                 ("promises", "notes", "callbacks", "transfers", "calls")) and bool(ledger["calls"]), "ledger_evidence_absent")
-        _require(_identifier(ledger.get("outcome")) and (ledger.get("reason") is None or _identifier(ledger["reason"]))
+                 ("promises", "notes", "callbacks", "transfers", "calls")), "ledger_evidence_absent")
+        unclosed = "outcome" in ledger and "reason" in ledger and ledger["outcome"] is None and ledger["reason"] is None
+        _require(unclosed or bool(ledger["calls"]), "ledger_evidence_absent")
+        _require("outcome" in ledger and "reason" in ledger
+                 and (unclosed or _identifier(ledger["outcome"]))
+                 and (ledger["reason"] is None or _identifier(ledger["reason"]))
                  and all(isinstance(call, dict) and _identifier(call.get("tool")) and isinstance(call.get("result"), dict)
                          for call in ledger["calls"]), "ledger_evidence_malformed")
         for collection, fields in (("promises", ("product_id", "date")), ("notes", ("reason",)),
@@ -131,7 +135,11 @@ def _trial(value, conditions, brief):
         # This rechecks tool evidence and invariant behavior, not the independent
         # fixture oracle or conversation. A failure with complete evidence may
         # be compared; contradictory/missing evidence cannot be ranked.
-        internal = score_ledger(ledger, ledger, brief=brief)
+        # A present null/null closing receipt is complete evidence of an
+        # unclosed call. Supply a synthetic expected close solely for invariant
+        # validation; never turn it into a passing oracle or alter the receipt.
+        internal_expected = {**ledger, "outcome": "no_promise"} if unclosed else ledger
+        internal = score_ledger(internal_expected, ledger, brief=brief)
         _require(not internal["missing_evidence"] and not any(failure["category"] in
                  ("infrastructure", "evidence") for failure in internal["failures"]), "ledger_evidence_incomplete")
         _require(not row["pass"] or internal["pass"], "row_ledger_verdict_inconsistent")
@@ -256,7 +264,7 @@ def _bundle(value):
     _require(all(_identifier(conditions.get(key)) for key in ("builder_model", "reasoning_effort"))
              and type(conditions.get("reps")) is int and conditions["reps"] >= 3
              and type(conditions.get("concurrency")) is int and 1 <= conditions["concurrency"] <= 5
-             and type(conditions.get("budget_seconds")) is int and 0 < conditions["budget_seconds"] <= 1800,
+             and type(conditions.get("budget_seconds")) is int and 0 < conditions["budget_seconds"] <= 86400,
              "conditions_invalid")
     _require(conditions.get("agent_llm") == AGENT_LLM and conditions.get("persona_llm") == SIM_LLM
              and conditions.get("analysis_llm") == SIM_LLM, "fixed_models_unrecorded")

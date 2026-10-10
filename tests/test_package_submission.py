@@ -45,6 +45,7 @@ class PackageTests(unittest.TestCase):
             # untimed three-event fixture did not represent an eligible run.
             events = [{"event": "start", "mode": mode, "time": "2026-10-10T12:00:00Z"},
                       {"event": "model_call", "model": "synthetic-test-model", "purpose": "Synthetic offline trace fixture",
+                       "prompt_characters": 100,
                        "time": "2026-10-10T12:00:01Z"},
                       {"event": "deployment", "workflow_id": "w", "agent_id": "a", "version_id": "v1", "version_number": 1,
                        "published": True, "time": "2026-10-10T12:00:02Z"},

@@ -10,14 +10,25 @@ from tools.package_submission import validate_trace
 def evidence(with_tests=False):
     workflow = {"workflow_id": "mock-workflow", "agent_id": "mock-agent", "workflow": {"nodes": {}}}
     events = [{"event": "start", "mode": "live"},
-              {"event": "model_call", "model": "mock-model", "purpose": "Synthetic compilation fixture"},
+              {"event": "model_call", "model": "mock-model", "purpose": "Synthetic compilation fixture", "prompt_characters": 100},
               {"event": "deployment", "workflow_id": "mock-workflow", "agent_id": "mock-agent",
                "version_id": "mock-version", "version_number": 1, "published": True}]
     if with_tests:
         events.append({"event": "tests", "result": {
             "status": "completed", "total": 1, "passed": 1, "reps": 1,
+            "failures": [], "final": [{"fixture_id": "mock-fixture", "passes": 1, "runs": 1, "required_runs": 1, "pass": True}],
+            "deployment_pin": {"verified": True, "per_call_version_verified": True,
+                "before": {"workflow_id": "mock-workflow", "agent_id": "mock-agent", "version_id": "mock-version",
+                           "version_number": 1, "published": True, "graph_sha256": digest(workflow["workflow"])},
+                "after": {"workflow_id": "mock-workflow", "agent_id": "mock-agent", "version_id": "mock-version",
+                          "version_number": 1, "published": True, "graph_sha256": digest(workflow["workflow"])}},
             "simulations": [{"repetition": 1, "simulation_id": "mock-sim", "iteration_id": "mock-iteration", "status": "completed"}],
             "rows": [{"fixture_id": "mock-fixture", "repetition": 1, "pass": True, "call_id": "mock-call",
+                      "simulation_id": "mock-sim", "iteration_id": "mock-iteration",
+                      "failures": [], "bank_case_id": "mock-bank-seed",
+                      "ledger": {"outcome": "not_reached", "reason": None, "promises": [], "notes": [], "callbacks": [], "transfers": [],
+                                 "calls": [{"tool": "close_call", "args": {"outcome": "not_reached"}, "result": {"ok": True}}]},
+                      "transcript": {"id": "mock-call", "messages": [{"role": "assistant", "message": "Synthetic evidence"}]},
                       "judge": {"callId": "mock-call", "outcome": "pass", "agentVersionNumber": 1}}]}})
     events.append({"event": "end", "status": "exported", "export_sha256": digest(workflow)})
     return workflow, timestamps(events)
@@ -86,6 +97,13 @@ class PackageTraceValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "model-call"):
             validate_trace(events, workflow)
 
+    def test_isolation_audit_alone_cannot_establish_substantive_generation(self):
+        workflow, events = evidence()
+        events[1]["purpose"] = "Audit generation tools/context with synthetic isolation canaries"
+        events[1].pop("prompt_characters")
+        with self.assertRaisesRegex(ValueError, "substantive generation"):
+            validate_trace(events, workflow)
+
     def test_generation_must_precede_selected_deployment(self):
         workflow, events = evidence()
         events[1], events[2] = events[2], events[1]
@@ -142,6 +160,72 @@ class PackageTraceValidationTests(unittest.TestCase):
         timestamps(events)
         with self.assertRaisesRegex(ValueError, "after its final update"):
             validate_trace(events, workflow)
+
+    def test_passing_rows_require_retained_ledger_transcript_and_exact_simulation_ids(self):
+        for field in ("ledger", "transcript", "simulation_id", "iteration_id"):
+            workflow, events = evidence(True)
+            events[3]["result"]["rows"][0].pop(field)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                validate_trace(events, workflow)
+        for messages in (None, []):
+            workflow, events = evidence(True)
+            events[3]["result"]["rows"][0]["transcript"]["messages"] = messages
+            with self.subTest(messages=messages), self.assertRaisesRegex(ValueError, "transcript messages"):
+                validate_trace(events, workflow)
+
+    def test_supplied_transcript_ids_must_match_the_judged_call(self):
+        for field in ("id", "callId"):
+            workflow, events = evidence(True)
+            events[3]["result"]["rows"][0]["transcript"][field] = "another-call"
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "transcript differs"):
+                validate_trace(events, workflow)
+
+    def test_passing_rows_cannot_omit_or_conflict_on_version_proof(self):
+        for judge_version, transcript_version in ((None, None), (True, None), (1, 2), (1.0, None)):
+            workflow, events = evidence(True)
+            row = events[3]["result"]["rows"][0]
+            row["judge"]["agentVersionNumber"] = judge_version
+            row["transcript"]["agentVersionNumber"] = transcript_version
+            with self.subTest(judge=judge_version, transcript=transcript_version), self.assertRaisesRegex(ValueError, "per-call version"):
+                validate_trace(events, workflow)
+        workflow, events = evidence(True)
+        row = events[3]["result"]["rows"][0]
+        row["judge"].pop("agentVersionNumber")
+        row["transcript"]["agentVersionNumber"] = 1
+        validate_trace(events, workflow)
+
+    def test_fully_passing_results_require_unchanged_verified_export_and_version_pins(self):
+        for field, value in (("verified", False), ("per_call_version_verified", False), ("before", None), ("after", None)):
+            workflow, events = evidence(True)
+            events[3]["result"]["deployment_pin"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "before/after"):
+                validate_trace(events, workflow)
+        for field, value in (("workflow_id", "another-workflow"), ("agent_id", "another-agent"), ("version_id", "another-version"),
+                             ("version_number", True), ("version_number", 1.0), ("graph_sha256", "wrong-graph"), ("published", False)):
+            workflow, events = evidence(True)
+            pin = events[3]["result"]["deployment_pin"]
+            pin["before"][field] = value
+            pin["after"][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "pin differs"):
+                validate_trace(events, workflow)
+        workflow, events = evidence(True)
+        events[3]["result"]["deployment_pin"]["after"]["graph_sha256"] = "changed-graph"
+        with self.assertRaisesRegex(ValueError, "before/after"):
+            validate_trace(events, workflow)
+
+    def test_incomplete_failed_repair_evidence_can_precede_a_fully_proven_selected_run(self):
+        workflow, events = evidence(True)
+        incomplete = {"event": "tests", "result": {"status": "infrastructure_failure", "total": 1, "passed": 0, "reps": 1,
+                      "simulations": [], "rows": [{"fixture_id": "mock-fixture", "repetition": 1, "pass": False,
+                                                   "failures": [{"category": "infrastructure", "message": "Synthetic interrupted attempt"}]}]}}
+        events.insert(3, incomplete)
+        events.insert(4, deepcopy(events[1]))
+        events.insert(5, deepcopy(events[2]))
+        timestamps(events)
+        validate_trace(events, workflow)
+        incomplete["result"]["simulations"] = [{"repetition": 1, "simulation_id": "interrupted-simulation",
+                                                "iteration_id": None, "status": "running", "interrupted": True}]
+        validate_trace(events, workflow)
 
     def test_malformed_events_fail_with_value_errors(self):
         workflow, events = evidence()

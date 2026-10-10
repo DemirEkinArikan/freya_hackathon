@@ -96,7 +96,7 @@ class BankConnectTransport:
                 if not isinstance(value, str):
                     raise ValueError("bank transport requires a literal Host authority")
                 parsed = urllib.parse.urlsplit("https://" + value)
-                if (parsed.path or parsed.query or parsed.fragment
+                if (parsed.netloc != value or parsed.path or parsed.query or parsed.fragment
                         or _origin("https://" + value) != self.origin):
                     raise ValueError("bank transport cannot replace the HTTP Host")
         safe.headers, safe.unredirected_hdrs = regular, unredirected

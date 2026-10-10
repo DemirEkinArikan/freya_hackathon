@@ -109,7 +109,8 @@ class BankTransportTests(unittest.TestCase):
     def test_host_must_be_authority_only_and_snapshot_preserves_effective_headers(self):
         route = BankConnectTransport(self.origin, self.address)
         for host in ("bank.example.test/altered", "bank.example.test?altered=1",
-                     "bank.example.test#altered", "user@bank.example.test"):
+                     "bank.example.test#altered", "bank.example.test?", "bank.example.test#",
+                     "user@bank.example.test"):
             with self.subTest(host=host):
                 request = urllib.request.Request(self.origin, headers={"Host": host})
                 with patch("socket.create_connection") as connect, self.assertRaises(ValueError):

@@ -37,3 +37,48 @@ fresh-session evidence still need authorized trials. A polling timeout must not
 be treated as proof that the remote simulation stopped; persistent remote lease
 reconciliation is part of the T03 platform work. There are no running simulation,
 workflow, agent or version IDs from this checkpoint.
+
+## Evidence audit followup
+
+The followup from main `0b6fb33` preserves received ledger, judge and transcript
+evidence independently when retrieval or scoring fails. Scored rows retain
+simulation/iteration IDs as well as call IDs, and a supplied transcript call ID
+must match the judge. Failure messages and retained evidence are redacted before
+returning results for persistence.
+
+Pinned evaluation requires matching positive integer per-call version metadata
+on the judge or transcript for every repetition. Booleans, numeric strings,
+floats, conflicting versions and absent attribution cannot produce a pinned
+pass. Each row reports its observed sources and verification status; the result
+separates per-call attribution from before/after deployment publication checks.
+Unpinned development calls may still pass with explicitly unavailable attribution.
+
+`tests/test_hosted_evidence.py` adds independent failure-path checks, including
+invalid simulation IDs and repetition completeness. These are offline mocked
+checks; actual platform metadata compatibility and hosted conversation evidence
+still require authorized trials. This followup creates no live IDs or leases.
+
+Followup verification: `python3.11 -m unittest discover -s tests -p
+'test_hosted_evidence.py' -v` passes all 10 evidence checks;
+`python3.11 -m unittest discover -s tests -v` passes all 340 checks.
+`git diff --check` passes. Existing shared test modules were not edited.
+
+## T12 seed audit integration
+
+Hosted manifest loading and direct evaluation now invoke the independent
+`benchmarks.seed_audit.validate_seed_rows` before any persona, session or
+simulation mutation. It loads pinned official seeds itself; fixture declarations
+never supply the trusted comparison records. Changed identity/product/variable
+facts, expected records, judge checks or compound constraints fail with bounded,
+value-free diagnostics. Legitimate unauthored holdout metadata can still be
+inspected and remains ineligible for execution.
+
+The integration adds seven boundary checks in `test_hosted_seed_integration.py`.
+The existing runner's mock fixture helper now keeps `case.id` equal to its
+fixture alias, matching the production seed audit contract. The shared
+`tests/test_benchmarks.py` is unchanged. No live calls or generation occurred.
+
+With seed audit dependency `ecad689` applied locally, all seven integration
+checks, 15 hosted runner checks and the full 360-test suite pass under Python
+3.11. `git diff --check` passes. T12's development style allocation remains
+separate work, and these checks do not establish actual persona-model behavior.

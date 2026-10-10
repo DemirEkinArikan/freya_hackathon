@@ -92,11 +92,14 @@ this compiler; profile compilation alone does not establish provenance.
 | `tool_aliases` | Semantic action to operation ID |
 | `action_fields`, `result_fields`, `product_fields` | Explicit field maps |
 | `nonpersistent_failures` | Operation to unique `{http_status: integer, error?: string}` pairs |
-| `confirmation_actions` | Unique semantic action list |
-| `product_order` | `{field, direction: ascending/descending, tie_breaker: account_order}` |
-| `close_precedence` | Unique semantic outcome list |
+| `record_notes`, `resolve_all_products` | Boolean; no truthiness coercion |
+| `confirmation_actions` | Unique list of `commit_promises`, `commit_transfer`, `schedule_callback`; empty is explicit |
+| `product_order` | `{mode: account_order}` or `{field, direction: ascending/descending, tie_breaker: account_order}` |
+| `close_precedence` | Nonempty unique outcome list; API/binding validation determines the meanings |
 | `identity_close` | `failed`, `incomplete`, `unreached` proposals with `outcome` and optional `reason` |
 | `promise_failure_disposition` | `{reason: string, clear_pending: boolean}` |
+| `transfer_prerequisites` | Nonempty map of wire queue to `none`, `identity`, or `account` |
+| `promise_readback` | `{product_fields: [unique human-display fields], value_labels?: {selected_field: {wire_value: spoken_label}}}` |
 
 When bands and deadline/persuasion maps are supplied together, the map keys must
 cover exactly the declared bands. This profile supplies data for a later guard
@@ -108,14 +111,31 @@ platform's verified code-node modules are `json`, `re`, and `datetime`, so this
 Python module must not be copied blindly into a Freya code node.
 
 The additional guard inputs from `nonpersistent_failures` through
-`promise_failure_disposition` are validated during execution-profile compilation.
+`promise_readback` are validated during execution-profile compilation.
 General IR validation still treats them as extension data for compatibility;
-compilation rejects prose values for them. Their semantic action/outcome labels,
+compilation rejects prose values and malformed nested shapes for them. Missing
+requested values are errors; the selector never invents a notes requirement,
+account resolution requirement, queue prerequisite, sort mode, or display field.
+An empty confirmation list and `record_notes: false` remain explicit values.
+Readback fields cannot be `customer_id` or `product_id`, and label maps can only
+refer to selected display fields. T08 additionally checks renamed identifier
+aliases against the actual API and compiles the human readback separately from
+the internal request body. Their semantic action/outcome labels,
 operation names, aliases, and response predicates need API/binding validation
 by T08. A typed HTTP-status/error declaration is not evidence of no persistence:
 only the actual immutable response and controller-owned HTTP envelope can
-establish a match. The current pure helpers do not execute the configured sort,
+establish a match. HTTP status declarations accept 100 through 599, including a
+documented HTTP200 business rejection; a matching status alone never authorizes
+a retry. The current pure helpers do not execute the configured sort,
 precedence, identity-close selection, or failure disposition automatically.
+
+For restricted plans, the controller calls `required_execution_kinds(plan)` and
+passes that list to `compile_execution_policy`. It retains the resulting profile
+and API-validated bindings outside model output, then passes them with the frozen
+contract to `compile_guarded_workflow`. Exact recompilation, rather than the
+profile hash or a model assertion, establishes the local guarded workflow match.
+These profile tests and compiler checks do not verify policy interpretation,
+customer consent, conversation liveness, or hosted runtime behavior.
 
 ## State and tool evidence
 

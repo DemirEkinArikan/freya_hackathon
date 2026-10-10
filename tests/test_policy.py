@@ -203,7 +203,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_guard_extension_inputs_require_explicit_typed_values_without_prose_interpretation(self):
         values = {"nonpersistent_failures": {"write_operation": [{"http_status": 422, "error": "validation_rejection"}]},
-                  "confirmation_actions": ["create_promise"], "confirmation_scope": "batch",
+                  "confirmation_actions": ["commit_promises"], "confirmation_scope": "batch",
                   "product_order": {"field": "days_late", "direction": "descending", "tie_breaker": "account_order"},
                   "close_precedence": ["transferred", "promise", "paid", "no_promise"],
                   "identity_close": {"failed": {"outcome": "not_verified", "reason": "failed"},

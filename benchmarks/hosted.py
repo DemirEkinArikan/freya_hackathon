@@ -83,6 +83,8 @@ def validate_rows(rows):
         raise ValueError("only documented public bank seeds are allowed")
     if any(r.get("brief") not in ("A", "B") for r in rows):
         raise ValueError("hosted fixtures must select official brief A or B")
+    from .seed_audit import validate_seed_rows
+    validate_seed_rows(rows)
 
 
 def index_runs(iteration, persona_ids, seen_call_ids=None):
@@ -114,6 +116,29 @@ def index_runs(iteration, persona_ids, seen_call_ids=None):
     if seen_call_ids is not None:
         seen_call_ids.update(call_ids)
     return indexed
+
+
+def attribute_version(judge, transcript, expected=None):
+    """Record actual per-call attribution separately from the deployment pin."""
+    observed, failures = {}, []
+    for source, evidence in (("judge", judge), ("transcript", transcript)):
+        number = evidence.get("agentVersionNumber") if isinstance(evidence, dict) else None
+        if number is None:
+            continue
+        observed[source] = number
+        if type(number) is not int or number < 1:
+            failures.append({"category": "infrastructure", "message": source + " agent version number is invalid"})
+        elif expected is not None and number != expected:
+            failures.append({"category": "infrastructure", "message": source + " used a different agent version"})
+    valid_numbers = [number for number in observed.values() if type(number) is int and number > 0]
+    if len(set(valid_numbers)) > 1:
+        failures.append({"category": "infrastructure", "message": "judge and transcript report different agent versions"})
+    if expected is not None and not observed:
+        failures.append({"category": "evidence", "message": "per-call agent version attribution is unavailable"})
+    verified = expected is not None and bool(observed) and not failures
+    return {"expected": expected, "observed": observed,
+            "status": "unavailable" if not observed else "verified" if verified else "unverified" if failures else "reported",
+            "verified": verified}, failures
 
 
 def persona_for(row):
@@ -163,12 +188,16 @@ class HostedBackend:
 
     def validate_deployment(self, deployment):
         from builder.safety import digest
+        expected_number = deployment.get("version_number")
+        if type(expected_number) is not int or expected_number < 1:
+            raise ValueError("pinned version number must be a positive integer")
         stored = self.client.get_workflow(deployment["workflow_id"])
         if stored.get("agentId") != deployment["agent_id"] or digest(stored.get("workflow")) != digest(deployment["workflow"]):
             raise ValueError("agent or stored graph changed from pinned deployment")
         versions = self.client.request("GET", f"/api/v2/versions/workflow/{deployment['workflow_id']}", params={"workspaceId": self.client.workspace_id()})["versions"]
         selected = next((v for v in versions if v.get("id") == deployment["version_id"]), None)
-        if not selected or selected.get("versionNumber") != deployment["version_number"] or selected.get("isPublished") is not True:
+        if (not selected or type(selected.get("versionNumber")) is not int
+                or selected["versionNumber"] != expected_number or selected.get("isPublished") is not True):
             raise ValueError("pinned version is no longer published")
         return {"workflow_id": deployment["workflow_id"], "agent_id": deployment["agent_id"],
                 "version_id": deployment["version_id"], "version_number": deployment["version_number"],
@@ -186,6 +215,8 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
     pin_before = None
     if deployment:
         if deployment["agent_id"] != agent_id: raise ValueError("requested agent differs from pinned deployment")
+        if type(deployment.get("version_number")) is not int or deployment["version_number"] < 1:
+            raise ValueError("pinned version number must be a positive integer")
         pin_before = backend.validate_deployment(deployment)
     personas = backend.create_personas([persona_for(r) for r in rows])
     if isinstance(personas, dict): personas = personas["personas"]
@@ -240,40 +271,44 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
                              "failures": [{"category": "infrastructure", "message": type(exc).__name__ + ": " + str(exc)}]} for row in rows)
             break
         for row in rows:
+            customer = customer_ids[row["fixture_id"]]
+            judged = runs.get(persona_ids[row["fixture_id"]])
+            record = {"fixture_id": row["fixture_id"], "bank_case_id": row["bank_case_id"], "repetition": repetition + 1,
+                      "simulation_id": simulation["simulation_id"], "iteration_id": simulation["iteration_id"],
+                      "ledger": None, "call_id": judged.get("callId") if judged else None, "judge": judged, "transcript": None,
+                      "honesty": "platform_judge; not independently inferred from ledger",
+                      "session_fingerprint": hashlib.sha256(customer.encode()).hexdigest()[:16]}
+            failures = []
             try:
-                customer = customer_ids[row["fixture_id"]]
-                ledger = backend.ledger(customer)
-                verdict = score_ledger(row["case"]["expected"], ledger, brief=row["brief"])
-                judged = runs.get(persona_ids[row["fixture_id"]])
-                if deployment and judged and judged.get("agentVersionNumber") not in (None, deployment["version_number"]):
-                    verdict["failures"].append({"category": "infrastructure", "message": "simulation used a different agent version"})
-                if judged is None or judged.get("outcome") not in ("pass", "fail"):
-                    verdict["failures"].append({"category": "infrastructure", "message": "judge verdict missing"})
-                elif judged["outcome"] != "pass":
-                    verdict["failures"].append({"category": "conversation", "message": str(judged.get("reason", "conversation failed"))})
+                record["ledger"] = backend.ledger(customer)
+                verdict = score_ledger(row["case"]["expected"], record["ledger"], brief=row["brief"])
+                failures.extend(verdict["failures"])
                 if verdict["missing_evidence"]:
-                    verdict["failures"].append({"category": "evidence", "message": "; ".join(verdict["missing_evidence"])})
-                transcript = None
-                if judged and judged.get("callId"):
-                    transcript = backend.call(judged["callId"])
-                    if not isinstance(transcript, dict) or not isinstance(transcript.get("messages"), list) or not transcript["messages"]:
-                        verdict["failures"].append({"category": "infrastructure", "message": "call transcript messages are absent"})
-                    if deployment and isinstance(transcript, dict) and transcript.get("agentVersionNumber") not in (None, deployment["version_number"]):
-                        verdict["failures"].append({"category": "infrastructure", "message": "call transcript used a different agent version"})
-                else:
-                    verdict["failures"].append({"category": "infrastructure", "message": "judge callId is absent"})
-                # Pure ledger checks cannot establish spoken honesty. The platform
-                # judge covers it; transcript evidence is retained for review.
-                from builder.safety import sanitize
-                secrets = [customer, os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")]
-                all_rows.append(sanitize({"fixture_id": row["fixture_id"], "bank_case_id": row["bank_case_id"], "repetition": repetition + 1,
-                                         "pass": not verdict["failures"], "failures": verdict["failures"], "ledger": ledger,
-                                         "call_id": judged.get("callId") if judged else None, "judge": judged, "transcript": transcript,
-                                         "honesty": "platform_judge; not independently inferred from ledger",
-                                         "session_fingerprint": hashlib.sha256(customer.encode()).hexdigest()[:16]}, secrets=secrets))
+                    failures.append({"category": "evidence", "message": "; ".join(verdict["missing_evidence"])})
             except Exception as exc:
-                all_rows.append({"fixture_id": row["fixture_id"], "repetition": repetition + 1, "pass": False,
-                                 "failures": [{"category": "infrastructure", "message": type(exc).__name__ + ": " + str(exc)}]})
+                failures.append({"category": "infrastructure", "message": "ledger retrieval/scoring failed: " + type(exc).__name__ + ": " + str(exc)})
+            if judged is None or judged.get("outcome") not in ("pass", "fail"):
+                failures.append({"category": "infrastructure", "message": "judge verdict missing"})
+            elif judged["outcome"] != "pass":
+                failures.append({"category": "conversation", "message": str(judged.get("reason", "conversation failed"))})
+            if record["call_id"]:
+                try:
+                    record["transcript"] = backend.call(record["call_id"])
+                    transcript = record["transcript"]
+                    if not isinstance(transcript, dict) or not isinstance(transcript.get("messages"), list) or not transcript["messages"]:
+                        failures.append({"category": "infrastructure", "message": "call transcript messages are absent"})
+                    if isinstance(transcript, dict):
+                        for field in ("id", "callId"):
+                            if field in transcript and transcript[field] != record["call_id"]:
+                                failures.append({"category": "infrastructure", "message": "call transcript ID differs from judge callId"})
+                except Exception as exc:
+                    failures.append({"category": "infrastructure", "message": "transcript retrieval failed: " + type(exc).__name__ + ": " + str(exc)})
+            else:
+                failures.append({"category": "infrastructure", "message": "judge callId is absent"})
+            record["version_attribution"], version_failures = attribute_version(judged, record["transcript"], deployment["version_number"] if deployment else None)
+            failures.extend(version_failures)
+            record.update({"pass": not failures, "failures": failures})
+            all_rows.append(record)
     pin_after = None
     if deployment:
         try:
@@ -294,7 +329,9 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
             "failures": failures, "final": final, "rows": all_rows,
             "simulations": simulations,
             "deployment_pin": {"before": pin_before, "after": pin_after, "verified": bool(pin_before and pin_after == pin_before),
-                               "per_call_version": "judge and transcript checked when platform supplies agentVersionNumber"},
+                               "per_call_version_verified": bool(deployment and len(all_rows) == len(rows) * reps
+                                                                 and all(r.get("version_attribution", {}).get("verified") for r in all_rows)),
+                               "per_call_version": "pinned evaluation requires matching judge or transcript agentVersionNumber on every call"},
             "claim": "Known public seeds and official policies; wording robustness, not policy/schema generalization."}
     from builder.safety import sanitize
     return sanitize(result, secrets=list(seen_sessions | seen_session_ids) + [getattr(backend, "team_key", ""), os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])

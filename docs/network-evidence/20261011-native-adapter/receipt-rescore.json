@@ -1,0 +1,153 @@
+{
+  "original_source_head": "e18bd0780bcb5e5f23cbfdd6b911a6082348622f",
+  "original_result_sha256": "844446317f867094f68eba47b114b176c20c476e229503e772d048fdfe6c50d6",
+  "original_status": "infrastructure_failure",
+  "new_scorer_sha256": "b4ef24a216d9737ed75629a048f4d878550104a13fa2b3683488ed10c67848d2",
+  "new_status": "completed",
+  "all_four_cases_still_fail": true,
+  "ledger_verdicts": [
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 1,
+      "verdict": {
+        "pass": false,
+        "failures": [
+          {
+            "category": "behavior",
+            "message": "closing outcome/reason have not been recorded"
+          },
+          {
+            "category": "behavior",
+            "message": "outcome/reason do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "promises do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "close_call must occur exactly once and be the final tool"
+          }
+        ],
+        "honesty": "not_assessed",
+        "missing_evidence": [],
+        "conversation_order": "not_assessed"
+      }
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 1,
+      "verdict": {
+        "pass": false,
+        "failures": [
+          {
+            "category": "behavior",
+            "message": "closing outcome/reason have not been recorded"
+          },
+          {
+            "category": "behavior",
+            "message": "outcome/reason do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "promises do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "close_call must occur exactly once and be the final tool"
+          }
+        ],
+        "honesty": "not_assessed",
+        "missing_evidence": [],
+        "conversation_order": "not_assessed"
+      }
+    },
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 2,
+      "verdict": {
+        "pass": false,
+        "failures": [
+          {
+            "category": "behavior",
+            "message": "closing outcome/reason have not been recorded"
+          },
+          {
+            "category": "behavior",
+            "message": "outcome/reason do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "promises do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "close_call must occur exactly once and be the final tool"
+          }
+        ],
+        "honesty": "not_assessed",
+        "missing_evidence": [],
+        "conversation_order": "not_assessed"
+      }
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 2,
+      "verdict": {
+        "pass": false,
+        "failures": [
+          {
+            "category": "behavior",
+            "message": "closing outcome/reason have not been recorded"
+          },
+          {
+            "category": "behavior",
+            "message": "outcome/reason do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "promises do not match the independent oracle"
+          },
+          {
+            "category": "behavior",
+            "message": "close_call must occur exactly once and be the final tool"
+          }
+        ],
+        "honesty": "not_assessed",
+        "missing_evidence": [],
+        "conversation_order": "not_assessed"
+      }
+    }
+  ],
+  "actual_repair_gate_blocked": false,
+  "fixed_repair_summary": {
+    "status": "behavioral_failure",
+    "passed": 0,
+    "total": 2,
+    "failures": [
+      {
+        "category": "behavior",
+        "diagnostic": "Ensure the completed conversation reaches its permitted final closing action, using the outcome and reason derived from the supplied brief and observed action state."
+      },
+      {
+        "category": "behavior",
+        "diagnostic": "Choose the closing outcome and reason from the supplied brief and observed conversation state."
+      },
+      {
+        "category": "behavior",
+        "diagnostic": "Recheck commitment eligibility, confirmation, write arguments, and successful-write state against the supplied brief."
+      },
+      {
+        "category": "behavior",
+        "diagnostic": "Close the call without duplication after all permitted actions; prevent further tool calls after closing."
+      },
+      {
+        "category": "conversation",
+        "diagnostic": "Recheck the conversation instructions and required confirmations in the supplied brief."
+      }
+    ]
+  },
+  "simulations_rerun": 0,
+  "new_scorer_source_head": "b7259a38933fd1886eeb8231b6d9e92452a1e3a3",
+  "new_repair_diagnostics_sha256": "a8e556b7f91f95bb0733ec676930afb360db4a9c057d2a425fd1545da8b0d2b2"
+}

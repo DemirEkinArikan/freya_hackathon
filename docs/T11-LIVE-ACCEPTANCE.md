@@ -1,10 +1,56 @@
 # T11 live acceptance lane
 
-T11 remains open. The existing local/macOS and Docker evidence stops after
-ClientHello; those environments share upstream egress. An independent Europe
-West executor has now verified bank TLS and one pristine practice-session
-retrieval. Fresh repeated runner compatibility with a pinned published agent
-still requires actual evidence.
+T11's live adapter acceptance is now evidenced by two fixture aliases and two
+fresh repetitions with a separately published synthetic greeting agent. All
+four calls have actual version attribution, retrieved ledgers/transcripts and
+complete observed inventories. This establishes runner compatibility. The
+greeting agent deliberately implements no banking policy and passes no banking
+cases; competition readiness remains a separate gate.
+
+## Actual repeated native adapter evidence
+
+The sanitized evidence and original controller source are retained in
+[`network-evidence/20261011-native-adapter`](network-evidence/20261011-native-adapter/).
+The source invocation was `e18bd0780bcb5e5f23cbfdd6b911a6082348622f` with
+Python 3.11. After both independently observed bank addresses passed native
+verified TLS, a bank-only opener used one address as transient transport input.
+The request URL, HTTP Host and SNI retained the documented hostname; public CA
+and hostname validation remained enabled. No global DNS setting changed and
+no bank address was added to builder policy/source constants.
+
+The adapter saved, published, read back and exported a separate synthetic test
+workflow `832940fc-46a9-404e-95a6-5b36220617af`, agent
+`b149e951-6027-43c4-9996-9cebc79840a8`, published version 1
+`92c2ec8a-9c86-4254-ad68-f543ad53749b`. The fixed phone model is
+`experimental-5`; no generated agent or another lane's slot was edited.
+
+The real `HostedBackend.evaluate` ran audited development fixtures `HOST-001`
+(plain) and `HOST-014` (corrects), both mapped to official seed `PUB-01`, twice.
+Four distinct customer fingerprints prove fresh practice sessions. Each set of
+server-returned variables was forwarded unchanged to its two persona mappings.
+Both simulations completed; each actual iteration returned 2/2 unique calls in
+one page. All four judge results reported version 1, matching the before/after
+published graph pin. Every ledger and ten-message transcript was retrieved.
+The largest observed request took 0.870 seconds; calls were capped at 90 seconds
+and controller time at 1,800 seconds with a 300-second reserve. Local multi-page
+regressions remain the evidence for pagination beyond these actual one-page
+responses; no second actual page is claimed.
+
+The original result is preserved as `infrastructure_failure`: the then-current
+scorer classified the documented null/null unclosed ledger as malformed.
+[The focused scoring fix](T13-NULL-CLOSING-RECEIPT.md) re-scores the same captured
+receipts into a separately bound output, with four behavioral failures and
+fixed repair guidance. It does not overwrite the original verdict or repeat a
+session/simulation. Arbitrary judge text and raw transcripts stay in private
+runtime storage and never enter the generator.
+
+The ignored controller raised a formatting `TypeError` after the original
+results and final export had already been persisted: it passed the elapsed
+method to `round`. The exact original controller/hash and error phase are
+retained. A read-only final verification confirmed that the latest canonical
+lease was actually completed and the published export still matched the
+original. A corrected local driver version was prepared without rerunning any
+call. This is adapter acceptance evidence, not a successful builder trace.
 
 ## Verified independent connectivity and pristine retrieval
 
@@ -149,15 +195,15 @@ source as part of adapter acceptance.
 
 | Criterion | Required actual evidence | Current lane evidence |
 | --- | --- | --- |
-| Bank reachability | Independent verified TLS bank/control logs | Verified Europe West bank/control TLS, original log retained |
-| Untouched retrieval | One explicit PUB-01 POST and pristine GET | Exactly one of each; pristine fixed shape/counts verified |
-| Fixture mapping | Distinct fixture aliases for one known bank seed, with matching personas | Existing local regression coverage only |
-| Freshness/seed preservation | Multiple repetitions; fresh customer/session fingerprints and unchanged forwarded server facts | No banking simulation |
-| Pagination | Complete observed inventory/total, with local multi-page regression; retrieve every page when the actual response paginates | Local 101-run regression; prior synthetic live inventory 1/1 unique call, one actual page |
-| Bounded waits | Actual request/poll timing and retained terminal/interrupted evidence | Existing local deadline regressions only |
-| Published version | Before/after publication pin plus matching positive integer actual judge/transcript version on every call | Prior synthetic call reports actual judge version 2, matching expected version; fresh pinned runner proof outstanding |
-| Shared lease | Primary coordination and server reconciliation immediately before live use; retained IDs/status afterward | Read-only prior synthetic status confirmed |
-| Compatible pinned agent | Published graph/model/version suitable for an adapter check; generated-candidate readiness is a separate gate | T03 synthetic publication evidence exists |
+| Bank reachability | Independent verified TLS bank/control logs | Verified Europe West bank/control logs; newer native exact-host/IP TLS checks verified |
+| Untouched retrieval | One explicit PUB-01 POST and pristine GET | Exactly one of each in the independent probe; pristine fixed shape/counts verified |
+| Fixture mapping | Distinct fixture aliases for one known bank seed, with matching personas | HOST-001/HOST-014 map to PUB-01 with two distinct actual persona IDs |
+| Freshness/seed preservation | Multiple repetitions; fresh customer/session fingerprints and unchanged forwarded server facts | Four distinct customer fingerprints; exact server-variable forwarding verified; optional session_id was not returned |
+| Pagination | Complete observed inventory/total, with local multi-page regression; retrieve every page when the actual response paginates | Both actual inventories 2/2 unique calls, one page each; local 101-run multi-page regression |
+| Bounded waits | Actual request/poll timing and retained terminal/interrupted evidence | Request timings retained; two actual completed simulations; 90-second call cap and 1,800/300 controller budget |
+| Published version | Before/after publication pin plus matching positive integer actual judge/transcript version on every call | Matching graph/publication pins and actual judge version 1 on all four calls |
+| Shared lease | Primary coordination and server reconciliation immediately before live use; retained IDs/status afterward | Primary notified; canonical lock used and actual status reconciled; latest simulation/iteration retained and completed |
+| Compatible pinned agent | Published graph/model/version suitable for an adapter check; generated-candidate readiness is a separate gate | Separate harmless greeting graph saved/published/read back/exported with experimental-5 |
 
 A one-page run does not prove an observed second-page server response, and that
 limitation must be stated. It does not create a requirement to manufacture a

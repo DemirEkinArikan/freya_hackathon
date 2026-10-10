@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from builder.build import execute, main, make_prompt, parser, PROJECT, HostedTestInfrastructureError
+from builder.build import execute, main, make_prompt, parser, PROJECT, HostedTestInfrastructureError, _load_inputs
 from builder.platform import PlatformError
 from builder.runtime import Deadline, DeadlineExceeded
 from builder.toolbindings import BindingError, derive_tools, resolve_refs
@@ -122,6 +122,52 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn("public-test-set.json", prompt)
         self.assertNotIn("Launchway", prompt)
         self.assertIn("Banking contact policy", prompt)
+
+    def test_protected_briefs_and_tool_apis_are_rejected_before_content_reads(self):
+        protected = [
+            self.directory / "benchmarks" / "fixtures" / "hosted.json",
+            self.directory / "tests" / "fixture.json",
+            self.directory / ".env",
+            self.directory / ".env.local",
+            self.directory / "meeting.md",
+            self.directory / "meeting_summary.md",
+            self.directory / "kickoff_email.txt",
+            PROJECT / "build-the-builder" / "public-test-set.json",
+        ]
+        for path in protected[:-1]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("private evaluator/setup placeholder")
+        for path in protected:
+            for field in ("brief", "tool_api"):
+                with self.subTest(path=path.name, field=field):
+                    args = self.args("--generate-only")
+                    setattr(args, field, [path] if field == "brief" else path)
+                    with patch("pathlib.Path.read_text", side_effect=AssertionError("input content read")), \
+                            patch("builder.build.read_json", side_effect=AssertionError("JSON input content read")), \
+                            self.assertRaisesRegex(ValueError, "Protected evaluator"):
+                        _load_inputs(args)
+
+    def test_exported_evaluator_policy_inputs_remain_valid_and_cases_stay_separate(self):
+        approved = self.directory / "artifacts" / "evaluator-inputs"
+        approved.mkdir(parents=True)
+        brief = approved / "bank-policy.md"
+        api = approved / "tool-api.json"
+        brief.write_text("Use the permitted banking contact flow.")
+        api.write_text(json.dumps(contract()))
+        args = self.args("--test-cases", str(PROJECT / "build-the-builder" / "public-test-set.json"))
+        args.brief, args.tool_api = [brief], api
+        sources, openapi = _load_inputs(args)
+        self.assertEqual(sources[0]["text"], "Use the permitted banking contact flow.")
+        self.assertEqual(openapi["openapi"], "3.0.3")
+        self.assertNotIn("test_cases", make_prompt(sources, openapi))
+
+    def test_protected_generator_path_fails_before_model_or_client(self):
+        generator = unittest.mock.Mock()
+        args = self.args("--generate-only")
+        args.brief = [PROJECT / "build-the-builder" / "public-test-set.json"]
+        with self.assertRaisesRegex(ValueError, "Protected evaluator"):
+            execute(args, generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
+        generator.generate.assert_not_called()
 
     def test_live_controller_exports_platform_snapshot_without_implicit_tests(self):
         generator = unittest.mock.Mock()

@@ -58,16 +58,35 @@ def _within_project(path: Path, *, must_exist: bool = True) -> Path:
     return resolved
 
 
+def _model_input_path(path: Path) -> Path:
+    """Refuse known evaluation and private setup assets before reading model input."""
+    resolved = _within_project(path)
+    relative = resolved.relative_to(PROJECT)
+    parts = tuple(part.casefold() for part in relative.parts)
+    private_names = {"meeting.md", "meeting_summary.md", "kickoff_email.txt"}
+    if (any(part in {"benchmarks", "tests", "meeting", "kickoff"} for part in parts)
+            or any(part == ".env" or part.startswith(".env.") for part in parts)
+            or resolved.name.casefold() in private_names
+            or resolved.name.casefold() == "public-test-set.json"):
+        raise ValueError("Protected evaluator and private setup files cannot be generator briefs or tool API inputs")
+    if not resolved.is_file():
+        raise ValueError("Generator input must be a regular project file")
+    return resolved
+
+
 def _load_inputs(args) -> tuple[list[dict], dict]:
+    # Check every input before opening any, so a protected API cannot be smuggled
+    # alongside otherwise approved briefs. --test-cases has a separate evaluator path.
+    brief_paths = [_model_input_path(path) for path in args.brief]
+    api_path = _model_input_path(args.tool_api)
     sources = []
-    for index, path in enumerate(args.brief, 1):
-        resolved = _within_project(path)
+    for index, resolved in enumerate(brief_paths, 1):
         text = resolved.read_text(encoding="utf-8")
         if not text.strip() or len(text.encode()) > 2 * 1024 * 1024:
             raise ValueError("Brief input is empty or exceeds the input limit")
         assert_no_secrets(text, forbidden_values=_known_secrets())
         sources.append({"id": f"brief-{index}", "file": resolved.name, "sha256": digest(text), "text": text})
-    openapi = read_json(_within_project(args.tool_api))
+    openapi = read_json(api_path)
     assert_no_secrets(openapi, forbidden_values=_known_secrets())
     operations(openapi)  # Fail on unresolved or unsupported contracts before generation.
     openapi = resolve_refs(openapi, openapi)

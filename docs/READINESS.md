@@ -2,31 +2,40 @@
 
 ## Closure audit — 11 October 2026
 
-The live board has six closed tasks and twelve open tasks, plus the parent.
-T09 (PR70) and T12 (PR61) have completed their own declared deliverables and
-await dependencies. The other open tasks have actual integration, generation,
-evaluation, freeze or hidden-submission work remaining. Merging preparation
-code is not the same as completing those deliverables.
+The live board now has eight closed tasks and ten open tasks, plus the parent.
+T11 is closed with actual published-version, fresh-session, bank-receipt and
+runner compatibility evidence. T12 is also closed: its authored scenario
+deliverable was complete and its T11 dependency is now complete.
+T09's validator deliverable is complete and waits only for T07/T08. T13's
+scoring/capture deliverable is complete with PR88 and waits only for T09.
+Neither issue gains a successful-agent or extra repetition gate.
 
-The defects found at main `18024c3` were the direct-script CLI import failure,
-unwired PR69 production repair diagnostics, and compiler recovery cycles after
-quarantine or blocked close. PR74, PR75 and PR76 repaired those respectively.
-The combined PR76 checked tree passes 953 local tests; these are source checks,
-not an actual generated banking build or conversation result.
-T05 needs a fresh successful audited policy/workflow build within 30 minutes;
-that local generation acceptance does not wait for hosted bank TLS. T11 still
-lacks actual fresh-session/ledger/runner compatibility because bank TLS failed.
-T15–T18 still need real evaluation, fresh holdouts, final live rehearsal/freeze,
-and the two hidden builds/submission respectively.
+Four actual runner calls completed with distinct customer fingerprints and
+matching published versions; all four strict banking verdicts are FAIL. They
+used a separate harmless greeting graph. Bank connectivity and pristine
+retrieval are demonstrated; older TLS failures are historical observations.
+There is still no accepted generated banking policy/workflow. The latest fresh
+public-A attempt was deliberately stopped before freeze/deployment/export or
+simulation after source-compatibility review; generic fixes are in progress.
 
-Extra per-task gates have been corrected: T09 does not need its own hosted
-trials, T08 does not acquire a separate three-repetition requirement, and T11
-need not wait for T05 or create a large simulation solely to force pagination.
-Overall winning-readiness and submission checks remain unchanged.
+T05 still needs a fresh complete audited policy/workflow build within 30 minutes;
+a valid generate-only result can establish its generation acceptance. T07 needs
+actual input-derived generation evidence. T08 awaits that T07 integration,
+without a standalone hosted/three-repeat gate. T14 needs an actual bounded
+repair, republish/read-back and selected export. T15–T18 have substantive
+comparison, fresh holdout, final rehearsal/freeze and hidden-submission work.
+See [the per-issue closure audit](ISSUE-CLOSURE-AUDIT.md) for preparation PRs,
+exact remaining deliverables and dependencies.
 
-Earlier checkpoint text below is historical. In particular, T02 and T03 are
-now closed with actual runtime/staging evidence; the earlier no-execution
-statements do not revoke authorized staging or simulation use.
+The combined source through PR86/88 passed 1,062 Python 3.11 tests at checked
+head `f3073ff174c6525674af4983c384271a0a9f7616`. The PR88 merge's production,
+tests and kit bytes match that checked source. This documentation update adds
+no model or live call and does not relabel source checks as banking success.
+Overall winning-readiness, critical repetitions and submission gates remain.
+
+Earlier checkpoint text below is historical. Its old counts, no-execution
+statements and TLS failures are superseded by this current audit; authorized
+staging and simulation use remains in effect.
 
 The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Anyone may work on any issue at any time. Issue assignments and names are informational; no named worker, timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Dependencies govern completion rather than starting independent work. Closed tasks retain their historical records.
 

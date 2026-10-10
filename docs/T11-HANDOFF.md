@@ -62,3 +62,23 @@ Followup verification: `python3.11 -m unittest discover -s tests -p
 'test_hosted_evidence.py' -v` passes all 10 evidence checks;
 `python3.11 -m unittest discover -s tests -v` passes all 340 checks.
 `git diff --check` passes. Existing shared test modules were not edited.
+
+## T12 seed audit integration
+
+Hosted manifest loading and direct evaluation now invoke the independent
+`benchmarks.seed_audit.validate_seed_rows` before any persona, session or
+simulation mutation. It loads pinned official seeds itself; fixture declarations
+never supply the trusted comparison records. Changed identity/product/variable
+facts, expected records, judge checks or compound constraints fail with bounded,
+value-free diagnostics. Legitimate unauthored holdout metadata can still be
+inspected and remains ineligible for execution.
+
+The integration adds seven boundary checks in `test_hosted_seed_integration.py`.
+The existing runner's mock fixture helper now keeps `case.id` equal to its
+fixture alias, matching the production seed audit contract. The shared
+`tests/test_benchmarks.py` is unchanged. No live calls or generation occurred.
+
+With seed audit dependency `ecad689` applied locally, all seven integration
+checks, 15 hosted runner checks and the full 360-test suite pass under Python
+3.11. `git diff --check` passes. T12's development style allocation remains
+separate work, and these checks do not establish actual persona-model behavior.

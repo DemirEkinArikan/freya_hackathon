@@ -83,6 +83,8 @@ def validate_rows(rows):
         raise ValueError("only documented public bank seeds are allowed")
     if any(r.get("brief") not in ("A", "B") for r in rows):
         raise ValueError("hosted fixtures must select official brief A or B")
+    from .seed_audit import validate_seed_rows
+    validate_seed_rows(rows)
 
 
 def index_runs(iteration, persona_ids, seen_call_ids=None):

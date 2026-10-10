@@ -51,6 +51,13 @@ Do not run execution commands under the current no-spend boundary. The default i
 
 Every variant has a unique `fixture_id` and a separate known `bank_case_id`. The latter alone is sent to `/v1/practice/sessions`. Server-returned variables are preserved unchanged, with fresh sessions for every case and repetition. The adapter rejects reused customer/session IDs, duplicate persona IDs and unknown bank seeds. One workspace simulation runs at a time through the platform client's shared lease; per-simulation call concurrency defaults to the kit's five. Three repetitions require every repetition to pass. No automatic slow-run retries spend additional credits.
 
+Manifest loading and direct evaluation both audit authored fixture facts against
+the pinned official seed: identity, products, variables, injected faults and the
+entire expected ledger must remain unchanged. Original judge checks are retained,
+and compounds require their immutable seed outcome digest. Legitimate reserved
+holdout metadata remains inspectable; unauthored rows cannot execute. Audit
+errors contain bounded field/code diagnostics without rejected customer values.
+
 The supplied server does not document arbitrary fixture registration, reset, policy/schema deployment or fault injection. Local `faults`, products, dates and identity data are not uploaded. Hosted results therefore measure wording robustness under known public seeds and policies, **not unseen-policy generalization**. Do not redirect live agents to synthetic external services.
 
 ## Scoring and evidence

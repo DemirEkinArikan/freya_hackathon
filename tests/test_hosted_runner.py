@@ -16,6 +16,7 @@ def fixture_rows(count=1):
     rows = [deepcopy(seed) for _ in range(count)]
     for index, row in enumerate(rows):
         row["fixture_id"] = f"mock-fixture-{index}"
+        row["case"]["id"] = row["fixture_id"]
     return rows
 
 

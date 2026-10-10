@@ -1,7 +1,7 @@
 # T15 development execution coordination
 
 This is an execution plan and an evidence audit, not a hosted comparison result.
-The T15 branch starts at `486ead9fba034638e528f61d41fe5c303a2c8769`.
+The production integration starts at main `2d09c31d2f2d25a0e01466e707f560127634cad3`.
 T14 and T15 remain open until their actual acceptance and dependencies are met.
 
 ## Current evidence and prerequisites
@@ -20,31 +20,21 @@ mandatory tool-free generation audit, approved brief/API inputs, fixed
 `experimental-5` phone model, publish/read-back/export, and one 1800-second
 deadline with at least 300 seconds reserved for export.
 
-The recording lane owns `benchmarks/evidence.py` and `benchmarks/bundle.py`.
-It must retain actual evaluator configuration, original fixture inventory,
-bank-returned calendar evidence, operation times and partial failures. A stated
-calendar hash or a report that only lists evaluated cases cannot prove calendar
-parity or full declared coverage. Historical values must not be reconstructed
-from a current checkout, filesystem timestamps or intended defaults.
+The production recorder/bundler integration is now implemented. Actual standalone
+evaluation automatically captures original full selected fixture rows/hash,
+per-session bank calendars, resolved models/route/configuration, operation timings,
+complete available reports and interruptions. Bundle assembly validates and retains
+original build provenance and mandatory tool-free audit/catalog ordering. Local
+CLI pipeline tests use synthetic external services only; they establish wiring,
+not live comparison. See [T11-EVALUATION-EVIDENCE.md](T11-EVALUATION-EVIDENCE.md).
 
-The comparator's invocation-source check validates the snapshot/configuration
-and manifest hash binding. Its `trace_sha256` check currently validates only
-hash shape, without original trace contents or pre-generation audit/event
-ordering. Original trace/audit validation remains an internal recording/bundle
-integration gate, and synthetic provenance regressions do not satisfy it.
-
-The bank origin's existing verified-TLS checks failed before HTTP. A fresh
-session/ledger compatibility check is useful only after verified TLS succeeds.
-An ambiguous session creation must preserve its original failure and must not
-be retried automatically. Missing bank evidence is an infrastructure gate,
-never a failed conversation or a structured-builder win.
-
-A single fresh unauthenticated handshake at
-`2026-10-10T20:59:06.188216+00:00` retained the blocker: hostname/certificate
-verification enabled, `TimeoutError` after 8.019 seconds. It created zero bank
-sessions, retrieved zero ledgers and started zero simulations. The observation
-is retained in ignored `artifacts/thread-coordination/t15-bank-tls.json` in the
-primary checkout; it does not establish an outage or independent-egress result.
+The prior TLS blocker was resolved through independently observed DNS answers and
+verified bank-only Host/SNI/public-CA routing. T11 retained four actual pinned
+adapter calls across two aliases and two repetitions; all four harmless greeting
+calls failed banking behavior. Original infrastructure verdicts and later corrected
+null/null re-scores remain separately retained. This proves adapter compatibility,
+not candidate quality. The optional operator connect address must be explicitly
+selected and identical for comparison peers; no static address is a source default.
 
 T14 additionally requires a real sanitized policy-violation repair, retained
 original attempt, verified republish/read-back and timed export; source tests
@@ -57,13 +47,13 @@ All worktrees use
 and its `.simulation.json`. Build/hosted execution must explicitly use that
 path rather than selecting a worktree/output-local lease.
 
-A read-only check at `2026-10-10T20:58:13.956490+00:00` acquired the canonical
-lock and confirmed the workspace scope, exact simulation ID and terminal server
-status. Stored/server status were both `completed` for simulation
-`03229c8e-5d0c-41fd-8179-35a50c6cc43e`, stored iteration
-`ca839f71-ddae-40ae-8e56-9cfaeed37a34`. This observation does not claim a
-lease for future execution. Reconcile again with the primary thread and server
-immediately before use. No new simulation was started by this check.
+Latest retained T11 terminal lease is simulation
+`ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb`, iteration
+`e0d90c7d-1521-45d8-950f-1c1618c5018d`, pinned diagnostic agent
+`b149e951-6027-43c4-9996-9cebc79840a8`. Actual server confirmed completed at
+2026-10-10T22:24:13.772985+00:00. This historical check is not permission to
+replace the current lease; reconcile current metadata/server with the primary
+controller immediately before every new live execution.
 
 Primary coordination uses ignored local files
 `artifacts/thread-coordination/t15-to-primary.json` and
@@ -93,8 +83,8 @@ At this source head, the declared public development subsets contain:
 
 | Brief | Training cases | Validation cases | Calls per candidate at three repetitions |
 |---|---:|---:|---:|
-| A | 27 | 15 | 126 |
-| B | 9 | 9 | 54 |
+| A | 26 | 14 | 120 |
+| B | 10 | 10 | 60 |
 | Total | 36 | 24 | 180 |
 
 The two candidates require 360 calls, excluding controller build tests and any
@@ -118,3 +108,70 @@ source availability or mock tests.
 Only actual comparable development evidence and completed T14 dependencies,
 plus checked/pushed matching-head merged PR evidence, permit `tools/cowork.py
 complete T15`. A focused comparator PR alone leaves T15 open.
+
+## Production commands and stage handoff
+
+The external T05 lane owns the next generated public-A build. Wait for its accepted
+manifest/export/original trace/source record/provenance and a primary stage handoff;
+then inspect those bytes and the unchanged published agent/version. This lane
+starts no competing model or simulation while that build is active.
+
+Run commands from merged `main`. Inputs and outputs must be inside this repository;
+if the primary supplies an accepted run from a registered worktree, retain its
+original bytes in an ignored local artifact directory, preserving all hashes.
+Do not rewrite policy, source records, manifests, calendar values or traces.
+A first smoke is one selected public training fixture at one repetition. The ignored
+primary `artifacts/t15-preparation/smoke-host001.json` contains the unchanged
+HOST-001/PUB01 training row; `ready-execution-plan.json` records the original
+development declaration/counts and stage sequence. Revalidate both before live use. Keep it
+separate from the full declaration and complete both candidates' training before
+either validation. Smoke evidence cannot become three-repeat comparison evidence.
+
+```sh
+python3.11 -m benchmarks.hosted --dry-run --brief A --split train
+python3.11 -m benchmarks.hosted --execute --brief A --split train \
+  --agent-id AGENT_ID --deployment-manifest artifacts/SELECTED_BUILD/manifest.json \
+  --cases benchmarks/fixtures/hosted.json --reps 3 --concurrency 5 --budget-seconds 1800 \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --evidence-dir artifacts/evaluations --out artifacts/UNIQUE_TRAIN_SUMMARY.json
+```
+
+If required, add `--bank-connect-address` with the trusted operator IP established
+by current verified-TLS checks. The builder's existing test hook obtains the same
+choice from controller environment `FREYA_BANK_CONNECT_ADDRESS`, which is excluded
+from generation subprocesses. Do not put controller route/credentials in prompts.
+Use identical runtime choice and actual bank calendar for both candidates; a changed
+server calendar yields incomparable evidence rather than an invented correction.
+Repeat the full command for the peer's training, then both validation splits, and
+separately for B (ordered A-plus-B approved builder input). Each output path is new.
+The command prints the retained `evidence_record` path even when behavior fails.
+
+```sh
+python3.11 -m benchmarks.bundle \
+  --manifest artifacts/SELECTED_BUILD/manifest.json \
+  --workflow artifacts/SELECTED_BUILD/submission.workflow.json \
+  --trace artifacts/SELECTED_BUILD/trace.jsonl \
+  --build-provenance artifacts/SELECTED_BUILD/build-provenance.json \
+  --train artifacts/evaluations/TRAIN_UUID/trial.json \
+  --validation artifacts/evaluations/VALIDATION_UUID/trial.json \
+  --out artifacts/UNIQUE_CANDIDATE_BUNDLE.json
+python3.11 -m benchmarks.compare --baseline artifacts/BASELINE_A_BUNDLE.json \
+  --structured artifacts/STRUCTURED_A_BUNDLE.json --out artifacts/UNIQUE_A_COMPARISON.json
+```
+
+A baseline-generation algorithm/entrypoint still needs to be selected through the
+primary controller lane. The present builder has no `--baseline` switch; do not
+invent one or treat manually authored diagnostic agents as builder baselines.
+Both algorithms need actual same authenticated model/effort and equivalent original
+isolation/source/trace evidence. Complete accepted structured generation first.
+Actual baseline/structured 360-call evaluation, failure-family corrections and T14
+live repair acceptance remain outstanding. T15 stays open until those original
+acceptance items and dependencies are met.
+
+The evaluation deadline is independently configurable with `--budget-seconds`
+(default 1800, resource bound 86400); it does not relax the builder's 1800-second
+limit. `--max-call-seconds` records and forwards the actual documented per-call
+cap (default 420, resource bound 3600). The primary selects duration/budget after
+observing a genuine candidate smoke; do not assume a shorter cap fits difficult
+calls. Cap-caused failures stay in the original report. Both settings must match
+across comparison peers, and frozen runtime settings remain enforced.

@@ -30,11 +30,14 @@ meaning, persuasion compliance, eventual closure or hosted behavior. Legacy
 `--offline`/`--validate-only` inspection explicitly reports this claim as false.
 Do not treat a structural check as a completed conversation benchmark.
 
-Every actual Codex generation stage retains the mandatory synthetic isolation
-check. Current documented GPT-6.1-sol and GPT-5.5 probes fail; substantive generation
-is blocked until a runtime passes the unchanged gate. Mock/local pipeline checks
-remain useful but no successful full model build or Freya deployment is claimed.
-Do not weaken the gate or patch generated policy to fabricate a passing build.
+Every builder instance retains the mandatory synthetic isolation check before
+substantive generation. The active Codex 0.162.1 / GPT-6.1-sol environment now
+passes with a per-process restricted catalog; the live audit, synthetic policy
+and plan calls, and independent local tool-registration checks are recorded in
+[RUNTIME.md](RUNTIME.md). Historical failed probes remain preserved. A runtime
+pass does not establish a successful full banking build or generated-agent
+Freya deployment. Do not weaken the gate or patch generated policy to fabricate
+a passing build.
 
 Some bank requirements may have no supported typed profile yet. Keep those
 constraints and fail closed rather than manufacture values. Nonpersistence needs

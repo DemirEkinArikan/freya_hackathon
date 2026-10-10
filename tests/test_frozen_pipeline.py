@@ -9,6 +9,7 @@ from builder.build import execute, make_workflow_prompt, PROJECT
 from builder.contract import compile_policy_contract
 from builder.runtime import CodexGenerator, Deadline, DeadlineExceeded, DISABLED_FEATURES, GenerationError, Trace
 import test_builder
+from test_generation_catalog import bundled_models
 from test_builder import fixture, contract, plan, BRIEF_TEXT, PROFILE
 
 
@@ -181,6 +182,8 @@ class WorkflowWireTests(unittest.TestCase):
         def run(argv, **kwargs):
             if '--help' in argv:
                 out = '--ignore-user-config --ignore-rules --ephemeral --output-schema --strict-config'
+            elif argv[1:4] == ['debug', 'models', '--bundled']:
+                out = json.dumps(bundled_models())
             elif 'features' in argv:
                 out = '\n'.join(name + ' stable true' for name in (*DISABLED_FEATURES, 'skip_host_skill_discovery'))
             else:
@@ -188,7 +191,7 @@ class WorkflowWireTests(unittest.TestCase):
                 if 'available_tools' in schema['properties']:
                     response = {'available_tools': [], 'loaded_markers': [],
                                 'forbidden_content': 'UNAVAILABLE', 'environment_content': 'UNAVAILABLE'}
-                    out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(response)}})
+                    out = json.dumps({'type': 'thread.started', 'thread_id': 'synthetic-thread'}) + '\n' + json.dumps({'type': 'turn.started'}) + '\n' + json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(response)}})
                     out += '\n' + json.dumps({'type': 'turn.completed'})
                 else:
                     calls.append((schema, kwargs))

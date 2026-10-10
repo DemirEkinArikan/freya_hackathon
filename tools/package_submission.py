@@ -30,7 +30,7 @@ ROOT_FILES = {"README.md", "AGENTS.md", "pyproject.toml", ".python-version", ".e
 SOURCE_DIRS = {"builder", "benchmarks", "tests", "tools", "docs", "build-the-builder"}
 SKIP_PARTS = {"__pycache__", ".git", ".venv", "generated", "holdout", "results", "traces", "out", "artifacts"}
 SKIP_NAMES = {".env", "env.sh", ".DS_Store", ".freya-agents.json", ".personas.json", "kickoff_email.txt", "meeting.md", "meeting_summary.md"}
-EXTENSIONS = {".py", ".json", ".jsonl", ".md", ".toml", ".txt"}
+EXTENSIONS = {".py", ".sh", ".json", ".jsonl", ".md", ".toml", ".txt"}
 
 
 def _nonempty(value):

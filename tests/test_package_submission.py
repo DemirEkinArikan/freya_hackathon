@@ -37,6 +37,11 @@ class PackageTests(unittest.TestCase):
         finally:
             outside.unlink()
 
+    def test_reviewed_shell_tools_are_reproduced_but_credential_scripts_are_excluded(self):
+        for name in ('tools/diagnostic.sh', 'tools/env.sh', 'build-the-builder/env.sh'):
+            path = self.root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('#!/bin/sh\n')
+        self.assertEqual({path.relative_to(self.root).as_posix() for path in package.source_files()}, {'tools/diagnostic.sh'})
+
     def evidence(self, status="exported", mode="live"):
         wf = {"workflow_id": "w", "agent_id": "a", "workflow": {"initial_node": "finish", "nodes": {}}}
         (self.root / 'brief.md').write_text('Synthetic policy input')

@@ -155,6 +155,35 @@ class PolicyTests(unittest.TestCase):
         policy["sources"][0]["sha256"] = digest("Different document")
         self.assertTrue(validate_policy(policy, {"s1": text}))
 
+    def test_strict_ir_preserves_helper_profiles_but_rejects_bypasses(self):
+        self.assertEqual(rule_value(PROFILE, "identity_wrong_limit"), 4)
+        text = "Use four attempts."
+        policy = {"version": 1, "goal": "Synthetic", "allowed_actions": [],
+                  "sources": [{"id": "s1", "file": "source.md", "sha256": digest(text)}],
+                  "rules": [{"id": "r1", "kind": "identity_wrong_limit", "value": 4,
+                             "source": {"id": "s1", "quote": text}}]}
+        self.assertEqual(validate_policy(policy, {"s1": text}, strict=True), [])
+        policy["identity_wrong_limit"] = 8
+        self.assertTrue(validate_policy(policy, {"s1": text}, strict=True))
+        policy.pop("identity_wrong_limit")
+        policy["rules"][0]["value"] = None
+        self.assertTrue(validate_policy(policy, {"s1": text}, strict=True))
+        policy["rules"][0]["value"] = 4
+        policy["version"] = True
+        self.assertTrue(validate_policy(policy))
+
+    def test_extension_conflicts_use_json_typed_equality(self):
+        policy = {"goal": "Synthetic", "allowed_actions": [], "sources": [{"id": "s1", "file": "source.md"}],
+                  "rules": [{"id": "a", "kind": "extension", "value": True, "source": {"id": "s1", "quote": "first"}},
+                            {"id": "b", "kind": "extension", "value": 1, "source": {"id": "s1", "quote": "second"}}]}
+        self.assertTrue(validate_policy(policy))
+        with self.assertRaises(PolicyError):
+            rule_value(policy, "extension")
+        policy["rules"][1]["overrides"] = ["a"]
+        self.assertEqual(validate_policy(policy), [])
+        policy["rules"][1]["kind"] = "different_extension"
+        self.assertTrue(validate_policy(policy))
+
 
 if __name__ == "__main__":
     unittest.main()

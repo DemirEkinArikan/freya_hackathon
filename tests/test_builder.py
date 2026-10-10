@@ -6,10 +6,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from builder.build import execute, main, make_prompt, parser, PROJECT, HostedTestInfrastructureError, _load_inputs
+from builder.build import execute, main, make_prompt, make_policy_prompt, parser, PROJECT, HostedTestInfrastructureError, _load_inputs
 from builder.platform import PlatformError
 from builder.runtime import Deadline, DeadlineExceeded
 from builder.toolbindings import BindingError, derive_tools, resolve_refs
+from builder.safety import digest
 
 
 def fixture():
@@ -19,7 +20,7 @@ def fixture():
         "done": {"name": "done", "node_type": "end_call", "on_enter": {"type": "silent"}, "disable_inactivity_monitor": True,
                  "transitions": [], "terminal": {"type": "function", "function": {"name": "finished", "handler": "__function__:end_call",
                         "parameters": {"type": "object", "properties": {"message_mode": {"type": "string", "default": "none"}}}}}}}}
-    policy = {"version": 1, "goal": "Banking contact", "allowed_actions": ["close_call"], "sources": [{"id": "brief-1", "file": "brief.md"}],
+    policy = {"version": 1, "goal": "Banking contact", "allowed_actions": ["close_call"], "sources": [{"id": "brief-1", "file": "brief.md", "sha256": digest("Use the permitted banking contact flow.")}],
               "rules": [{"id": "r1", "kind": "purpose", "value": "Banking contact", "source": {"id": "brief-1", "quote": "Use the permitted banking contact flow."}}],
               "unsupported_constraints": []}
     return {"policy": policy, "workflow": workflow}
@@ -78,6 +79,10 @@ class BuilderTests(unittest.TestCase):
                          client_factory=lambda **kw: self.fail("platform touched"))
         self.assertEqual(result["status"], "validated")
         self.assertFalse(result["hosted_behavior_verified"])
+        run = PROJECT / result["run_directory"]
+        compiled = json.loads((run / "policy.contract.json").read_text())
+        self.assertEqual(result["policy_contract_sha256"], compiled["sha256"])
+        self.assertEqual(compiled["permitted_operations"][0]["name"], "close_call")
 
     def test_deadline_prevents_generation_when_export_reserve_is_unavailable(self):
         generator = unittest.mock.Mock()
@@ -190,6 +195,71 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(result["status"], "generated_validated")
         self.assertFalse(result["hosted_behavior_verified"])
         self.assertFalse((PROJECT / result["run_directory"] / "submission.workflow.json").exists())
+        compiled = json.loads((PROJECT / result["run_directory"] / "policy.contract.json").read_text())
+        self.assertEqual(result["policy_contract_sha256"], compiled["sha256"])
+
+    def test_uncited_overlay_cannot_be_accepted_or_deployed(self):
+        overlay = self.directory / 'amendment.md'
+        overlay.write_text('The following amendment replaces the contact procedure.')
+        generator = unittest.mock.Mock()
+        generator.generate.return_value = fixture()
+        args = self.args('--brief', str(overlay), '--generate-only')
+        with self.assertRaises(ValueError):
+            execute(args, generator=generator, client_factory=lambda **kw: self.fail('Freya touched'))
+        self.assertEqual(generator.generate.call_count, 3)
+        self.assertFalse(any((self.directory / 'out').glob('*/policy.contract.json')))
+
+    def test_policy_bypass_cannot_be_accepted_or_deployed(self):
+        candidate = fixture()
+        candidate['policy']['identity_wrong_limit'] = 1000
+        generator = unittest.mock.Mock()
+        generator.generate.return_value = candidate
+        with self.assertRaises(ValueError):
+            execute(self.args('--generate-only'), generator=generator,
+                    client_factory=lambda **kw: self.fail('Freya touched'))
+        self.assertEqual(generator.generate.call_count, 3)
+
+    def test_extraction_only_emits_contract_without_creating_a_workflow(self):
+        generator = unittest.mock.Mock()
+        # Even a model-provided graph in the unused transport field cannot run.
+        generator.generate.return_value = fixture()
+        with patch.dict('os.environ', {'FREYA_API_KEY': ''}):
+            result = execute(self.args('--extract-policy-only'), generator=generator,
+                             client_factory=lambda **kw: self.fail('Freya initialized'))
+        self.assertEqual(result['status'], 'policy_extracted')
+        self.assertFalse(result['workflow_created'])
+        self.assertFalse(result['hosted_behavior_verified'])
+        run = PROJECT / result['run_directory']
+        self.assertTrue((run / 'policy.contract.json').exists())
+        self.assertFalse((run / 'workflow.json').exists())
+        self.assertFalse((run / 'submission.workflow.json').exists())
+        payload = json.loads(generator.generate.call_args.args[0].split('\n\nAUTHORIZED INPUTS:\n', 1)[1])
+        self.assertNotIn('runtime_references', payload)
+        self.assertNotIn('derived_tools', payload)
+        self.assertEqual(generator.generate.call_args.kwargs['purpose'], 'Extract banking policy and source/API bindings')
+
+    def test_extraction_repairs_policy_errors_with_bounded_attempts(self):
+        invalid = fixture()
+        invalid['policy']['sources'][0]['sha256'] = '0' * 64
+        generator = unittest.mock.Mock()
+        generator.generate.side_effect = [invalid, fixture()]
+        result = execute(self.args('--extract-policy-only'), generator=generator,
+                         client_factory=lambda **kw: self.fail('Freya initialized'))
+        self.assertEqual(result['repairs'], 1)
+        payload = json.loads(generator.generate.call_args_list[1].args[0].split('\n\nAUTHORIZED INPUTS:\n', 1)[1])
+        self.assertIn('validation_errors', payload['repair'])
+        self.assertNotIn('workflow', payload['repair'])
+
+    def test_extraction_rejects_deployment_and_workflow_flags_before_model(self):
+        for flags in (['--test-cases', str(self.directory / 'fixture.json')],
+                      ['--adopt-workflow', 'w'], ['--workflow-file', str(self.directory / 'fixture.json')],
+                      ['--generate-only']):
+            with self.subTest(flags=flags):
+                generator = unittest.mock.Mock()
+                with self.assertRaises(ValueError):
+                    execute(self.args('--extract-policy-only', *flags), generator=generator,
+                            client_factory=lambda **kw: self.fail('Freya initialized'))
+                generator.generate.assert_not_called()
 
     def test_missing_live_credentials_fail_before_model_generation(self):
         generator = unittest.mock.Mock()

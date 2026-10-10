@@ -10,9 +10,15 @@ key and a stable bank team key of at least 16 characters.
 2. Supplied brief files and the matching tool OpenAPI for each build.
 3. Public website for schedule/ranking; generic API docs are secondary.
 
-The kit says 200 workflows while the website says 10. Until clarified, remain
-below 10 through persistent in-place slots. One concurrent **simulation**, not
-one customer within a simulation; preserve the kit's documented concurrency.
+The current website and kit v3 both specify 200 workflows per workspace; retain
+persistent in-place slots. One concurrent **simulation**, not one customer within
+a simulation; preserve the kit's documented concurrency. No numeric final-window
+testing quota is published in the reviewed materials.
+
+The current written scope is debt collection with the same seven tool names and
+English conversations. Fields, enums, identity questions, calendars and outcome
+tables may change. Earlier kickoff remarks mentioned banking/insurance more
+broadly; use the current written scope while requesting reconciliation.
 
 ## Known interface and policy traps
 

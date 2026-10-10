@@ -10,6 +10,14 @@ from builder.runtime import CodexGenerator, Deadline, DeadlineExceeded, DISABLED
 PROJECT = Path(__file__).resolve().parents[1]
 
 
+def completed_stream(value):
+    return "\n".join(json.dumps(event) for event in (
+        {"type": "thread.started", "thread_id": "synthetic-thread"}, {"type": "turn.started"},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(value)}},
+        {"type": "turn.completed"},
+    ))
+
+
 class RuntimeTests(unittest.TestCase):
     def setUp(self):
         (PROJECT / ".test-tmp").mkdir(exist_ok=True)
@@ -103,7 +111,7 @@ class RuntimeTests(unittest.TestCase):
             elif "features" in argv:
                 text = "\n".join(name + " stable true" for name in (*DISABLED_FEATURES, "skip_host_skill_discovery"))
             else:
-                text = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(candidate)}})
+                text = completed_stream(candidate)
             return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="token private-test-token")
         trace = Trace(self.directory / "trace.jsonl", secrets=("private-test-token",))
         gen = CodexGenerator(self.directory, trace, Deadline(), run=run)
@@ -178,8 +186,7 @@ class RuntimeTests(unittest.TestCase):
         candidate = {"policy": {"goal": "banking"}, "workflow": {"initial_node": "start", "nodes": {}}}
         wire = {"policy_json": json.dumps(candidate["policy"]), "workflow_json": json.dumps(candidate["workflow"])}
         def run(argv, **kwargs):
-            event = {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(wire)}}
-            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(event), stderr="")
+            return subprocess.CompletedProcess(argv, 0, stdout=completed_stream(wire), stderr="")
         generator = CodexGenerator(self.directory, Trace(self.directory / "trace.jsonl"), Deadline(), run=run)
         generator._checked = True
         self.assertEqual(generator.generate("safe input"), candidate)
@@ -190,7 +197,7 @@ class RuntimeTests(unittest.TestCase):
             "Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /example/config.toml.",
             "Exceeded skills context budget. All skill descriptions were removed and 4 additional skills were not included in the model-visible skills list."]
         events = [{"type": "item.completed", "item": {"type": "error", "message": message}} for message in warnings]
-        events += [{"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(candidate)}}, {"type": "turn.completed"}]
+        events += [json.loads(line) for line in completed_stream(candidate).splitlines()]
         def run(argv, **kwargs):
             return subprocess.CompletedProcess(argv, 0, stdout="\n".join(json.dumps(event) for event in events), stderr="")
         trace = Trace(self.directory / "trace.jsonl")
@@ -216,6 +223,89 @@ class RuntimeTests(unittest.TestCase):
         generator._checked = True
         with self.assertRaisesRegex(GenerationError, "failed generation turn"):
             generator.generate("public request")
+
+    def parse_stream(self, stdout, *, plan=False, returncode=0):
+        def run(argv, **kwargs):
+            return subprocess.CompletedProcess(argv, returncode, stdout=stdout, stderr="")
+        generator = CodexGenerator(self.directory, Trace(self.directory / "trace.jsonl"), Deadline(), run=run)
+        generator._checked = True
+        if plan:
+            return generator.generate_plan("approved frozen contract", contract_sha256="a" * 64)
+        return generator.generate("approved source inputs")
+
+    def test_zero_exit_requires_one_completed_turn_in_each_generation_stage(self):
+        values = ({"policy_json": "{}", "workflow_json": "{}"},
+                  {"plan_json": "{}", "contract_sha256": "a" * 64})
+        for plan_mode, value in enumerate(values):
+            lines = completed_stream(value).splitlines()
+            for partial in (lines[:-1], lines[1:], lines[:1] + lines[2:]):
+                with self.subTest(plan=bool(plan_mode), event_count=len(partial)), self.assertRaises(GenerationError):
+                    self.parse_stream("\n".join(partial), plan=bool(plan_mode))
+
+    def test_repeated_turn_or_events_after_completion_reject_valid_candidate(self):
+        stream = completed_stream({"policy_json": "{}", "workflow_json": "{}"})
+        for extra in (json.dumps({"type": "turn.completed"}),
+                      json.dumps({"type": "turn.started"}),
+                      json.dumps({"type": "item.completed", "item": {"type": "reasoning", "text": "late"}}),
+                      stream):
+            with self.subTest(extra=extra[:50]), self.assertRaises(GenerationError):
+                self.parse_stream(stream + "\n" + extra)
+
+    def test_malformed_and_unknown_events_are_not_skipped_before_final_object(self):
+        lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()
+        bad_events = ("not JSON", "[]", "{}", '{"type":[]}', '{"type":"turn.interrupted"}',
+                      '{"type":"turn.started","type":"turn.completed"}',
+                      '{"type":"item.completed","item":null}',
+                      '{"type":"item.completed","item":{"type":[]}}',
+                      '{"type":"item.updated","item":{"type":"reasoning","text":NaN}}',
+                      '{"type":"item.completed","item":{"type":"agent_message","text":null}}',
+                      '{"type":"item.updated","item":{"type":"reasoning"},"model":{}}')
+        for bad in bad_events:
+            with self.subTest(event=bad[:80]), self.assertRaises(GenerationError):
+                self.parse_stream("\n".join(lines[:2] + [bad] + lines[2:]))
+
+    def test_thread_start_requires_a_nonempty_identifier_and_cannot_repeat(self):
+        lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()
+        for start in ({"type": "thread.started"}, {"type": "thread.started", "thread_id": ""},
+                      {"type": "thread.started", "thread_id": []}):
+            with self.subTest(start=start), self.assertRaises(GenerationError):
+                self.parse_stream("\n".join([json.dumps(start)] + lines[1:]))
+        with self.assertRaises(GenerationError):
+            self.parse_stream("\n".join(lines[:1] + lines))
+
+    def test_final_completed_message_cannot_fall_back_to_earlier_valid_candidate(self):
+        lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()
+        for final_text in ("unfinished response", "{}", '{"policy_json":"{}","policy_json":"{}","workflow_json":"{}"}'):
+            final = json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": final_text}})
+            with self.subTest(final_text=final_text), self.assertRaises(GenerationError):
+                self.parse_stream("\n".join(lines[:-1] + [final, lines[-1]]))
+
+    def test_started_or_updated_message_cannot_be_used_as_final_candidate(self):
+        lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()
+        final = json.loads(lines[2])
+        for event_type in ("item.started", "item.updated"):
+            final["type"] = event_type
+            partial = json.dumps(final)
+            for events in (lines[:2] + [partial, lines[-1]], lines[:-1] + [partial, lines[-1]]):
+                with self.subTest(event_type=event_type, event_count=len(events)), self.assertRaises(GenerationError):
+                    self.parse_stream("\n".join(events))
+
+    def test_valid_streaming_commentary_keeps_only_the_final_completed_wire_object(self):
+        wire = {"policy_json": '{"goal":"approved banking policy"}', "workflow_json": '{"initial_node":"end"}'}
+        events = [{"type": "thread.started", "thread_id": "synthetic-thread"}, {"type": "turn.started"},
+                  {"type": "item.started", "item": {"type": "agent_message"}},
+                  {"type": "item.updated", "item": {"type": "agent_message", "text": "Preparing the response"}},
+                  {"type": "item.completed", "item": {"type": "agent_message", "text": "Preparing the response"}},
+                  {"type": "item.started", "item": {"type": "agent_message", "text": ""}},
+                  {"type": "item.updated", "item": {"type": "agent_message", "text": '{"unfinished":'}},
+                  {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(wire)}},
+                  {"type": "turn.completed"}]
+        candidate = self.parse_stream("\n".join(json.dumps(event) for event in events))
+        self.assertEqual(candidate, {"policy": {"goal": "approved banking policy"}, "workflow": {"initial_node": "end"}})
+
+    def test_complete_event_stream_does_not_override_nonzero_process_exit(self):
+        with self.assertRaisesRegex(GenerationError, "generation failed"):
+            self.parse_stream(completed_stream({"policy_json": "{}", "workflow_json": "{}"}), returncode=1)
 
 
 if __name__ == "__main__":

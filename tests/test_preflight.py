@@ -148,7 +148,9 @@ class PreflightTests(unittest.TestCase):
                 return subprocess.CompletedProcess(argv, 0, response(), "")
             value = {"policy_json": "{}", "workflow_json": "{}"}
             event = {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(value)}}
-            return subprocess.CompletedProcess(argv, 0, json.dumps(event), "")
+            events = [{"type": "thread.started", "thread_id": "synthetic-thread"},
+                      {"type": "turn.started"}, event, {"type": "turn.completed"}]
+            return subprocess.CompletedProcess(argv, 0, "\n".join(json.dumps(item) for item in events), "")
         with tempfile.TemporaryDirectory() as tmp:
             generator = CodexGenerator(Path(tmp), Trace(Path(tmp) / "trace.jsonl"), Deadline(), run=run)
             generator._checked = True

@@ -174,7 +174,10 @@ class WorkflowWireTests(unittest.TestCase):
                     out += '\n' + json.dumps({'type': 'turn.completed'})
                 else:
                     calls.append((schema, kwargs))
-                    out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}})
+                    events = [{'type': 'thread.started', 'thread_id': 'synthetic-thread'}, {'type': 'turn.started'},
+                              {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}},
+                              {'type': 'turn.completed'}]
+                    out = '\n'.join(json.dumps(event) for event in events)
             return subprocess.CompletedProcess(argv, 0, out, '')
         return CodexGenerator(directory, Trace(directory / 'trace.jsonl'), Deadline(), run=run), calls
 

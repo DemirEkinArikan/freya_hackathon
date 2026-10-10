@@ -1,5 +1,10 @@
 # T03 platform adapter preparation
 
+Freya enforces workflow-name uniqueness during `dryRun=true` validation too.
+The adapter gives each dry run an ephemeral validation name and keeps the
+stable slot name only for real creation. Subsequent saves still update the
+same workflow ID. Validation does not bind or create a saved slot.
+
 Prepared against organizer kit v3 (10 October 2026). This is local mock and
 contract evidence. T02 runtime acceptance remains a dependency; this document
 does not claim live platform or end-to-end acceptance.

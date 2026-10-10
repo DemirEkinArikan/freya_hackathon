@@ -177,7 +177,11 @@ class PlatformTests(unittest.TestCase):
         client = MemoryPlatform()
         authored = definition()
         self.assertEqual(client.validate_workflow("brief", authored), {"valid": True})
-        self.assertEqual(client.calls, [("POST", "/api/v2/workflow", {"name": "brief", "workflow": authored}, {"dryRun": "true"})])
+        self.assertEqual(len(client.calls), 1)
+        method, path, body, params = client.calls[0]
+        self.assertEqual((method, path, params), ("POST", "/api/v2/workflow", {"dryRun": "true"}))
+        self.assertEqual(body["workflow"], authored)
+        self.assertRegex(body["name"], r"^builder-validation-[0-9a-f]{32}$")
         self.assertEqual(client.rows, {})
 
     def test_bare_route_payloads_can_save_publish_and_export(self):

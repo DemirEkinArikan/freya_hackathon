@@ -19,6 +19,10 @@ REASONS = {"refused": "REASON_REFUSAL_Q4", "failed": "REASON_VERIFY_Q3"}
 
 def mixed(*, opaque=False, account_paid=False, marker=False, precedence=True):
     policy, sources, api = packet(ACTIONS, local=True, narrow=True)
+    # This mixed-phase source explicitly supplies the fixed identity table,
+    # independent of whether the catalogue universally requires that rule.
+    full_policy, _, _ = packet(ACTIONS, local=True)
+    add_rule(policy, "identity_close", rule(full_policy, "identity_close")["value"])
     rule(policy, "note_reasons")["value"] = ["refused"] + (["paid"] if marker else [])
     rule(policy, "close_reasons")["value"] = {"paid": [], "no_promise": ["refused"], "not_verified": ["identity_failed"]}
     rule(policy, "identity_close")["value"]["unreached"] = {"outcome": "paid"}

@@ -1,10 +1,10 @@
 # T05 full controller acceptance
 
-T05 remains open until a fresh audited policy-and-workflow banking build
-completes in at most 1800 seconds through the documented CLI. An accepted
-`--generate-only` run can establish this controller's generation evidence
-without waiting for mock-bank TLS or hosted conversations. Local regressions
-and merged source alone do not establish that actual generation result.
+The original T05 issue is closed on actual audited `--generate-only` controller
+evidence. That narrower evidence establishes fresh policy/workflow generation;
+local regressions and merged source alone cannot establish it. The explicit
+wider acceptance lane below continues until a fresh complete guarded banking
+build publishes, reads back and exports in at most 1800 seconds.
 
 The live procedure below verifies the wider deployment/export milestone.
 Publication and conversation evidence remain required by their relevant tasks
@@ -261,3 +261,23 @@ the entire preserved published definition to its controller-authenticated
 authored workflow using the narrow serializer correction. That comparison
 passed, with the published version unchanged and no platform mutation, model
 call, simulation or export. It does not resume or accept the failed build.
+
+## Preserved unsupported-policy run
+
+Checked/merged PR96 source `7e4a532bdf423de1633707b23ec2497d2ba46ad7`
+ran fresh invocation `20261010T231241033366Z`. Its mandatory audit passed
+in 7.26 seconds; all 36 runtime file hashes matched the checked commit.
+All three policy attempts retained unsupported declarations. The controller
+failed safely after 739.657 seconds at `2026-10-10T23:25:00.751091Z`, before
+freezing, planning, adoption or platform mutation. No export or simulation
+occurred. All original rejected policies, source snapshot and trace remain
+intact in the stored-callback acceptance worktree.
+
+Source-only review distinguished communicated offers from transaction
+eligibility, identified a claimed overlap that the selected local-state
+transitions prevent, and found incomplete action prerequisite coverage. The
+generic correction supplies phase and deterministic state-effect guidance as
+controller capabilities rather than bank authority. It must preserve literal
+requirements, sealed safeguards and genuine unsupported failures; it cannot
+clear declarations, invent replacement terms or default policy permissions.
+A new whole build requires checked, merged source and fresh audited generation.

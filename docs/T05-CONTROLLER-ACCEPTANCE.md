@@ -115,3 +115,36 @@ The full source checks and focused PR head are recorded in the T05 issue
 checkpoint accompanying this document. No fresh model generation, deployment,
 simulation or banking acceptance is claimed by this branch. The integrated hooks are under full-suite and independent review. Actual
 accepted fresh banking publication/export remains outstanding.
+
+## Preserved source-rejected follow-up
+
+The fresh guarded-controller run from checked/merged source
+`ff7796822e9ea942b5e0e96d3d1e8e5adb68be4a` is
+`20261010T212121335267Z` in the full-controller acceptance worktree. Its
+mandatory audit passed in 6.86 seconds with zero reported tools. Missing note
+vocabulary was correctly caught and repaired before freeze. Original policy,
+contract, descriptor, rejected policy and every plan attempt remain unchanged.
+
+Independent approved-brief/API-only review found executable retry coverage
+contradicting a declared counted API failure, and partial priority selection
+preventing unique protected nonpromise outcomes. Both were reproduced in memory
+against the original frozen context using invented account state, without
+evaluator fixtures, bank calls or model feedback. This run is source-rejected
+and cannot complete T05. The controller ended unsuccessfully at
+`2026-10-10T21:42:36.993946Z`, after 1275.651 seconds. Its bounded plan repair
+still had unresolved text bindings, malformed template syntax and an orphan
+post-close conversation. No workflow was deployed, published or exported, and
+no simulation was started by this run.
+
+The separate generic semantic patch requires operation/status-scoped literal
+API witnesses on every operative nonpersistence matcher, reconciles structured
+counted-failure annotations before freeze, and allows one unique protected
+closing fact without inventing a priority. Ambiguous unranked facts remain
+blocked; model proposals cannot supply protected evidence. Witness matching
+proves provenance and scope, not semantic entailment. Generic plan guidance
+also states exact transport keys, product-finalization preconditions, declared
+template bindings and final guarded-call termination.
+
+A subsequent fresh complete build from checked merged source, independent
+approved-source review and actual publication/readback/export remains required.
+No generated policy or workflow is patched to obtain acceptance.

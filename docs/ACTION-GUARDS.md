@@ -173,6 +173,19 @@ can explicitly bind renamed API fields. Canonical names are accepted only when
 they exist exactly in the supplied schema; ambiguous/missing fields fail.
 Opaque wire vocabularies use T06's API-validated detached category bindings.
 
+API string fields may be unconstrained. Each API-backed category explicitly
+records `api_enum_constrained`: `true` requires a nonempty unique declared
+string enum; `false` requires `api_enum: []` and an actual schema with no enum
+keyword. An explicitly empty, null or malformed enum is invalid, not equivalent
+to absence. The policy vocabulary remains explicit and injective in either
+case. The compiler never fabricates API enum values from policy codes, and the
+guard checks the descriptor flag/list against the exact frozen field schema.
+The generated body retains the source schema, including an absent enum.
+
+Freshly compile bindings from approved source inputs after this descriptor
+change. Older cached API-backed descriptors without the boolean constraint flag
+are rejected; previously recorded run evidence must not be rewritten.
+
 When `record_notes` is explicitly boolean `false`, the notes category is instead
 `{binding_kind: "local_disposition", semantic_to_wire, wire_to_semantic}`. Its
 injective meanings come from the exact frozen policy; it has no bank operation,

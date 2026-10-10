@@ -361,6 +361,8 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                         or not set(values) <= set(forward.values())):
                     raise GuardCompileError(["local disposition meanings must match the exact frozen injective policy mapping"])
                 continue
+            if not isinstance(category, dict) or set(category) != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}:
+                raise GuardCompileError(["API action bindings require exact enum constraint descriptor shape"])
             actual_op = category.get("operation", {}).get("name")
             op = role_for_actual.get(actual_op)
             field = category.get("field")
@@ -372,10 +374,16 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
             expected_operation = permitted[actual_op]
             if category.get("operation") != {key: expected_operation[key] for key in ("name", "method", "url")}:
                 raise GuardCompileError(["action binding operation differs from exact frozen API identity"])
-            enum = catalog[op]["request_schema"]["properties"][field].get("enum", [])
+            leaf = catalog[op]["request_schema"]["properties"][field]
+            constrained = "enum" in leaf
+            enum = leaf.get("enum", [])
+            if (type(category.get("api_enum_constrained")) is not bool
+                    or category["api_enum_constrained"] != constrained or category.get("api_enum") != enum
+                    or constrained and (not isinstance(enum, list) or not enum or any(not isinstance(v, str) or not v for v in enum) or len(set(enum)) != len(enum))):
+                raise GuardCompileError(["action binding enum constraint differs from exact frozen string schema"])
             forward = category.get("semantic_to_wire", {})
             reverse = category.get("wire_to_semantic", {})
-            if {v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or any(v not in enum for v in forward.values()):
+            if {v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or constrained and any(v not in enum for v in forward.values()):
                 raise GuardCompileError(["action binding vocabulary differs from supplied API enum"])
     return catalog
 

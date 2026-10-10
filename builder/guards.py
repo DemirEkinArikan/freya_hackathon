@@ -60,7 +60,48 @@ _REQUIRED = {
     "finalize_notes": {"note_reasons", "record_notes", "product_order", "resolve_all_products"},
     "stage_transfer": {"transfer_reasons", "transfer_prerequisites"}, "commit_transfer": {"transfer_reasons", "transfer_prerequisites"},
     "schedule_callback": {"callback_window", "holidays", "business_weekdays"},
-    "close_call": {"close_reasons", "record_notes", "identity_close"},
+    "close_call": {"close_reasons", "record_notes"},
+}
+
+# Interface facts about the sealed kernel, never policy permissions or defaults.
+# Accepted preparation is distinct from reconciled positive API evidence.
+_CONTROLLER_STATE_EFFECTS = {
+    "verify_identity": {
+        "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
+        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, identity_wrong_limit - returned wrong_answers_left); ok=true alone does not verify a factor.",
+                               "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
+    "get_account": {
+        "accepted_staging": ["Sending the account request does not establish loaded products."],
+        "positive_recording": ["Validated positive account evidence loads the returned products once."]},
+    "stage_promise": {
+        "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
+                             "Clears the pending confirmation snapshot; staging does not record a bank promise."],
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+    "commit_promises": {
+        "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
+        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
+    "stage_note": {
+        "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
+                             "Clears the pending confirmation snapshot; staging does not record a bank note."],
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+    "finalize_notes": {
+        "accepted_staging": ["Requires every loaded product resolved by a recorded promise or staged disposition, with no pending promise.",
+                             "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
+    "stage_transfer": {
+        "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
+                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
+        "rejections": ["Any recorded note or existing handoff prevents staging; supplied queue prerequisites remain mandatory."]},
+    "commit_transfer": {
+        "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
+        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."]},
+    "schedule_callback": {
+        "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
+        "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
+    "close_call": {
+        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close."],
+        "positive_recording": ["Validated positive close evidence marks the close recorded."],
+        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
 }
 
 
@@ -81,7 +122,8 @@ def execution_action_catalogue() -> dict[str, dict[str, Any]]:
     return {action: {"operation_role": operation_roles[action],
                      "input_fields": sorted(_INPUTS[action]),
                      "optional_input_fields": sorted(_OPTIONAL_INPUTS.get(action, set())),
-                     "required_kinds": sorted(_REQUIRED[action])}
+                     "required_kinds": sorted(_REQUIRED[action]),
+                     "controller_state_effects": copy.deepcopy(_CONTROLLER_STATE_EFFECTS[action])}
             for action in sorted(_INPUTS)}
 
 
@@ -236,7 +278,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if not isinstance(active, dict) or canonical_json(value) != canonical_json(active.get("value")):
             errors.append("execution profile does not match active frozen rule: " + kind)
         errors.extend(_profile_errors(kind, value))
-        if kind in {"record_notes", "resolve_all_products"} and type(value) is not bool:
+        if kind == "record_notes" and type(value) is not bool:
             errors.append(kind + " must be boolean")
         elif kind == "confirmation_scope" and value not in {"each", "batch"}:
             errors.append("confirmation_scope must be each or batch")
@@ -303,11 +345,34 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     # fact or a sourced identity disposition, and rejects ambiguous facts.
     # This detached runtime representation is not a frozen policy rule.
     result.setdefault("close_precedence", [])
+    # No sourced identity disposition grants no bank closing choice. The
+    # existing close handler can still use protected account/transfer facts;
+    # otherwise it refuses the request and ends silently without a bank call.
+    result.setdefault("identity_close", {})
     if result.get("policy_applicability") == {"products": "single"}:
         # Conservative kernel invariant: the sole product must be resolved.
         # This is not an invented cross-product policy rule or sort order;
         # explicitly supplied resolution rules still take precedence.
         result.setdefault("resolve_all_products", True)
+    resolution = result.get("resolve_all_products")
+    if isinstance(resolution, dict):
+        selector = resolution["selector"]
+        if selector not in declared_call_variables(contract):
+            raise GuardCompileError(["product-resolution selector requires a source-declared read-only call input"])
+        provenance = contract["active_rules"]["resolve_all_products"].get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or
+                not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", source["quote"]) for source in provenance):
+            raise GuardCompileError(["product-resolution selector must occur literally in its own sourced rule"])
+        # Categories with other names carry no selector meaning. In particular
+        # a generic goals category cannot silently reinterpret a call input.
+        codes = result.get("wire_codes", {}).get(selector, {})
+        selected = resolution["by_value"]
+        if any(key in codes.values() and codes.get(key, key) != key for key in selected):
+            raise GuardCompileError(["product-resolution key is ambiguous between semantic and wire selector codes"])
+        normalized = {codes.get(key, key): required for key, required in selected.items()}
+        if len(normalized) != len(selected):
+            raise GuardCompileError(["product-resolution selector keys collide through frozen code bindings"])
+        resolution["by_value"] = normalized
     # Decode controller-verified wire categories only for internal semantics.
     categories = (bindings or {}).get("categories", {})
     def decode(group: str, value: str) -> str:
@@ -710,7 +775,7 @@ def guard_body(semantic, operation, catalog):
         raise ValueError('missing required request value')
     return body
 
-def guard_new(customer_id, now):
+def guard_new(customer_id, now, call_inputs=None):
     if not isinstance(customer_id, str) or not customer_id:
         raise ValueError('missing engine customer id')
     text = str(now)
@@ -721,7 +786,32 @@ def guard_new(customer_id, now):
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
                 transfer=dict(), callbacks=list(), notes_finalized=False, closed=False, close_attempted=False,
-                quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict())
+                quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict(),
+                call_inputs=json.loads(guard_json(call_inputs if call_inputs is not None else dict())))
+
+def guard_call_inputs(state, profile):
+    captured = state['call_inputs']
+    names = profile.get('call_variables', list())
+    if type(captured) is not dict or set(captured) != set(names):
+        state['quarantined'] = True
+        raise ValueError('protected call-input snapshot is malformed')
+    if any(value is None or type(value) is str and value == '' for value in captured.values()):
+        state['quarantined'] = True
+        raise ValueError('protected call-input snapshot has an absent value')
+    guard_json(captured)
+    rule = profile.get('resolve_all_products')
+    if isinstance(rule, dict):
+        value = captured.get(rule['selector'])
+        if type(value) is not str or value not in rule['by_value']:
+            state['quarantined'] = True
+            raise ValueError('protected product-resolution selector is missing or unknown')
+
+def guard_resolve_all_products(state, profile):
+    rule = profile['resolve_all_products']
+    if type(rule) is bool:
+        return rule
+    guard_call_inputs(state, profile)
+    return rule['by_value'][state['call_inputs'][rule['selector']]]
 
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
@@ -1096,7 +1186,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         elif action == 'close_call':
             if state['pending_promises'] or state['pending_notes'] and not state['notes_finalized'] or state['transfer'].get('status') in ('pending', 'failed'):
                 raise ValueError('closing has unresolved commitments, dispositions or transfer')
-            if state['account_loaded'] and profile['resolve_all_products'] and state['transfer'].get('status') != 'recorded':
+            if state['account_loaded'] and guard_resolve_all_products(state, profile) and state['transfer'].get('status') != 'recorded':
                 dispositions = state['recorded_notes'] if profile['record_notes'] else state['pending_notes'] if state['notes_finalized'] else dict()
                 if any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in dispositions for p in state['products']):
                     raise ValueError('policy requires every product resolved before close')
@@ -1358,9 +1448,9 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
         tail += "    vars['bg_control_entries'] = '0'\n"
-        tail += "    previous_state = None\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
+        tail += "    previous_state = None\n    call_inputs = dict()\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n        call_inputs[name] = vars[name]\n    state = guard_new(vars.get('customer_id'), vars.get('now'), call_inputs)\n    vars['bg_state'] = guard_json(state)\n    guard_call_inputs(state, spec['profile'])\n    route, body, readback = 'done', dict(), ''\n"
     else:
-        tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
+        tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    guard_call_inputs(state, spec['profile'])\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
         tail += "    entry_count = vars.get('bg_control_entries')\n"
         if phase == "result":
             # A bookkeeping fault cannot erase an already-dispatched receipt.

@@ -66,8 +66,15 @@ defines that concept. They are interface names, not predetermined banking rules:
 - account_disclosure_fields: explicit list of returned product fields permitted
   for account narration. Preserve conditional disclosure constraints separately;
   a field list cannot encode permission limited to a particular product/state.
-- record_notes/resolve_all_products: explicit booleans for note writes and whether
-  every returned product must be resolved before final close.
+- record_notes: explicit boolean for note writes.
+- resolve_all_products: explicit boolean for whether every returned product must
+  be resolved before final close, or {selector:"source_declared_input_name",
+  by_value:{"supplied_input_code":boolean}} when the source explicitly varies that
+  prerequisite by initial call scope. The selector must occur literally in its
+  rule quotation and in source-backed call_variables; use exact supplied codes,
+  never defaults or an inferred goal category. Runtime seals the initial value;
+  missing, non-string or unknown selector values quarantine. This grants no
+  outcome, note permission or action and does not change note finalization.
 - confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array
   of commit_promises/commit_transfer/schedule_callback roles, possibly empty.
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.

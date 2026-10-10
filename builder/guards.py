@@ -14,6 +14,7 @@ from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
+from .call_variables import declared_call_variables
 
 PREFIX = "bg_"
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -101,7 +102,8 @@ def _hash_checked(value: Any, label: str) -> None:
         raise GuardCompileError([label + " has a missing or stale deterministic hash"])
 
 
-def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -> list[str]:
+def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
+                 call_variables: tuple[str, ...] = ()) -> list[str]:
     errors = []
     if not isinstance(plan, dict) or set(plan) - {"initial_node", "nodes", "system_prompt"}:
         return ["plan supports only initial_node, nodes and system_prompt"]
@@ -111,6 +113,7 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     if not isinstance(plan.get("initial_node"), str) or plan.get("initial_node") not in nodes:
         errors.append("plan.initial_node is unknown")
     protected_operations = set(_FIELDS) | set(operation_names)
+    readonly_inputs = set(call_variables)
     def protected_read(name: Any) -> bool:
         return isinstance(name, str) and (name == "customer_id"
             or name.startswith(PREFIX) and name != "bg_facts"
@@ -118,6 +121,9 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     def templates(value: Any, path: str, spoken: bool = False) -> None:
         if isinstance(value, str):
             for match in re.finditer(r"\{\{([^{}]+)\}\}", value):
+                binding = match.group(1)
+                if binding.split(".")[0] in readonly_inputs and binding not in readonly_inputs:
+                    errors.append(path + ": call-input template must reference one declared variable exactly")
                 names = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", match.group(1))
                 if any(protected_read(name) for name in names) or any(
                        re.search(r"(?<![A-Za-z0-9_])" + re.escape(op) + r"_[A-Za-z0-9_]", match.group(1))
@@ -136,7 +142,7 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     templates(plan, "plan")
     def variable(name: Any) -> bool:
         return (isinstance(name, str) and bool(_NAME.fullmatch(name)) and not name.startswith(PREFIX)
-                and name not in {"customer_id", "now"}
+                and name not in {"customer_id", "now"} | readonly_inputs
                 and not any(name.startswith(operation + "_") for operation in protected_operations))
     for name, node in nodes.items():
         if not isinstance(name, str) or not _NAME.fullmatch(name) or name.startswith(PREFIX):
@@ -1287,7 +1293,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     Inputs are controller-owned compilation context. Descriptive untyped policy
     is deliberately unsupported rather than converted into invented rules.
     """
-    errors = _plan_errors(plan, [operation["name"] for operation in contract.get("permitted_operations", [])])
+    errors = _plan_errors(plan, [operation["name"] for operation in contract.get("permitted_operations", [])],
+                          declared_call_variables(contract))
     if errors:
         raise GuardCompileError(errors)
     profile = _profile(contract, execution_policy, plan, bindings)

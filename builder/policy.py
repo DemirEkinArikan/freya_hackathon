@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
 
 from .safety import canonical_json, digest
+from .call_variables import CallVariablesError, check_call_variables
 
 
 class RuleSource(TypedDict):
@@ -49,11 +50,12 @@ _PROFILE_KINDS.update({"wire_codes", "policy_applicability"})
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields", "identity_close_choices"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
+    "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
@@ -222,7 +224,13 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item)
-    if kind == "account_disclosure_fields":
+    if kind == "call_variables":
+        try:
+            check_call_variables(value)
+            valid = True
+        except CallVariablesError:
+            valid = False
+    elif kind == "account_disclosure_fields":
         valid = (isinstance(value, list) and all(text(item) for item in value)
                  and len(set(value)) == len(value) and not set(value) & {"customer_id", "product_id"})
     elif kind in {"record_notes", "resolve_all_products"}:

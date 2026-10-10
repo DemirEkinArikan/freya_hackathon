@@ -12,7 +12,7 @@ claiming that the builder is ready for competition.
 
 ## Setup
 
-Use Python **3.11+** on macOS/Linux (or WSL), `gh`, and your own authenticated
+Use Python **3.11** on macOS/Linux (or WSL), `gh`, and your own authenticated
 Codex CLI. Python dependencies are standard-library only. Codex must support the
 isolation controls checked by the runtime; unsupported versions fail closed.
 The current default builder model is the locally configured `gpt-6.1-sol`, with
@@ -23,7 +23,14 @@ python3.11 --version
 codex login status
 python3.11 tools/verify_kit.py
 python3.11 -m unittest discover -s tests -v
+python3.11 -m builder.preflight --operator demir
 ```
+
+Follow [runtime setup and isolation verification](docs/RUNTIME.md) on each
+collaborator's computer. `--probe-isolation` explicitly calls your own signed-in
+Codex account with synthetic fixtures and writes only bounded, sanitized
+metadata. Every real generation performs this audit before sending its brief;
+exposed tools, canaries or unresolved skill loading block generation.
 
 The builder reads this repository's `.env` as plain data and preserves existing
 process variables. It rejects shell expansion and symlinks; it never reads a

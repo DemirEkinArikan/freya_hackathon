@@ -285,6 +285,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     or not isinstance(value.get("value_labels", {}), dict)
                     or any(not isinstance(labels, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in labels.items()) for labels in value.get("value_labels", {}).values())):
                 errors.append("promise_readback needs human product fields and optional field value labels, excluding internal IDs")
+    if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
+        errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1497,7 +1499,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                  + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
-            question = ("{{bg_readback}}. " + profile["confirmation_question"] if "confirmation_question" in profile
+            question = ("{{bg_readback}}. " + profile["confirmation_question"] if action in profile.get("confirmation_question_actions", [])
                         else "Please confirm these exact terms: {{bg_readback}}. Do you agree?")
             nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": question},
                 "task_message": "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement.",

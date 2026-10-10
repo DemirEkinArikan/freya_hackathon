@@ -16,13 +16,16 @@ from tools.replay_guarded import replay
 ABSENT = object()
 
 
-def quoted_context(question=ABSENT, quote=None):
+def quoted_context(question=ABSENT, quote=None, actions=("commit_promises",), confirmation_actions=None):
     workflow, context, api, aliases = authored()
     if question is ABSENT:
         return workflow, context, api, aliases
     profile = deepcopy(context["execution_policy"]["profile"])
     profile["confirmation_question"] = question
-    text = 'After the protected read-back, ask exactly: "' + (quote if quote is not None else str(question)) + '".'
+    profile["confirmation_question_actions"] = list(actions)
+    if confirmation_actions is not None:
+        profile["confirmation_actions"] = list(confirmation_actions)
+    text = 'For ' + ', '.join(actions) + ', after the protected read-back ask exactly: "' + (quote if quote is not None else str(question)) + '".'
     witnesses = [dict(id="base", file="independent-policy.txt", text="Invented independent policy witness."),
                  dict(id="wording", file="independent-wording.txt", text=text)]
     for source in witnesses:
@@ -31,8 +34,8 @@ def quoted_context(question=ABSENT, quote=None):
               "allowed_actions": [operation["name"] for operation in context["contract"]["permitted_operations"]],
               "sources": [{key: value for key, value in source.items() if key != "text"} for source in witnesses],
               "rules": [dict(id=kind, kind=kind, value=value, source=dict(
-                  id="wording" if kind == "confirmation_question" else "base",
-                  quote=text if kind == "confirmation_question" else witnesses[0]["text"]))
+                  id="wording" if kind.startswith("confirmation_question") else "base",
+                  quote=text if kind.startswith("confirmation_question") else witnesses[0]["text"]))
                         for kind, value in profile.items()], "unsupported_constraints": []}
     context["contract"] = compile_policy_contract(policy, witnesses, api)
     context["execution_policy"] = compile_execution_policy(policy)
@@ -132,6 +135,31 @@ class ConfirmationWordingTests(unittest.TestCase):
         workflow, context, api, aliases = quoted_context("Is this exact arrangement confirmed?")
         workflow["nodes"]["bg_commit_confirm"]["on_enter"]["text"] += " {{customer_id}}"
         self.assertTrue(validate_workflow(workflow, api, guard_context=context))
+
+    def test_source_scope_does_not_change_other_confirmation_questions_or_permissions(self):
+        question = "Is this exact arrangement confirmed?"
+        workflow, context, api, aliases = quoted_context(question, confirmation_actions=("commit_promises", "commit_transfer", "schedule_callback"))
+        self.assertEqual(workflow["nodes"]["bg_commit_confirm"]["on_enter"]["text"], "{{bg_readback}}. " + question)
+        legacy = "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
+        self.assertEqual(workflow["nodes"]["bg_handoff_confirm"]["on_enter"]["text"], legacy)
+        self.assertEqual(workflow["nodes"]["bg_callback_confirm"]["on_enter"]["text"], legacy)
+        workflow, context, api, aliases = quoted_context(question, actions=("commit_promises", "schedule_callback"),
+            confirmation_actions=("commit_promises", "commit_transfer", "schedule_callback"))
+        self.assertEqual(workflow["nodes"]["bg_callback_confirm"]["on_enter"]["text"], "{{bg_readback}}. " + question)
+        self.assertEqual(workflow["nodes"]["bg_handoff_confirm"]["on_enter"]["text"], legacy)
+        self.assertEqual(validate_workflow(workflow, api, guard_context=context), [])
+        workflow, context, api, aliases = quoted_context(question, actions=("schedule_callback",))
+        self.assertNotIn("bg_callback_confirm", workflow["nodes"])
+        self.assertEqual(workflow["nodes"]["bg_commit_confirm"]["on_enter"]["text"], legacy)
+
+    def test_missing_ambiguous_or_unsupported_wording_scope_cannot_freeze(self):
+        for values in ({"confirmation_question": "Source question?"}, {"confirmation_question_actions": ["commit_promises"]},
+                       {"confirmation_question": "Source question?", "confirmation_question_actions": []},
+                       {"confirmation_question": "Source question?", "confirmation_question_actions": ["commit_promises", "commit_promises"]},
+                       {"confirmation_question": "Source question?", "confirmation_question_actions": ["create_promise"]},
+                       {"confirmation_question": "Source question?", "confirmation_question_actions": "commit_promises"}):
+            with self.subTest(values=values), self.assertRaises(PolicyError):
+                compile_execution_policy(invented_policy(values))
 
 
 if __name__ == "__main__":

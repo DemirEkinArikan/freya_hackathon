@@ -7,6 +7,15 @@ and language; it contains no variable templates, control characters or private
 engine/credential prefixes. If the source prescribes no
 wording, omit the rule and the existing generic confirmation text is unchanged.
 
+Its paired source-backed `confirmation_question_actions` array states exactly
+where it applies: `commit_promises`, `commit_transfer` and/or `schedule_callback`.
+The scope is nonempty and unique, with its own literal source provenance. There
+is no inferred/global scope. A common question can explicitly cover several
+actions; other confirmation nodes retain their legacy wording. This scalar
+interface cannot encode different prescribed questions for different actions;
+such a requirement must remain reported as unsupported. Selecting a wording
+scope grants no action or confirmation requirement.
+
 The compiler's confirmation node reads its protected snapshot and then the
 supplied question. Only byte-exact controller recompilation grants that node
 permission to read `bg_readback`; an authored copy or node prefix grants none.

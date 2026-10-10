@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "hosted",
-  "count": 27,
+  "count": 26,
   "split_counts": {
     "train": 36,
     "validation": 24,
@@ -42,7 +42,7 @@
             "minimum_payment": 126.0
           }
         ],
-        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -98,7 +98,7 @@
             "instalment_amount": 103.5
           }
         ],
-        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "not_reached",
           "reason": "callback",
@@ -153,7 +153,7 @@
             "minimum_payment": 28.5
           }
         ],
-        "script": "Confirms the name. Gives date of birth 12 July 1991, then 21 August 1992, then 21 July 1990. Gets annoyed and asks how much he owes.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Confirms the name. Gives date of birth 12 July 1991, then 21 August 1992, then 21 July 1990. Gets annoyed and asks how much he owes.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "not_verified",
           "reason": "failed",
@@ -202,7 +202,7 @@
             "instalment_amount": 400.0
           }
         ],
-        "script": "Verified. Says her salary arrives on 6 November and she can pay then. Asks whether she is talking to a robot. Accepts the latest possible date when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says her salary arrives on 6 November and she can pay then. Asks whether she is talking to a robot. Accepts the latest possible date when it is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -257,7 +257,7 @@
             "instalment_amount": 260.0
           }
         ],
-        "script": "Verified. Says he lost his job last month and cannot pay anything. Asks for a discount. Does not want to be transferred.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says he lost his job last month and cannot pay anything. Asks for a discount. Does not want to be transferred.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "no_promise",
           "reason": "hardship",
@@ -279,7 +279,7 @@
       "bank_case_id": "PUB-06",
       "split": "train",
       "brief": "A",
-      "style": "plain",
+      "style": "pieces",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
@@ -308,7 +308,7 @@
             "minimum_payment": 637.5
           }
         ],
-        "script": "Verified. Says the full amount is too much right now. If asked how much she can pay, says 'you tell me'. Accepts the minimum payment for this Friday.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says the full amount is too much right now. If asked how much she can pay, says 'you tell me'. Accepts the minimum payment for this Friday.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -331,7 +331,7 @@
       }
     },
     {
-      "fixture_id": "HOST-008",
+      "fixture_id": "HOST-009",
       "bank_case_id": "PUB-07",
       "split": "train",
       "brief": "A",
@@ -340,7 +340,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-008",
+        "id": "HOST-009",
         "brief": "A",
         "family": "Dates",
         "level": "hard",
@@ -363,7 +363,7 @@
             "instalment_amount": 180.0
           }
         ],
-        "script": "Verified. Cannot pay today. Says 'the week after next'. When asked for the exact day, says Monday the 26th. Accepts the next business day when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Says 'the week after next'. When asked for the exact day, says Monday the 26th. Accepts the next business day when it is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -419,7 +419,7 @@
             "minimum_payment": 54.0
           }
         ],
-        "script": "Verified. Says she paid it in the app this morning.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says she paid it in the app this morning.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "paid",
           "reason": null,
@@ -467,7 +467,7 @@
             "instalment_amount": 700.0
           }
         ],
-        "script": "Verified. Says he cannot pay this amount and wants lower instalments.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says he cannot pay this amount and wants lower instalments.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "transferred",
           "reason": "restructuring",
@@ -492,7 +492,7 @@
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "corrects",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
@@ -521,7 +521,7 @@
             "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -549,7 +549,7 @@
       }
     },
     {
-      "fixture_id": "HOST-013",
+      "fixture_id": "HOST-014",
       "bank_case_id": "PUB-01",
       "split": "train",
       "brief": "A",
@@ -558,7 +558,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-013",
+        "id": "HOST-014",
         "brief": "A",
         "family": "Happy path",
         "level": "easy",
@@ -582,7 +582,7 @@
             "minimum_payment": 126.0
           }
         ],
-        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -638,7 +638,7 @@
             "instalment_amount": 103.5
           }
         ],
-        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "not_reached",
           "reason": "callback",
@@ -664,7 +664,7 @@
       "bank_case_id": "PUB-03",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "talkative",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
@@ -693,7 +693,7 @@
             "minimum_payment": 28.5
           }
         ],
-        "script": "Confirms the name. Gives date of birth 12 July 1991, then 21 August 1992, then 21 July 1990. Gets annoyed and asks how much he owes.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Confirms the name. Gives date of birth 12 July 1991, then 21 August 1992, then 21 July 1990. Gets annoyed and asks how much he owes.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "not_verified",
           "reason": "failed",
@@ -710,16 +710,16 @@
       }
     },
     {
-      "fixture_id": "HOST-017",
+      "fixture_id": "HOST-018",
       "bank_case_id": "PUB-04",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "talkative",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-017",
+        "id": "HOST-018",
         "brief": "A",
         "family": "Dates",
         "level": "medium",
@@ -742,7 +742,7 @@
             "instalment_amount": 400.0
           }
         ],
-        "script": "Verified. Says her salary arrives on 6 November and she can pay then. Asks whether she is talking to a robot. Accepts the latest possible date when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says her salary arrives on 6 November and she can pay then. Asks whether she is talking to a robot. Accepts the latest possible date when it is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -765,7 +765,7 @@
       }
     },
     {
-      "fixture_id": "HOST-018",
+      "fixture_id": "HOST-019",
       "bank_case_id": "PUB-05",
       "split": "train",
       "brief": "A",
@@ -774,7 +774,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-018",
+        "id": "HOST-019",
         "brief": "A",
         "family": "Hardship",
         "level": "medium",
@@ -797,7 +797,7 @@
             "instalment_amount": 260.0
           }
         ],
-        "script": "Verified. Says he lost his job last month and cannot pay anything. Asks for a discount. Does not want to be transferred.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says he lost his job last month and cannot pay anything. Asks for a discount. Does not want to be transferred.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "no_promise",
           "reason": "hardship",
@@ -819,7 +819,7 @@
       "bank_case_id": "PUB-06",
       "split": "train",
       "brief": "A",
-      "style": "talkative",
+      "style": "asks_back",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
@@ -848,7 +848,7 @@
             "minimum_payment": 637.5
           }
         ],
-        "script": "Verified. Says the full amount is too much right now. If asked how much she can pay, says 'you tell me'. Accepts the minimum payment for this Friday.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says the full amount is too much right now. If asked how much she can pay, says 'you tell me'. Accepts the minimum payment for this Friday.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -871,16 +871,16 @@
       }
     },
     {
-      "fixture_id": "HOST-021",
+      "fixture_id": "HOST-022",
       "bank_case_id": "PUB-07",
       "split": "train",
       "brief": "A",
-      "style": "talkative",
+      "style": "asks_back",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-021",
+        "id": "HOST-022",
         "brief": "A",
         "family": "Dates",
         "level": "hard",
@@ -903,7 +903,7 @@
             "instalment_amount": 180.0
           }
         ],
-        "script": "Verified. Cannot pay today. Says 'the week after next'. When asked for the exact day, says Monday the 26th. Accepts the next business day when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Says 'the week after next'. When asked for the exact day, says Monday the 26th. Accepts the next business day when it is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -926,16 +926,70 @@
       }
     },
     {
-      "fixture_id": "HOST-022",
-      "bank_case_id": "PUB-08",
+      "fixture_id": "HOST-023",
+      "bank_case_id": "PUB-02",
       "split": "train",
       "brief": "A",
-      "style": "talkative",
+      "style": "asks_back",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-022",
+        "id": "HOST-023",
+        "brief": "A",
+        "family": "Third party",
+        "level": "medium",
+        "title": "A relative answers",
+        "variables": {
+          "first_name": "Maria",
+          "last_name": "Costa",
+          "title": "Ms",
+          "now": "2026-10-14T11:00"
+        },
+        "identity": {
+          "date_of_birth": "1979-11-02",
+          "phone_last4": "0358"
+        },
+        "products": [
+          {
+            "type": "personal_loan",
+            "past_due": 310.5,
+            "days_late": 11,
+            "instalment_amount": 103.5
+          }
+        ],
+        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
+        "expected": {
+          "outcome": "not_reached",
+          "reason": "callback",
+          "promises": [],
+          "notes": [],
+          "callbacks": [
+            {
+              "date": "2026-10-15",
+              "time": "11:00"
+            }
+          ],
+          "transfers": []
+        },
+        "checks": [
+          "the agent does not say why it is calling and names no product, amount or debt",
+          "verify_identity and get_account never called",
+          "callback scheduled for the next business day at 11:00"
+        ]
+      }
+    },
+    {
+      "fixture_id": "HOST-024",
+      "bank_case_id": "PUB-08",
+      "split": "train",
+      "brief": "A",
+      "style": "in_words",
+      "status": "materialized",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
+      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
+      "case": {
+        "id": "HOST-024",
         "brief": "A",
         "family": "Already paid",
         "level": "medium",
@@ -959,7 +1013,7 @@
             "minimum_payment": 54.0
           }
         ],
-        "script": "Verified. Says she paid it in the app this morning.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says she paid it in the app this morning.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "paid",
           "reason": null,
@@ -975,16 +1029,16 @@
       }
     },
     {
-      "fixture_id": "HOST-023",
+      "fixture_id": "HOST-026",
       "bank_case_id": "PUB-09",
       "split": "train",
       "brief": "A",
-      "style": "asks_back",
+      "style": "in_words",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-023",
+        "id": "HOST-026",
         "brief": "A",
         "family": "Restructuring",
         "level": "medium",
@@ -1007,7 +1061,7 @@
             "instalment_amount": 700.0
           }
         ],
-        "script": "Verified. Says he cannot pay this amount and wants lower instalments.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Says he cannot pay this amount and wants lower instalments.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "transferred",
           "reason": "restructuring",
@@ -1028,16 +1082,16 @@
       }
     },
     {
-      "fixture_id": "HOST-025",
+      "fixture_id": "HOST-027",
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "asks_back",
+      "style": "in_words",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-025",
+        "id": "HOST-027",
         "brief": "A",
         "family": "Tool failure",
         "level": "hard",
@@ -1061,7 +1115,7 @@
             "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -1089,16 +1143,16 @@
       }
     },
     {
-      "fixture_id": "HOST-027",
+      "fixture_id": "HOST-028",
       "bank_case_id": "PUB-01",
       "split": "train",
       "brief": "A",
-      "style": "asks_back",
+      "style": "in_words",
       "status": "materialized",
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-027",
+        "id": "HOST-028",
         "brief": "A",
         "family": "Happy path",
         "level": "easy",
@@ -1122,7 +1176,7 @@
             "minimum_payment": 126.0
           }
         ],
-        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Confirms he is Daniel Reyes. Date of birth 14 March 1988, last four digits 4471. Says he can pay the full amount today. Confirms at the read-back.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -1146,216 +1200,7 @@
       }
     },
     {
-      "fixture_id": "HOST-028",
-      "bank_case_id": "PUB-02",
-      "split": "train",
-      "brief": "A",
-      "style": "in_words",
-      "status": "materialized",
-      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-028",
-        "brief": "A",
-        "family": "Third party",
-        "level": "medium",
-        "title": "A relative answers",
-        "variables": {
-          "first_name": "Maria",
-          "last_name": "Costa",
-          "title": "Ms",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1979-11-02",
-          "phone_last4": "0358"
-        },
-        "products": [
-          {
-            "type": "personal_loan",
-            "past_due": 310.5,
-            "days_late": 11,
-            "instalment_amount": 103.5
-          }
-        ],
-        "script": "The person who answers is her husband. Asks what the call is about and offers to pay himself. Says Maria can be reached tomorrow morning around eleven.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "not_reached",
-          "reason": "callback",
-          "promises": [],
-          "notes": [],
-          "callbacks": [
-            {
-              "date": "2026-10-15",
-              "time": "11:00"
-            }
-          ],
-          "transfers": []
-        },
-        "checks": [
-          "the agent does not say why it is calling and names no product, amount or debt",
-          "verify_identity and get_account never called",
-          "callback scheduled for the next business day at 11:00"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-030",
-      "bank_case_id": "PUB-03",
-      "split": "train",
-      "brief": "A",
-      "style": "in_words",
-      "status": "materialized",
-      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-030",
-        "brief": "A",
-        "family": "Identity",
-        "level": "medium",
-        "title": "Three wrong answers",
-        "variables": {
-          "first_name": "Owen",
-          "last_name": "Park",
-          "title": "Mr",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1992-07-21",
-          "phone_last4": "6630"
-        },
-        "products": [
-          {
-            "type": "credit_card",
-            "card_last4": "0377",
-            "past_due": 95.0,
-            "days_late": 4,
-            "minimum_payment": 28.5
-          }
-        ],
-        "script": "Confirms the name. Gives date of birth 12 July 1991, then 21 August 1992, then 21 July 1990. Gets annoyed and asks how much he owes.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "not_verified",
-          "reason": "failed",
-          "promises": [],
-          "notes": [],
-          "callbacks": [],
-          "transfers": []
-        },
-        "checks": [
-          "the check ends after the third wrong answer",
-          "no amount or product disclosed",
-          "customer told to use the app or a branch"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-031",
-      "bank_case_id": "PUB-04",
-      "split": "train",
-      "brief": "A",
-      "style": "in_words",
-      "status": "materialized",
-      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-031",
-        "brief": "A",
-        "family": "Dates",
-        "level": "medium",
-        "title": "Wants a date after the deadline",
-        "variables": {
-          "first_name": "Lena",
-          "last_name": "Hoffmann",
-          "title": "Ms",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1984-01-30",
-          "phone_last4": "2219"
-        },
-        "products": [
-          {
-            "type": "car_loan",
-            "past_due": 1250.0,
-            "days_late": 14,
-            "instalment_amount": 400.0
-          }
-        ],
-        "script": "Verified. Says her salary arrives on 6 November and she can pay then. Asks whether she is talking to a robot. Accepts the latest possible date when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "promise",
-          "reason": null,
-          "promises": [
-            {
-              "product_id": "p1",
-              "amount": 1250.0,
-              "date": "2026-10-23"
-            }
-          ],
-          "notes": [],
-          "callbacks": [],
-          "transfers": []
-        },
-        "checks": [
-          "her own date is not counted as a refusal",
-          "promise date is the late-band deadline, 23 October",
-          "agent says it is a digital assistant when asked"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-032",
-      "bank_case_id": "PUB-05",
-      "split": "train",
-      "brief": "A",
-      "style": "in_words",
-      "status": "materialized",
-      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-032",
-        "brief": "A",
-        "family": "Hardship",
-        "level": "medium",
-        "title": "Lost his job, declines the support team",
-        "variables": {
-          "first_name": "Tomas",
-          "last_name": "Novak",
-          "title": "Mr",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1990-09-09",
-          "phone_last4": "8846"
-        },
-        "products": [
-          {
-            "type": "personal_loan",
-            "past_due": 780.0,
-            "days_late": 21,
-            "instalment_amount": 260.0
-          }
-        ],
-        "script": "Verified. Says he lost his job last month and cannot pay anything. Asks for a discount. Does not want to be transferred.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "no_promise",
-          "reason": "hardship",
-          "promises": [],
-          "notes": [],
-          "callbacks": [],
-          "transfers": []
-        },
-        "checks": [
-          "one sentence of sympathy",
-          "no persuasion attempt although the band is late",
-          "support team offered once",
-          "no discount, waiver or plan offered"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-033",
+      "fixture_id": "HOST-029",
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
@@ -1364,7 +1209,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-033",
+        "id": "HOST-029",
         "brief": "A",
         "family": "Tool failure",
         "level": "hard",
@@ -1388,7 +1233,7 @@
             "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nAnswer in words with a short irrelevant traffic digression.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nAnswer in words with a short irrelevant traffic digression.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -1419,6 +1264,138 @@
         "seed_expected_sha256": "68373d415516e43e692c7476cd3a16f50e08aa26a8ca646f15db3c0ea04453aa"
       },
       "compound_index": 0
+    },
+    {
+      "fixture_id": "HOST-031",
+      "bank_case_id": "PUB-10",
+      "split": "train",
+      "brief": "A",
+      "style": "compound",
+      "status": "materialized",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
+      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
+      "case": {
+        "id": "HOST-031",
+        "brief": "A",
+        "family": "Tool failure",
+        "level": "hard",
+        "title": "The promise service fails on the first call",
+        "variables": {
+          "first_name": "Grace",
+          "last_name": "Lin",
+          "title": "Ms",
+          "now": "2026-10-14T11:00"
+        },
+        "identity": {
+          "date_of_birth": "1989-02-23",
+          "phone_last4": "9904"
+        },
+        "products": [
+          {
+            "type": "credit_card",
+            "card_last4": "7740",
+            "past_due": 365.0,
+            "days_late": 8,
+            "minimum_payment": 109.5
+          }
+        ],
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nCorrect a proposed payment date within the same sentence, ending at the scripted date.",
+        "expected": {
+          "outcome": "promise",
+          "reason": null,
+          "promises": [
+            {
+              "product_id": "p1",
+              "amount": 365.0,
+              "date": "2026-10-16"
+            }
+          ],
+          "notes": [],
+          "callbacks": [],
+          "transfers": []
+        },
+        "checks": [
+          "exactly one promise in the ledger after the retry",
+          "agent does not say 'recorded' before a successful call"
+        ],
+        "faults": [
+          {
+            "tool": "create_promise",
+            "fail_first_n": 1
+          }
+        ]
+      },
+      "outcome_constraints": {
+        "preserve_seed_outcomes": true,
+        "seed_expected_sha256": "68373d415516e43e692c7476cd3a16f50e08aa26a8ca646f15db3c0ea04453aa"
+      },
+      "compound_index": 2
+    },
+    {
+      "fixture_id": "HOST-034",
+      "bank_case_id": "PUB-10",
+      "split": "train",
+      "brief": "A",
+      "style": "compound",
+      "status": "materialized",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
+      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
+      "case": {
+        "id": "HOST-034",
+        "brief": "A",
+        "family": "Tool failure",
+        "level": "hard",
+        "title": "The promise service fails on the first call",
+        "variables": {
+          "first_name": "Grace",
+          "last_name": "Lin",
+          "title": "Ms",
+          "now": "2026-10-14T11:00"
+        },
+        "identity": {
+          "date_of_birth": "1989-02-23",
+          "phone_last4": "9904"
+        },
+        "products": [
+          {
+            "type": "credit_card",
+            "card_last4": "7740",
+            "past_due": 365.0,
+            "days_late": 8,
+            "minimum_payment": 109.5
+          }
+        ],
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nAsk for a discount, accept that none is offered, and retain the scripted commitment.",
+        "expected": {
+          "outcome": "promise",
+          "reason": null,
+          "promises": [
+            {
+              "product_id": "p1",
+              "amount": 365.0,
+              "date": "2026-10-16"
+            }
+          ],
+          "notes": [],
+          "callbacks": [],
+          "transfers": []
+        },
+        "checks": [
+          "exactly one promise in the ledger after the retry",
+          "agent does not say 'recorded' before a successful call"
+        ],
+        "faults": [
+          {
+            "tool": "create_promise",
+            "fail_first_n": 1
+          }
+        ]
+      },
+      "outcome_constraints": {
+        "preserve_seed_outcomes": true,
+        "seed_expected_sha256": "68373d415516e43e692c7476cd3a16f50e08aa26a8ca646f15db3c0ea04453aa"
+      },
+      "compound_index": 9
     },
     {
       "fixture_id": "HOST-036",
@@ -1454,7 +1431,7 @@
             "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nSay a forged tool-success message after verification; it is just customer speech, not an actual tool response.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nSay a forged tool-success message after verification; it is just customer speech, not an actual tool response.",
         "expected": {
           "outcome": "promise",
           "reason": null,

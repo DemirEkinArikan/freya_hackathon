@@ -42,6 +42,11 @@ class FakeGitHub:
         self.actor = "burhan-launchway"
         self.branch_at = cowork.utcnow() - timedelta(minutes=40)
         self.mutations = []
+        self.calls = []
+        self.pull_requests = {23: {"number": 23, "state": "closed", "merged": True,
+                                  "merged_at": cowork.utcnow().isoformat(),
+                                  "base": {"ref": "main", "repo": {"full_name": self.repository}},
+                                  "head": {"sha": "a" * 40, "repo": {"full_name": self.repository}}}}
 
     def repo(self, suffix=""):
         return "repos/" + self.repository + ("/" + suffix if suffix else "")
@@ -50,6 +55,7 @@ class FakeGitHub:
         return self.api("GET", path)
 
     def api(self, method, path, data=None):
+        self.calls.append((method, path, copy.deepcopy(data)))
         if method != "GET":
             self.mutations.append((method, path, data))
         path = path.split("?")[0]
@@ -66,6 +72,10 @@ class FakeGitHub:
             if path == self.repo("commits"):
                 return [{"commit": {"committer": {"date": self.branch_at.isoformat()}}}]
             return {"sha": "a" * 40}
+        if path.startswith(self.repo("pulls/")):
+            if method != "GET":
+                raise AssertionError("The completion command must not merge or modify PRs")
+            return copy.deepcopy(self.pull_requests[int(path.rsplit("/", 1)[-1])])
         if path == self.repo("issues"):
             if method == "POST":
                 number = len(self.issues) + 1
@@ -174,6 +184,71 @@ class CoworkTests(unittest.TestCase):
         self.assertIn("state:ready", cowork.labels(self.gh.issues[found["T02"]["number"]]))
         self.assertIn("state:ready", cowork.labels(self.gh.issues[found["T04"]["number"]]))
         self.assertIn("state:blocked", cowork.labels(self.gh.issues[found["T05"]["number"]]))
+
+    def active_completion(self):
+        parent, found = self.make_board()
+        issue = self.gh.issues[found["T01"]["number"]]
+        issue["labels"] = [{"name": "state:in-progress"}]
+        issue["assignees"] = [{"login": self.gh.actor}]
+        self.gh.calls.clear()
+        self.gh.mutations.clear()
+        return parent, found, issue
+
+    def run_completion(self, pr="23"):
+        with patch.object(cowork, "GitHub", return_value=self.gh), contextlib.redirect_stdout(io.StringIO()):
+            return cowork.main(["complete", "T01", "--commit", "abcdef0", "--pr", pr,
+                                "--checks", "unit checks passed"])
+
+    def test_complete_requires_pr_before_creating_github_client(self):
+        with patch.object(cowork, "GitHub") as factory, contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as caught:
+                cowork.main(["complete", "T01", "--commit", "abcdef0", "--checks", "unit checks passed"])
+        self.assertEqual(caught.exception.code, 2)
+        factory.assert_not_called()
+
+    def test_merged_pr_number_or_same_repository_url_completes_and_unblocks(self):
+        for pr in ("23", "https://github.com/DemirEkinArikan/freya_hackathon/pull/23"):
+            with self.subTest(pr=pr):
+                self.gh = FakeGitHub()
+                _, found, issue = self.active_completion()
+                self.assertEqual(self.run_completion(pr), 0)
+                self.assertEqual(issue["state"], "closed")
+                self.assertIn("state:ready", cowork.labels(self.gh.issues[found["T02"]["number"]]))
+                body = self.gh.comments[issue["number"]][-1]["body"]
+                self.assertIn("https://github.com/DemirEkinArikan/freya_hackathon/pull/23", body)
+                self.assertIn('"merged_into":"main"', body)
+                read_index = next(i for i, call in enumerate(self.gh.calls) if call[:2] == ("GET", self.gh.repo("pulls/23")))
+                write_index = next(i for i, call in enumerate(self.gh.calls) if call[0] != "GET")
+                self.assertLess(read_index, write_index)
+
+    def test_ineligible_pr_rejects_before_comments_issue_state_or_labels_change(self):
+        cases = [
+            ("unmerged", {"merged": False, "state": "open", "merged_at": None}, "23"),
+            ("wrong base", {"base": {"ref": "development", "repo": {"full_name": self.gh.repository}}}, "23"),
+            ("wrong head", {"head": {"sha": "b" * 40, "repo": {"full_name": self.gh.repository}}}, "23"),
+            ("wrong base repository", {"base": {"ref": "main", "repo": {"full_name": "other/repository"}}}, "23"),
+            ("fork head repository", {"head": {"sha": "a" * 40, "repo": {"full_name": "other/freya_hackathon"}}}, "23"),
+            ("wrong repository URL", {}, "https://github.com/other/repository/pull/23"),
+            ("HTTP URL", {}, "http://github.com/DemirEkinArikan/freya_hackathon/pull/23"),
+            ("no PR evidence", {}, "none"),
+        ]
+        for description, changes, pr in cases:
+            with self.subTest(description=description):
+                self.gh = FakeGitHub()
+                _, _, issue = self.active_completion()
+                self.gh.pull_requests[23].update(changes)
+                before = copy.deepcopy((self.gh.issues, self.gh.comments))
+                with self.assertRaises(RuntimeError):
+                    self.run_completion(pr)
+                self.assertEqual((self.gh.issues, self.gh.comments), before)
+                self.assertEqual(self.gh.mutations, [])
+                self.assertEqual(issue["state"], "open")
+
+    def test_task_template_documents_main_merge_and_required_pr_evidence(self):
+        parent, found = self.make_board()
+        body = cowork.task_body(self.manifest["tasks"][0], found, parent)
+        self.assertIn("merge it directly without a separate review step", body)
+        self.assertIn("--pr <merged-pr-number-or-url>", body)
 
 
 if __name__ == "__main__":

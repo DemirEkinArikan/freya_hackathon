@@ -1211,7 +1211,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     spec = {"phase": phase, "action": action, "inputs": inputs, "profile": profile,
             "catalog": {k: {n: v for n, v in op.items() if n != "tool"} for k, op in catalog.items()},
             "maps": maps, "result_vars": result_vars}
-    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\n"
+    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
         tail += "    previous_state = None\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
@@ -1223,7 +1223,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"
         else:
             tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'], spec['action'])\n"
-    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
+    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    if state.get('quarantined') is True:\n        body, readback = dict(), ''\n        vars['bg_quarantined'] = 'yes'\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
@@ -1236,6 +1236,10 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
         tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        retained['quarantined'] = True\n        retained['batch'] = dict()\n        retained['consent'] = ''\n        vars['bg_state'] = guard_json(retained)\n    except Exception:\n        vars['bg_state'] = json.dumps(dict(quarantined=True))\n"
     else:
         tail += "    vars['bg_state'] = str(vars.get('bg_state') or '')\n"
+    # Preserve the action/result route for evidence, but seal an independent
+    # controller-owned priority signal. Invalid state has no recoverable bank
+    # evidence; ordinary invalid non-close inputs retain their valid state.
+    tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        guard_known_counts(retained)\n        if retained.get('quarantined') is True:\n            vars['bg_quarantined'] = 'yes'\n    except Exception:\n        vars['bg_quarantined'] = 'yes'\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
     return _KERNEL + tail
@@ -1303,6 +1307,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     nodes["bg_quarantine"] = {**_terminal(), "name": "bg_quarantine"}
     nodes["bg_init"] = _code_node("bg_init", _code("init", "", {}, profile, catalog, maps, {}),
         [_transition(plan["initial_node"], "done"), _transition("bg_quarantine")])
+    quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",
+                        "condition": {"logic": "or", "conditions": [{"variable": "bg_quarantined",
+                            "operator": "equals", "operand": "yes"}]}}
     entries = []
     for name, node in sorted(plan["nodes"].items()):
         if node["node_type"] != "guard_action":
@@ -1323,12 +1330,17 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             result_vars['_http_status'] = PREFIX + name + '_result_http_status'
         needs_confirmation = (action == "commit_promises" and profile.get("require_confirmation") is True
                               or action in profile.get("confirmation_actions", []))
-        routes = [_transition(success, "done")]
+        routes = [copy.deepcopy(quarantine_route), _transition(success, "done")]
         if operation:
             routes += [_transition(api, "allow")]
             if needs_confirmation:
                 routes += [_transition(confirm, "confirm")]
         routes += [_transition(blocked)]
+        if action == "close_call":
+            # A turn-limit exit must not return to the same public recovery
+            # loop when no authorized bank disposition can be formed. End
+            # silently without fabricating a bank close or persistence claim.
+            routes = [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition("bg_terminal")]
         nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
         entries.append(name)
         if not operation:
@@ -1358,10 +1370,10 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [
                     {"variable": "bg_consent", "operator": "equals", "operand": value} for value in ("yes", "no", "unclear")]}}]}
             nodes[accept] = _code_node(accept, _code("confirm", action, {}, profile, catalog, maps, result_vars),
-                [_transition(api, "allow"), _transition(blocked)])
+                [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition(blocked)])
         nodes[reconcile] = _code_node(reconcile, _code("result", action, {}, profile, catalog, maps, result_vars),
             ([_transition("bg_terminal")] if action == "close_call" else
-             [_transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
+             [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:

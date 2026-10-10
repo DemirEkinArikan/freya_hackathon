@@ -75,7 +75,7 @@ validation pass. No Freya, bank or simulation call was made.
 Independent approved-source review found 95 literal rules, 82 active concepts,
 13 explicit B overrides and 14 exact API witnesses. Operative rules retain the
 source 1–3 product bound, returned account order, batch confirmation, notes,
-identity amendment, calendars and definite negative-result semantics. This is
+inherited identity rules, calendars and definite negative-result semantics. This is
 actual generation and structural compilation evidence, not full execution
 acceptance. The JSON record binds file hashes separately from canonical JSON
 digests, including the selected guard manifest's complete-record digest.
@@ -87,10 +87,11 @@ digests, including the selected guard manifest's complete-record digest.
 | Recorded callback, preidentity human transfer, wrong-factor exhaustion | Mock receipts reach real guarded closing and a silent terminal. Ideal extracted frames prove neither observed speech nor hosted behavior. |
 | Missing callback terms | Conversation can self-loop without a terminating turn fallback. Terminal reachability does not prove all-path termination. |
 
-The generated graph also attributes farewell, identity-exhaustion advice and
-shared-date adjustment explanations to the compiler. Actual compiled closing
-and its terminal are silent; readback supplies final product/amount/date terms
-without an adjustment explanation. Source-global preaccount restructuring
+The generated graph attributes farewell and shared-date adjustment explanations
+to the compiler. Actual compiled closing and its terminal are silent; readback
+supplies final product/amount/date terms without an adjustment explanation.
+Identity-exhaustion advice is instructed in a silent exit node, with no speaking
+action on that route. Source-global preaccount restructuring
 routes are absent. These are reviewed implementation gaps, not successful
 conversation evidence. Replay scripts and fictional frames remain evaluator-only
 in ignored local artifacts and are not included in this record or generation.
@@ -108,3 +109,31 @@ that dependency. Issue8 remains open for changed-policy/schema/goal generation
 and safe all-path execution. `tools/cowork.py complete T07` has not been run.
 Any future hosted use must reconcile the canonical primary simulation lease
 with actual server status and retain the fixed experimental-5 phone model.
+
+
+## Changed-schema development trials
+
+Fresh train-1 and raw train-2 runs at immutable source
+`2b493e9df0baf1638325b62cb73ff760b57faca5` used the reviewed development briefs
+and complete synthetic API. The corrected train-2 invocation supplied all five
+exported documents. Both mandatory audits passed. Each original run exhausted
+two policy repairs, retained three rejected policies and ended failed without
+an accepted policy or workflow. Their exact hashes, wall times and remaining
+deadlines are recorded in JSON. No exact combined pre-run suite count is asserted
+for that source; contributing PR checks must not be relabeled as a same-head run.
+
+Independent approved-source review separates three causes: genuine unspecified
+bank dispositions/triggers, blanket compiler dependencies, and model
+over-rejection. An absent exhaustion consequence is already conservative and
+does not justify inventing `service_error`. Source product readback and the API
+`type` field exist, although unique repeated-type human labels remain unspecified.
+The API's maximum remaining budget of two does not itself contradict a historical
+three-wrong-answer limit. No initial budget or call date is inferred.
+
+Effective-date overrides and goal-specific resolution are real supplied scopes.
+The raw candidate uses invalid extra `scope` rule fields; removing those fields
+or applying the rules unconditionally would discard constraints. Typed executable
+date/goal selection, qualified nonpromise retry support and safe all-path
+termination remain implementation work. Neither original failed run is upgraded
+or resumed as accepted, and its reviewed candidate or diagnostic is not a model
+policy answer. Evaluator expectations cannot fill missing source values.

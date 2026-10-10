@@ -224,7 +224,7 @@
       "semantic_blockers": [
         "Valid card/loan responses quarantine under the original unconditional union of type-specific disclosure fields. PR98 fixes source support only; original generated policy stays unchanged.",
         "Missing callback terms can produce an absorbing conversation loop; source validation proves a reachable ending, not termination of every path.",
-        "Generated plan incorrectly assumes silent compiled closing supplies source-required farewell and identity-exhaustion advice.",
+        "The generated plan assumes silent compiled closing supplies a farewell; its silent identity-exit route lacks a spoken exhaustion-advice action.",
         "Source-global preaccount restructuring routes are absent from the original contact/security graph.",
         "Shared-date adjustment explanation is incorrectly assigned to the controller, whose readback supplies final terms only."
       ],
@@ -239,6 +239,79 @@
       "raw_model_events_included": false,
       "evaluator_frames_or_expected_records_included": false,
       "holdout_used": false
+    },
+    {
+      "profile": "train-1",
+      "run_id": "20261010T231942492895Z",
+      "mode": "generate-only",
+      "status": "failed",
+      "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-train1-full-20261011/artifacts/t07-current-train1-generation/20261010T231942492895Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "builder-source.json": "ae17c0743712deeaee032f49c4e9715e17db34aeb5f9338341937f53a09c1ad9",
+        "manifest.json": "b4f3679e32acd0e83bf8e2bc5bed6054aebe84d5c00baafe7d8592a7e86f098b",
+        "policy.rejected-1.json": "fa0f99bf363f01396b882300e877f3ece47a59f7a67df52686dddb5f63d9e9a0",
+        "policy.rejected-2.json": "19765949266d1b9321f3c58b8640e605ea5ffa11f4c5d8ff12e917760be02a9f",
+        "policy.rejected-3.json": "c2247f614ddf04564589a34083d920ae2d5b810509741f4011d35fc2150710ed",
+        "trace.jsonl": "3b3750f64b56a5e6039c98aa99e48fd36a4fac6a38929441fe5c1ace450c0608"
+      },
+      "elapsed_wall_seconds": 583.925403,
+      "remaining_seconds": 1216.0773696250108,
+      "isolation_status": "pass",
+      "rejected_policy_candidates": 3,
+      "shared_policy_repairs_used": 2,
+      "accepted_policy_created": false,
+      "workflow_created": false,
+      "platform_calls": 0,
+      "holdout_used": false,
+      "raw_model_events_included": false,
+      "evaluator_inputs_included": false,
+      "source_checks_limit": "No exact combined pre-run full-suite count is asserted here; contributing merged PR checks are separate.",
+      "error_family": "unsupported constraints; raw profile additionally retains invalid rule scope fields",
+      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations."
+    },
+    {
+      "profile": "train-2",
+      "run_id": "20261010T232400167593Z",
+      "mode": "generate-only",
+      "status": "failed",
+      "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-train2-full-20261011/artifacts/t07-current-train2-generation/20261010T232400167593Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "builder-source.json": "aae50f445837bc40e37e0dd2650ac3a9d045bcd4cb492b803f07cb54f1f1acd0",
+        "manifest.json": "66fc319c60211d0dd4598487ccd265ed1b416d9314d277d838922fdd93b809a0",
+        "policy.rejected-1.json": "d36038962968a91ddbb0260df6e719a2538e14933365852ae8024ca4daf5f1a0",
+        "policy.rejected-2.json": "0612a8f8af29695e2b9e7c0dac0200a95c5bc252b2f0ab351b9bb5c1906536f1",
+        "policy.rejected-3.json": "9c0cbb42e9cd041c79057805a572c075766ea409c14aedf2b8da8829e9f09e57",
+        "trace.jsonl": "e1f8be6a7a96ec0c51e6482b16dbd432d28c0451369eaae5e4feaea2a35c5dd5"
+      },
+      "elapsed_wall_seconds": 656.157684,
+      "remaining_seconds": 1143.7758033749997,
+      "isolation_status": "pass",
+      "rejected_policy_candidates": 3,
+      "shared_policy_repairs_used": 2,
+      "accepted_policy_created": false,
+      "workflow_created": false,
+      "platform_calls": 0,
+      "holdout_used": false,
+      "raw_model_events_included": false,
+      "evaluator_inputs_included": false,
+      "source_checks_limit": "No exact combined pre-run full-suite count is asserted here; contributing merged PR checks are separate.",
+      "error_family": "unsupported constraints; raw profile additionally retains invalid rule scope fields",
+      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations.",
+      "source_only_review_notes": [
+        "Missing identity dispositions and exhaustion consequences grant no inferred bank values; absence is conservative, and blanket extraction dependencies must be scoped.",
+        "Human product readback source and API type field exist; categorical absence is overstated, while unique repeated-type labels remain unspecified.",
+        "Supplied effective-date and goal conditions need typed executable selection; stripping invalid extra scope fields would lose constraints.",
+        "API remaining budget maximum two does not prove contradiction with total wrong limit three; do not infer initial budget or call date.",
+        "Nonpromise definite-failure retry support and source triggers remain unresolved; preserve obligations without invented counter scope."
+      ]
     }
   ],
   "changed_schema_trials": {
@@ -252,9 +325,10 @@
     "accepted_policy_or_workflow": false
   },
   "remaining": [
-    "Fresh audited generation after coordinated generic semantic/controller guidance repair",
-    "Actual routes/extraction/dialogue/code compilation for different complete approved policy/schema inputs",
-    "T05 dependency acceptance and shared-lease server reconciliation before hosted use"
+    "Actual complete generation and guarded compilation for changing approved schemas and supported goals",
+    "Executable date/goal applicability preserving supplied scopes and source/API fields",
+    "Safe termination of conversation and action cycles; source-required speech in actual speaking nodes",
+    "Future hosted use only: reconcile the canonical primary simulation lease with the server"
   ],
   "latest_reviewed_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
   "dependency_update": {
@@ -281,5 +355,10 @@
       "source_files": 246,
       "scope": "Unused disclosure metadata remains frozen and inert without selected account lookup; source acceptance only."
     }
+  ],
+  "historical_remaining": [
+    "Fresh audited generation after coordinated generic semantic/controller guidance repair",
+    "Actual routes/extraction/dialogue/code compilation for different complete approved policy/schema inputs",
+    "T05 dependency acceptance and shared-lease server reconciliation before hosted use"
   ]
 }

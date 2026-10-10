@@ -3,7 +3,7 @@ import copy
 import unittest
 
 from builder.execution_requirements import compile_execution_requirements, ExecutionRequirementsError
-from builder.policy import compile_execution_policy, execution_rule_guidance
+from builder.policy import _SHAPE_GUIDANCE, compile_execution_policy, execution_rule_guidance
 from test_execution_requirements import add_rule, rule
 from test_failure_source_provenance import supplied_packet
 
@@ -44,6 +44,7 @@ class CountedFailureAnnotationTests(unittest.TestCase):
         guide = execution_rule_guidance()["promise_failure_resolution"]
         self.assertIn("descriptive extension", guide)
         self.assertIn("array", guide)
+        self.assertNotIn("promise_failure_resolution", _SHAPE_GUIDANCE)
 
     def test_array_fields_are_explicit_and_diagnostic_states_both_exact_forms(self):
         for field in ("document", "operation", "http_status", "pointer", "quote"):

@@ -1216,8 +1216,9 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     if phase == "init":
         tail += "    previous_state = None\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
     else:
-        tail += "    state = json.loads(str(vars.get('bg_state') or ''))\n    previous_state = state\n"
+        tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
         if phase == "prepare":
+            tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
             tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
         elif phase == "confirm":
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"

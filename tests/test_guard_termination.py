@@ -114,6 +114,30 @@ class CompiledTerminationTests(unittest.TestCase):
         self.assertTrue(self.state["quarantined"])
         self.assert_terminal("stage", "bg_quarantine")
 
+    def test_partial_or_mistyped_state_never_masquerades_as_correctable_input(self):
+        self.harness.account()
+        self.harness.stage()
+        self.commit()
+        initial = deepcopy(self.harness.variables)
+        original = self.state
+        for key, value in original.items():
+            # Keep the fact-count fields intact when removing unrelated keys;
+            # this was the gap discovered by the independent reviewer.
+            for change in ("missing", "wrong_type"):
+                for node in ("identity", "stage", "close", "bg_commit_accept", "bg_commit_result"):
+                    with self.subTest(key=key, mutation=change, node=node):
+                        state = deepcopy(original)
+                        if change == "missing":
+                            del state[key]
+                        else:
+                            state[key] = {} if not isinstance(value, dict) else []
+                        self.harness.variables = deepcopy(initial)
+                        self.harness.variables["bg_state"] = json.dumps(state)
+                        self.harness.code(node)
+                        self.assert_terminal(node, "bg_quarantine")
+                        if key != "inflight":
+                            self.assertEqual(self.state.get("inflight"), original["inflight"])
+
     def test_outer_result_exception_preserves_unknown_transaction_and_seals_route(self):
         self.harness.account()
         self.harness.stage()
@@ -135,6 +159,22 @@ class CompiledTerminationTests(unittest.TestCase):
         self.harness.stage(amount="50.00")
         self.assertEqual(self.target("stage"), "talk")
         self.assertIn("internal-product-Z", self.state["pending_promises"])
+
+    def test_reentry_with_any_unresolved_transaction_terminates_preserving_it(self):
+        self.harness.account()
+        self.harness.stage()
+        self.commit()
+        original = self.state
+        for transaction in (original["inflight"], {"action": "unknown"}, {"action": "commit_promises"}):
+            for node in ("identity", "stage", "commit", "close"):
+                with self.subTest(transaction=transaction, node=node):
+                    state = deepcopy(original)
+                    state["inflight"] = deepcopy(transaction)
+                    self.harness.variables["bg_state"] = json.dumps(state)
+                    self.harness.code(node)
+                    self.assertEqual(self.state["inflight"], transaction)
+                    self.assertTrue(self.state["quarantined"])
+                    self.assert_terminal(node, "bg_quarantine")
 
     def test_source_qualified_retry_still_targets_exact_api(self):
         self.harness.account()

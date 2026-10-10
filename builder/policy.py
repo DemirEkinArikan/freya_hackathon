@@ -42,7 +42,7 @@ _PROFILE_KINDS.add("wire_codes")
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback"}
+                         "promise_readback", "account_disclosure_fields"}
 
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
@@ -115,7 +115,10 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item)
-    if kind in {"record_notes", "resolve_all_products"}:
+    if kind == "account_disclosure_fields":
+        valid = (isinstance(value, list) and all(text(item) for item in value)
+                 and len(set(value)) == len(value) and not set(value) & {"customer_id", "product_id"})
+    elif kind in {"record_notes", "resolve_all_products"}:
         valid = type(value) is bool
     elif kind in {"confirmation_actions", "close_precedence"}:
         valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))

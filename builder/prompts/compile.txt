@@ -63,6 +63,9 @@ defines that concept. They are interface names, not predetermined banking rules:
   to exact opaque API values, only when the supplied documents define the meanings.
 - action_fields/result_fields: operation-to-semantic-field maps for renamed API fields.
 - product_fields: semantic product fields mapped to returned account field names.
+- account_disclosure_fields: explicit list of returned product fields permitted
+  for account narration. Preserve conditional disclosure constraints separately;
+  a field list cannot encode permission limited to a particular product/state.
 - record_notes/resolve_all_products: explicit booleans for note writes and whether
   every returned product must be resolved before final close.
 - confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array

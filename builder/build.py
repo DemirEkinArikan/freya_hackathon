@@ -149,6 +149,9 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
             compiled = compile_policy_contract(policy, sources, openapi)
+            # Execution-shape errors belong to bounded extraction repairs,
+            # before the policy is frozen; plans cannot repair bank rules.
+            compile_execution_policy(policy, compile_action_bindings(policy, openapi))
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
@@ -367,6 +370,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
             compiled = compile_policy_contract(policy, sources, openapi)
+            compile_execution_policy(policy, compile_action_bindings(policy, openapi))
             policy_repairs = 0
             policy_origin = "provided_and_revalidated"
         else:

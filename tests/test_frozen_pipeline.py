@@ -17,6 +17,30 @@ class FrozenPipelineTests(unittest.TestCase):
     tearDown = test_builder.BuilderTests.tearDown
     args = test_builder.BuilderTests.args
     generator = test_builder.BuilderTests.generator
+    def test_invalid_execution_shape_is_repaired_before_contract_freeze(self):
+        invalid = fixture()
+        next(rule for rule in invalid["policy"]["rules"] if rule["kind"] == "product_order")["value"] = "ambiguous sort prose"
+        generator = self.generator()
+        generator.generate.side_effect = [invalid, fixture()]
+        generator.generate.return_value = fixture()
+        result = execute(self.args("--generate-only"), generator=generator,
+                         client_factory=lambda **kw: self.fail("Freya touched"))
+        self.assertEqual(result["policy_repairs"], 1)
+        self.assertEqual(generator.generate_plan.call_count, 1)
+        saved = json.loads((PROJECT / result["run_directory"] / "policy.json").read_text())
+        self.assertEqual(saved, fixture()["policy"])
+
+    def test_resumed_invalid_execution_profile_stops_before_plan_generation(self):
+        invalid = fixture()["policy"]
+        next(rule for rule in invalid["rules"] if rule["kind"] == "product_order")["value"] = "ambiguous sort prose"
+        policy_path = self.directory / "policy.json"
+        policy_path.write_text(json.dumps(invalid))
+        generator = self.generator()
+        with self.assertRaises(ValueError):
+            execute(self.args("--generate-only", "--policy-file", str(policy_path)), generator=generator)
+        generator.generate.assert_not_called()
+        generator.generate_plan.assert_not_called()
+
     def test_contract_is_extracted_once_across_workflow_repairs(self):
         generator = self.generator()
         generator.generate.return_value = fixture()

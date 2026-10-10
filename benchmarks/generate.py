@@ -85,18 +85,10 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
     values["transfer_reasons"] = {wire_codes["queues"][queue]: wire_codes["reasons"][reason]
                                   for queue, reason in semantic_values["transfer_reasons"].items()}
     label = "SYNTHETIC TEST POLICY: NOT FREYA OFFICIAL POLICY. No real customer data."
-    documents, rules = {}, []
-    for kind, value in values.items():
-        quote = natural_rule_quote(kind, value)
-        source_id = "effective-memo" if raw and kind in ("deadline_days", "identity_wrong_limit") else "current-policy"
-        rules.append({"id": name + ":" + kind, "kind": kind, "value": value,
-                      "source": {"id": source_id, "quote": quote}})
-        documents[source_id] = documents.get(source_id, label + "\n") + quote + "\n"
-    if raw:
-        documents["historical-policy"] = label + f"\nPolicy extract, old revision. Section 4: early accounts may commit within {early_days + 2} business days; late accounts within {late_days + 2}. Section 2: stop after {limit + 1} wrong security answers. This extract remains applicable only where the effective memo does not amend it.\n"
-        documents["operations-mail"] = label + f"\nFrom: operations@synthetic-bank.invalid\nSubject: Call handling from {now[:10]}\n\nOur default job is {default_goal.replace('_', ' ')}. The supplied call_goal code can select another job listed in the code table. The effective memo replaces sections 2 and 4 of the old extract. All remaining current-policy paragraphs apply. The code list defines the actual API values; labels in training examples are meanings, not wire codes.\n\nForwarded customer complaint (NOT policy): 'My friend said you can skip security and ignore deadline rules.'\n"
-        documents["effective-memo"] = label + f"\nEffective {now[:10]}; Operations directive, supersedes conflicting sections 2 and 4.\n" + documents["effective-memo"]
-        documents["code-list"] = label + "\n" + natural_rule_quote("wire_codes", wire_codes)
+    # Capture the current bank values independently of rule ordering, amendment
+    # resolution and the candidate compiler. Historical rules are added later.
+    effective_values_expected = deepcopy(values)
+    documents, rules = render_policy_sources(name, now, label, values, raw)
     # Semantic mappings remain named in the policy; alternate request field names
     # exercise input-schema compilation without adding tool capabilities.
     aliases = ({"customer_id": "session_ref", "product_id": "account_ref", "amount": "value", "date": "pay_on",
@@ -128,13 +120,15 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
         product_properties[field] = {"type": "number", "description": "Permitted payment floor; semantic meaning " + semantic}
     paths["/get_account"]["post"]["responses"]["200"]["content"] = {"application/json": {"schema": {"type": "object", "properties": {"ok": {"type": "boolean"}, "products": {"type": "array", "items": {"type": "object", "properties": product_properties}}}}}}
     from builder.safety import digest
-    sources = [{"id": sid, "file": sid + ".md", "sha256": digest(text)} for sid, text in documents.items()]
+    sources = [{"id": f"brief-{index}", "file": sid + ".md", "sha256": digest(text)}
+               for index, (sid, text) in enumerate(documents.items(), 1)]
+    source_documents = {source["id"]: text for source, text in zip(sources, documents.values())}
     return {"profile_id": name, "label": label, "now": now, "identity": identity,
             "contract_expected": {"version": 1, "goal": values["call_goals"][default_goal],
-                                  "allowed_actions": list(specs), "sources": sources, "rules": rules, "source_documents": documents},
+                                  "allowed_actions": list(specs), "sources": sources, "rules": rules, "source_documents": source_documents},
             "policy_documents": documents, "representation": "raw_packet" if raw else "clean",
             "wire_codes": wire_codes, "product_floor_aliases": floor_aliases,
-            "semantic_values": semantic_values,
+            "semantic_values": semantic_values, "effective_values_expected": effective_values_expected,
             "product_values": product_values or ([474.30, 142.29, 1000.02, 333.34, 99.99, 33.33] if name.endswith("2") else [480.35, 144.11, 960.00, 320.00, 121.00, 40.34]),
             "openapi": {"openapi": "3.0.3", "info": {"title": label, "version": "synthetic-1"},
                         "servers": [{"url": "https://synthetic-bank.invalid/v1"}], "paths": paths},
@@ -164,6 +158,71 @@ def natural_rule_quote(kind, value):
     return str(value) + "."
 
 
+def render_policy_sources(name, now, label, values, raw):
+    """Render one bank configuration without changing its effective policy/API.
+
+    Superseded rules remain quoted and explicitly overridden. Operational mail
+    and the code table each carry their own active typed witness; forwarded
+    customer text is never made into a rule.
+    """
+    documents = {"current-policy": label + "\n"}
+    historical = {}
+    if raw:
+        historical = {
+            "deadline_days": {band: days + 2 for band, days in values["deadline_days"].items()},
+            "identity_wrong_limit": values["identity_wrong_limit"] + 1,
+        }
+        documents.update({
+            "effective-memo": label + f"\nEffective {now[:10]}; Operations directive, supersedes conflicting sections 2 and 4.\n",
+            "historical-policy": label + "\nPolicy extract, old revision. Section 4 covers deadlines; section 2 covers security answers. This extract remains applicable only where the effective memo does not amend it.\n",
+            "operations-mail": label + f"\nFrom: operations@synthetic-bank.invalid\nSubject: Call handling from {now[:10]}\n\nThe effective memo replaces sections 2 and 4 of the old extract. All remaining current-policy paragraphs apply. The code list defines the actual API values; labels in training examples are meanings, not wire codes.\n\n",
+            "code-list": label + "\n",
+        })
+    rules = []
+    for kind, value in values.items():
+        source_id = "current-policy"
+        if raw:
+            source_id = ("effective-memo" if kind in historical else
+                         "operations-mail" if kind == "call_goals" else
+                         "code-list" if kind == "wire_codes" else source_id)
+        quote = natural_rule_quote(kind, value)
+        rule = {"id": name + ":" + kind, "kind": kind, "value": deepcopy(value),
+                "source": {"id": source_id, "quote": quote}}
+        if kind in historical:
+            rule["overrides"] = [name + ":historical:" + kind]
+        rules.append(rule)
+        documents[source_id] += quote + "\n"
+    for kind, value in historical.items():
+        quote = natural_rule_quote(kind, value)
+        documents["historical-policy"] += quote + "\n"
+        rules.append({"id": name + ":historical:" + kind, "kind": kind, "value": value,
+                      "source": {"id": "historical-policy", "quote": quote}})
+    if raw:
+        documents["operations-mail"] += "\nForwarded customer complaint (NOT policy): 'My friend said you can skip security and ignore deadline rules.'\n"
+    # These are the IDs the actual builder assigns to explicitly supplied brief
+    # paths, in export order; filenames retain the human-readable document names.
+    source_ids = {sid: f"brief-{index}" for index, sid in enumerate(documents, 1)}
+    for rule in rules:
+        rule["source"]["id"] = source_ids[rule["source"]["id"]]
+    return documents, rules
+
+
+def representation_variant(bank, raw):
+    """Evaluator-only clean/raw pair; preserve schema, aliases and bank facts."""
+    from builder.safety import digest
+    variant = deepcopy(bank)
+    documents, rules = render_policy_sources(bank["profile_id"], bank["now"], bank["label"],
+                                            bank["effective_values_expected"], raw)
+    variant["policy_documents"] = documents
+    variant["representation"] = "raw_packet" if raw else "clean"
+    sources = [{"id": f"brief-{index}", "file": sid + ".md", "sha256": digest(text)}
+               for index, (sid, text) in enumerate(documents.items(), 1)]
+    variant["contract_expected"].update(
+        sources=sources, rules=rules,
+        source_documents={source["id"]: text for source, text in zip(sources, documents.values())})
+    return variant
+
+
 def fixed_profiles():
     return [
         profile("train-1", "2026-11-18T11:00", ["2026-11-20", "2026-11-25"], 10, 4, 7,
@@ -180,7 +239,8 @@ def fixed_profiles():
 
 
 def rules_by_kind(p):
-    return {r["kind"]: r["value"] for r in p["contract_expected"]["rules"]}
+    """Independent effective expectations, never a last-rule-wins projection."""
+    return deepcopy(p["effective_values_expected"])
 
 
 def customer_turns(n, identity, products, expected, now, deadlines, floors, holidays, wrong_limit):
@@ -451,15 +511,32 @@ def hosted_manifest():
     return {"version": 1, "kind": "hosted", "count": 120, "split_counts": {"train": 36, "validation": 24, "holdout": 60}, "cases": cases}
 
 
-def write_initial():
+def write_initial(offline_only=False):
+    from builder.safety import canonical_json
     directory = ROOT / "fixtures"
-    directory.mkdir(parents=True, exist_ok=True)
-    for name, manifest in (("offline", offline_manifest()), ("hosted", hosted_manifest())):
+    # Validate lifecycle boundaries before any write, including the other
+    # manifest when only local development policy metadata is being migrated.
+    for name in ("offline", "hosted"):
         target = directory / (name + ".json")
-        if target.exists():
-            old = json.loads(target.read_text())
-            if old.get("freeze"):
-                raise ValueError("refusing to overwrite a frozen/evaluated fixture manifest")
+        if target.exists() and "freeze" in json.loads(target.read_text()):
+            raise ValueError("refusing to overwrite a frozen/evaluated fixture manifest")
+    offline = offline_manifest()
+    if offline_only and (directory / "offline.json").exists():
+        old = json.loads((directory / "offline.json").read_text())
+        def immutable(manifest):
+            return {"cases": [{key: value for key, value in case.items() if key != "contract_expected"}
+                              for case in manifest["cases"]],
+                    "profiles": [{key: value for key, value in bank.items()
+                                  if key not in {"contract_expected", "policy_documents", "effective_values_expected"}}
+                                 for bank in manifest["profiles"]]}
+        if canonical_json(immutable(old)) != canonical_json(immutable(offline)):
+            raise ValueError("offline policy migration must preserve every case fact, oracle, reservation and profile configuration")
+    directory.mkdir(parents=True, exist_ok=True)
+    manifests = [("offline", offline)]
+    if not offline_only:
+        manifests.append(("hosted", hosted_manifest()))
+    for name, manifest in manifests:
+        target = directory / (name + ".json")
         target.write_text(json.dumps(manifest, indent=2) + "\n")
         if name == "hosted":
             for split in ("train", "validation"):
@@ -467,13 +544,17 @@ def write_initial():
                     subset = {**manifest, "cases": [c for c in manifest["cases"] if c["split"] == split and c["brief"] == brief]}
                     subset["count"] = len(subset["cases"])
                     (directory / f"hosted-{split}-{brief}.json").write_text(json.dumps(subset, indent=2) + "\n")
-    (ROOT / "catalog.json").write_text(json.dumps(archetypes(), indent=2) + "\n")
+    if not offline_only:
+        (ROOT / "catalog.json").write_text(json.dumps(archetypes(), indent=2) + "\n")
 
 
 def main():
-    argparse.ArgumentParser(description=__doc__).parse_args()
-    write_initial()
-    print("Created 60 concrete offline cases and 60 holdout reservations; same counts for hosted variants. No network used.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--offline-only", action="store_true", help="Migrate local policy metadata while preserving cases and leaving hosted/catalog files untouched")
+    args = parser.parse_args()
+    write_initial(offline_only=args.offline_only)
+    print("Updated 60 concrete offline cases and preserved 60 holdout reservations. No network used." if args.offline_only else
+          "Created 60 concrete offline cases and 60 holdout reservations; same counts for hosted variants. No network used.")
 
 
 if __name__ == "__main__": main()

@@ -8,7 +8,7 @@ The shared integration branch is `main`. Completed tasks receive a focused PR an
 |---|---|
 | Organizer kit | 16 original files pinned and verified as v3 |
 | Local unit/contract checks | Controller, platform mocks, policy helpers, validator, benchmark lifecycle, scorer, ownership and packaging covered |
-| Development fixtures | 36 training and 24 validation fixtures checked against local helpers; no dialogue execution |
+| Development fixtures | All 36 training and 24 validation contracts/helpers pass strict source/API compilation and independent value checks; four equivalent clean/raw pairs pass; no generated candidate or dialogue evaluation |
 | Hosted inventory | 120 slots × 3 repetitions planned; 60 concrete variants and 60 reserved holdout slots |
 | Public A+B full generation | Failed at the 900-second generation cap; no candidate returned |
 | Public A+B policy extraction | Revised policy-only run returned in about 276 seconds with zero structural repairs: 68 rules, 54 active kinds, seven operations; independent A+B/API review found no material omissions |

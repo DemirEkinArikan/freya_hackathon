@@ -163,6 +163,10 @@ broad evaluation beforehand, use general bug fixes only, and reserve the final
 15 minutes for submission. Hidden-specific values belong in input/generated
 artifacts, never builder source or static prompts.
 
+See the [submission package contract](docs/SUBMISSION-PACKAGE.md) and
+[final-window runbook](docs/T18-FINAL-WINDOW.md) for the two-run evidence manifest,
+shared simulation lease, source/evidence commits and protected submission buffer.
+
 See [pinned contract](docs/CONTRACT.md), [task definitions](docs/tasks.json) and
 [contribution/handoff rules](AGENTS.md). The organizer kit is pinned by SHA-256;
 review an emailed version update before repinning it.

@@ -62,7 +62,7 @@
       "error": "Policy extraction failed after bounded repairs: close_precedence requires supported semantic outcomes or explicit wire bindings",
       "rejected_candidate_count": 3,
       "review_findings": [
-        "Latest candidate includes identity outcomes in postaccount close_precedence; final candidate rejected.",
+        "Latest candidate includes identity outcomes in protected execution close_precedence; final candidate rejected.",
         "Latest candidate describes definite negative200 retries, but executable nonpersistent_failures classifies only500.",
         "Singleton account-order/all-product metadata is unnecessary; it has no interproduct effect."
       ]

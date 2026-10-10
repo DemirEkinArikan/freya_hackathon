@@ -15,7 +15,7 @@ read by the generator, and no workflow, Freya client or simulation was created.
 
 | Approved inputs | Actual result | Source-only review |
 | --- | --- | --- |
-| A | Three rejected candidates; no accepted contract or requirements | Final rejection was unsupported postaccount closing precedence. The candidate includes identity closing outcomes in that list. |
+| A | Three rejected candidates; no accepted contract or requirements | Final rejection was unsupported protected closing precedence. The candidate includes identity closing outcomes in that list. |
 | A+B | Policy, contract and execution requirements compiled after one repair in 509.407 seconds | Structural success; executable negative-result retries and failure disposition omit supplied constraints. Semantic acceptance fails. |
 
 The A+B output preserves explicit amendments for multiple products, returned
@@ -41,7 +41,9 @@ separately repaired the two reproduced unsafe terminal cycles, with 953 tests
 passing at its checked head.
 
 The policy interface guidance now states the existing single-product dependency
-waiver and separates postaccount closing precedence from identity closing scopes.
+waiver and separates protected execution closing precedence from identity closing scopes.
+It also explains that supplied exhaustion consequences need operative typed
+dispositions and sourced reason vocabulary; descriptive extensions cannot execute them.
 It introduces no policy values, source constraints or compiler behavior. T05's
 separate failure-witness validation and runtime functions remain untouched.
 

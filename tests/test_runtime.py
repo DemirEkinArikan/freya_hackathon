@@ -48,6 +48,20 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn("permissions.freya_generation.network.enabled=false", argv)
         self.assertTrue(any('":root"="deny"' in value for value in argv))
 
+    def test_source_controls_disable_bundled_cloud_skills_and_user_input_tools(self):
+        gen = CodexGenerator(self.directory, Trace(self.directory / "trace.jsonl"), Deadline())
+        argv = gen.argv(self.directory, self.directory / "schema.json")
+        for setting in ("skills.bundled.enabled=false", "skills.include_instructions=false", "cloud.skills.enabled=false",
+                        "tools.experimental_request_user_input.enabled=false", "tools.update_plan.enabled=false"):
+            with self.subTest(setting=setting):
+                self.assertIn(setting, argv)
+                self.assertEqual(argv[argv.index(setting) - 1], "-c")
+        for feature in ("code_mode", "code_mode_only", "code_mode_host"):
+            with self.subTest(feature=feature):
+                self.assertIn(feature, argv)
+                self.assertEqual(argv[argv.index(feature) - 1], "--disable")
+        self.assertIn("--strict-config", argv)
+
     def test_relative_output_directory_is_resolved_before_child_cwd(self):
         gen = CodexGenerator(Path("artifacts/relative-unit-probe"), Trace(self.directory / "trace.jsonl"), Deadline())
         self.assertTrue(gen.output_dir.is_absolute())
@@ -61,6 +75,23 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(GenerationError):
             gen.generate("safe brief")
         self.assertEqual(len(calls), 2)
+
+    def test_missing_code_mode_control_fails_before_any_probe_or_brief(self):
+        for missing in ("code_mode", "code_mode_only"):
+            calls = []
+            def run(argv, **kwargs):
+                calls.append((argv, kwargs))
+                if "--help" in argv:
+                    text = "--ignore-user-config --ignore-rules --ephemeral --output-schema --strict-config"
+                else:
+                    text = "\n".join(name + " stable false" for name in (*DISABLED_FEATURES, "skip_host_skill_discovery") if name != missing)
+                return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
+            with self.subTest(missing=missing):
+                gen = CodexGenerator(self.directory, Trace(self.directory / "trace.jsonl"), Deadline(), run=run)
+                with self.assertRaisesRegex(GenerationError, missing):
+                    gen.generate("BANK BRIEF MUST NOT BE SENT")
+                self.assertEqual(len(calls), 2)
+                self.assertFalse(any("input" in kwargs for _, kwargs in calls))
 
     def test_generation_is_stdin_only_and_trace_redacts_before_write(self):
         calls = []

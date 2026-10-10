@@ -40,7 +40,12 @@ permission to alter a frozen or evaluated dataset.
 
 `benchmarks.export_inputs` validates every operation before creating files:
 populated explicit request/result schemas, field types/enums, required fields,
-trusted result roles and exact path-parameter bindings. It exports the original
+trusted result roles and exact path-parameter bindings.
+Mandatory success schemas remain complete. Explicit non-success responses can
+document a bodyless fault, or provide an independently typed error-only schema;
+missing fault bodies never supply negative-persistence or success evidence.
+The preflight does not require success-only fields on an error response.
+It exports the original
 approved policy documents and OpenAPI only, recording the actual API digest.
 Existing destinations are rejected before partial writes. No customer scripts,
 answers, expected records, helper outputs or fault injections enter the export.

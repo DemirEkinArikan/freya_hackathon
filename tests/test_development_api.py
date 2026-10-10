@@ -83,16 +83,40 @@ class DevelopmentApiTests(unittest.TestCase):
         def missing_reply(api): api["paths"]["/create_promise"]["post"]["responses"]["200"].pop("content")
         def missing_field(api): api["paths"]["/verify_identity"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"].pop("wrong_answers_left")
         def wrong_type(api): api["paths"]["/create_promise"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["promise_id"]["type"] = "integer"
+        def wrong_request_type(api): api["paths"]["/create_promise"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["amount"]["type"] = "string"
         def bad_enum(api): api["paths"]["/close_call"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["outcome"]["enum"] = [True]
         def bad_path(api): api["paths"]["/get_account/{customer}"] = api["paths"].pop("/get_account")
         def absent_success(api): api["paths"]["/add_note"]["post"]["responses"] = {}
-        for mutation in (missing_reply, missing_field, wrong_type, bad_enum, bad_path, absent_success):
+        for mutation in (missing_reply, missing_field, wrong_type, wrong_request_type, bad_enum, bad_path, absent_success):
             with self.subTest(mutation=mutation.__name__), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp); manifest = offline_manifest()
                 mutation(manifest["profiles"][0]["openapi"])
                 (root / "manifest.json").write_text(json.dumps(manifest))
                 with self.assertRaises(ValueError): export_profile(root / "manifest.json", "train-1", root / "inputs", workspace_root=root)
                 self.assertFalse((root / "inputs").exists())
+
+    def test_explicit_bodyless_and_error_only_faults_keep_success_schema_required(self):
+        api = deepcopy(fixed_profiles()[0]["openapi"])
+        replies = api["paths"]["/create_promise"]["post"]["responses"]
+        replies["503"] = {"description": "The transport fault may omit its body; persistence remains unknown."}
+        replies["400"] = {"description": "Only an error code is returned.", "content": {"application/json": {"schema": {
+            "type": "object", "properties": {"error_code": {"type": "integer"}}, "required": ["error_code"]}}}}
+        self.assertTrue(validate_input_api(api)["request_response_schemas_verified"])
+        changed = deepcopy(api)
+        changed["paths"]["/create_promise"]["post"]["responses"]["400"]["content"]["application/json"]["schema"]["properties"]["error_code"]["type"] = "unsafe-type"
+        with self.assertRaises(ValueError): validate_input_api(changed)
+        changed = deepcopy(api)
+        changed["paths"]["/create_promise"]["post"]["responses"]["503"] = {}
+        with self.assertRaises(ValueError): validate_input_api(changed)
+        changed = deepcopy(api)
+        changed["paths"]["/create_promise"]["post"]["responses"]["200"] = {"description": "No body."}
+        with self.assertRaises(ValueError): validate_input_api(changed)
+
+    def test_conflicting_composed_request_cannot_be_flattened_into_export_proof(self):
+        api = deepcopy(fixed_profiles()[0]["openapi"])
+        schema = api["paths"]["/create_promise"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+        schema["allOf"] = [{"type": "object", "properties": {"amount": {"type": "string"}}}]
+        with self.assertRaises(ValueError): validate_input_api(api)
 
     def test_declared_path_parameter_must_have_exact_required_schema_binding(self):
         api = deepcopy(fixed_profiles()[0]["openapi"])

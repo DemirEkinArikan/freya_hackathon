@@ -17,7 +17,7 @@ def _matches_type(value, kind):
 def _schema(spec, path, depth=0):
     if depth > 32 or not isinstance(spec, dict) or spec.get("type") not in {"string", "integer", "number", "boolean", "object", "array"}:
         raise ValueError(path + ": a bounded explicit supported schema type is required")
-    if any(key in spec for key in ("oneOf", "anyOf", "not", "$ref")):
+    if any(key in spec for key in ("oneOf", "anyOf", "allOf", "not", "$ref")):
         raise ValueError(path + ": ambiguous or unresolved schema is unsupported")
     kind = spec["type"]
     if "description" in spec and not isinstance(spec["description"], str):
@@ -68,6 +68,10 @@ def _semantic_fields(schema, label):
 def validate_input_api(openapi):
     """Check schema execution shape, not banking policy interpretation or calls."""
     bound = operations(openapi)
+    # Use the same strict local-reference/composition boundary as compilation;
+    # permissive last-wins allOf resolution is insufficient export evidence.
+    from builder.contract import _operation_catalogue
+    _operation_catalogue(openapi, [operation["name"] for operation in bound])
     for operation in bound:
         name = operation["name"]
         body = operation["body_schema"]
@@ -75,6 +79,10 @@ def validate_input_api(openapi):
         request = _semantic_fields(body, "request")
         if name in REQUEST_TYPES and set(REQUEST_TYPES[name]) - set(request):
             raise ValueError(name + ": request lacks explicit semantic field bindings")
+        for semantic, kind in REQUEST_TYPES.get(name, {}).items():
+            allowed = {"number", "integer"} if kind == "number" else {kind}
+            if body["properties"][request[semantic]]["type"] not in allowed:
+                raise ValueError(name + ": unsupported semantic request type")
         path_fields = set()
         declared = set()
         for parameter in operation["parameters"]:
@@ -99,6 +107,12 @@ def validate_input_api(openapi):
         for status, response in responses.items():
             if not isinstance(status, str) or not (status == "default" or re.fullmatch(r"[1-5][0-9]{2}", status)):
                 raise ValueError(name + ": invalid declared response status")
+            successful = status.startswith("2")
+            if (not successful and status != "default" and isinstance(response, dict)
+                    and not response.get("content")):
+                if not isinstance(response.get("description"), str) or not response["description"].strip():
+                    raise ValueError(name + ": bodyless fault response needs an explicit description")
+                continue
             schema = response.get("content", {}).get("application/json", {}).get("schema") if isinstance(response, dict) else None
             _schema(schema, name + ".response." + status)
             if schema["type"] != "object":
@@ -108,9 +122,11 @@ def validate_input_api(openapi):
             if name == "verify_identity": mandatory |= {"verified", "wrong_answers_left"}
             elif name == "get_account": mandatory.add("products")
             elif name == "create_promise": mandatory.add("promise_id")
-            if name in RESULT_ROLES and mandatory - set(fields):
+            if (successful or status == "default") and name in RESULT_ROLES and mandatory - set(fields):
                 raise ValueError(name + ": response lacks trusted semantic fields")
             for semantic, wire in fields.items():
+                if not successful and status != "default":
+                    continue
                 field = schema["properties"][wire]
                 if semantic in {"ok", "verified"}:
                     valid = field["type"] == "boolean" or field["type"] == "string" and bool(field.get("enum")) and set(field["enum"]) <= {"true", "false", "True", "False"}
@@ -119,7 +135,7 @@ def validate_input_api(openapi):
                 else: valid = field["type"] == "string"
                 if not valid:
                     raise ValueError(name + ": unsupported trusted result type")
-            success |= status.startswith("2")
+            success |= successful
         if not success:
             raise ValueError(name + ": an explicit success response is required")
     return {"operations": len(bound), "request_response_schemas_verified": True}

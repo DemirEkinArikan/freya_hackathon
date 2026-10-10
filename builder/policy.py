@@ -102,7 +102,7 @@ _SHAPE_GUIDANCE = {
     "resolve_all_products": "a boolean, not a string or integer",
     "transfer_prerequisites": 'a nonempty object mapping queue names to "none", "identity", or "account"',
     "promise_readback": "an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps",
-    "account_disclosure_fields": "an array of unique nonempty strings excluding customer_id/product_id; an empty array is allowed",
+    "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
 }
 
 
@@ -172,6 +172,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, dict) and bool(value) and not set(value) - {"min", "max"}
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
+    elif kind == "account_disclosure_fields":
+        return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
     elif kind in {"identity_fields", "note_reasons"}:
@@ -245,8 +247,13 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         except CallVariablesError:
             valid = False
     elif kind == "account_disclosure_fields":
-        valid = (isinstance(value, list) and all(text(item) for item in value)
-                 and len(set(value)) == len(value) and not set(value) & {"customer_id", "product_id"})
+        def fields(items):
+            return (isinstance(items, list) and all(text(item) for item in items)
+                    and len(set(items)) == len(items) and not set(items) & {"customer_id", "product_id"})
+        valid = fields(value) or (isinstance(value, dict) and set(value) == {"common", "by_product_type"}
+                 and fields(value["common"]) and isinstance(value["by_product_type"], dict)
+                 and bool(value["by_product_type"])
+                 and all(text(kind) and fields(items) for kind, items in value["by_product_type"].items()))
     elif kind in {"record_notes", "resolve_all_products"}:
         valid = type(value) is bool
     elif kind in {"confirmation_actions", "close_precedence"}:

@@ -177,7 +177,7 @@ class PackageTests(unittest.TestCase):
     def test_final_trace_test_attempt_and_retained_result_must_agree(self):
         from test_package_trace_validation import evidence
         with patch.object(subprocess, 'run', return_value=SimpleNamespace(stdout='a' * 40)):
-            for mutation in ('none', 'attempt', 'directory', 'result', 'claim'):
+            for mutation in ('none', 'attempt', 'directory', 'result', 'claim', 'boolean_count'):
                 data = self.evidence()
                 workflow, rows = evidence(True)
                 run_path = self.root / 'hidden-1/manifest.json'
@@ -202,6 +202,7 @@ class PackageTests(unittest.TestCase):
                 (self.root / 'hidden-1.jsonl').write_text('\n'.join(json.dumps(row) for row in rows))
                 tests = dict(run['tests'])
                 if mutation == 'result': tests['status'] = 'failed'
+                if mutation == 'boolean_count': tests['passed'] = True
                 (attempt_path / 'tests.json').write_text(json.dumps(tests))
                 with self.subTest(mutation=mutation):
                     if mutation == 'none':

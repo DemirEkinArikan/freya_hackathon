@@ -275,7 +275,7 @@ def validate_run(path, run, workflow, events, inputs):
                     or value.get('export_sha256') != digest(workflow)
                     or any(value.get(key) != run.get(key) for key in ('tool_api_sha256', 'policy_contract_sha256'))):
                 raise ValueError('Selected attempt record differs from the successful build manifest/export')
-        elif filename == 'export.json' and value != workflow:
+        elif filename == 'export.json' and digest(value) != digest(workflow):
             raise ValueError('Selected attempt export differs from the submitted export')
         elif filename == 'deployment.json':
             if type(value.get('version_number')) is not int or value.get('published') is not True:
@@ -283,7 +283,7 @@ def validate_run(path, run, workflow, events, inputs):
             if any(value.get(key) != run.get('deployment', {}).get(key)
                    for key in ('workflow_id', 'agent_id', 'version_id', 'version_number', 'published')):
                 raise ValueError('Selected attempt deployment differs from the build manifest')
-            if value.get('workflow') != workflow.get('workflow'):
+            if digest(value.get('workflow')) != digest(workflow.get('workflow')):
                 raise ValueError('Selected attempt published graph differs from the export')
     deployments = [event for event in events if _event_name(event) == 'deployment']
     selected = deployments[-1]
@@ -298,7 +298,7 @@ def validate_run(path, run, workflow, events, inputs):
                 raise ValueError('Selected trace tests refer to another attempt')
         test_path, tests = read_evidence(attempt_dir / 'tests.json')
         retained.append(test_path)
-        if tests != run.get('tests') or tests != test_events[-1].get('result'):
+        if digest(tests) != digest(run.get('tests')) or digest(tests) != digest(test_events[-1].get('result')):
             raise ValueError('Selected attempt tests differ from the manifest/trace')
     elif run.get('tests') is not None:
         raise ValueError('Build manifest tests are absent from the selected trace')

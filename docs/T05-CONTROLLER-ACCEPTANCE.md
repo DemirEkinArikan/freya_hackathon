@@ -197,3 +197,26 @@ dialogue. Missing, null or empty-text values take the quarantine terminal;
 zero and false remain valid supplied values. Existing protected-value privacy
 and write restrictions still apply. Input amendments replace the active
 declaration, and the contract/profile hashes seal its exact names.
+
+## Preserved annotation and local-closing diagnostic
+
+Checked, merged source `651ab17d6d3965a2880fa6c46733525bcc5d502a` ran fresh
+public-A invocation `20261010T222129615212Z`. The mandatory audit passed in
+6.22 seconds. Its 36 runtime source hashes matched that exact git commit.
+Two policy attempts had correct qualified failure witnesses and supplied-name
+declarations but used an annotation array where the extension checker expected
+a status-keyed object. The diagnostic did not state that concrete shape.
+Both rejected policies also lacked the local paid disposition required by the
+current kernel to derive the source-permitted paid closing.
+
+The isolated third generation process was stopped at
+`2026-10-10T22:30:46.426360Z`, after 556.827 seconds. The controller preserved
+its failed manifest, original rejected policies and end trace. No policy was
+frozen and no plan, deployment, export or simulation was produced.
+
+The next generic repair validates mechanically equivalent explicit annotation
+arrays and status-keyed objects without changing policy artifacts or inventing
+guarantees. A separate pre-freeze check rejects unsupported selected local paid
+closing configurations before any plan generation. These are interface and
+compiler representability checks; literal source binding still needs semantic
+review, and no hosted behavior is established by them.

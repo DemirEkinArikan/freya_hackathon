@@ -55,6 +55,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
+    "promise_failure_resolution": "descriptive extension only: operation is the selected actual API ID; optional api_annotations is either {document: openapi, HTTP-status: {pointer, quote}} with three-digit response-status keys, or a nonempty array of exact {document: openapi, operation: actual API ID, http_status: integer100..599, pointer, quote} rows; statuses unique, witnesses literal and operation/status-scoped, every annotation has a matching operative nonpersistent_failures row; no executable rule or guarantee is inferred from this extension",
     "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",

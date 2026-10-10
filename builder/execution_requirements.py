@@ -13,7 +13,7 @@ from typing import Any
 from .action_bindings import ActionBindingError, compile_action_bindings
 from .contract import PolicyContractError, compile_policy_contract, _resolve_schema_refs
 from .guards import (GuardCompileError, compile_guarded_workflow,
-                     execution_action_catalogue, required_execution_kinds)
+                     execution_action_catalogue, required_execution_kinds, _profile)
 from .policy import PolicyError, compile_execution_policy, execution_rule_guidance
 from .safety import canonical_json, digest
 
@@ -41,6 +41,43 @@ def _inspection_plan(actions: list[str], catalogue: dict) -> dict:
                        "success_node": "inspection", "blocked_node": "inspection",
                        "failure_node": "inspection"}
     return {"initial_node": "inspection", "nodes": nodes}
+
+
+def _counted_annotation_view(resolution: dict, operation: str) -> tuple[list[tuple[int, dict]], list[str]]:
+    """Inspect explicit annotations without rewriting any supplied policy data."""
+    expected = ("promise_failure_resolution requires outer operation equal to the selected actual operation; "
+                "api_annotations must be a nonempty object {document: openapi, HTTP-status: {pointer: nonempty string, quote: nonempty string}} "
+                "or a nonempty array of exact {document: openapi, operation: selected actual operation, "
+                "http_status: integer100..599, pointer: nonempty string, quote: nonempty string} rows; response statuses must be unique")
+    if resolution.get("operation") != operation:
+        return [], [expected]
+    annotations = resolution.get("api_annotations")
+    view = []
+    if isinstance(annotations, dict):
+        if annotations.get("document") != "openapi" or len(annotations) < 2:
+            return [], [expected]
+        for status, witness in annotations.items():
+            if status == "document":
+                continue
+            if (not isinstance(status, str) or len(status) != 3 or not status.isascii()
+                    or not status.isdigit() or not 100 <= int(status) <= 599
+                    or not isinstance(witness, dict) or set(witness) != {"pointer", "quote"}
+                    or any(not isinstance(witness[key], str) or not witness[key].strip() for key in ("pointer", "quote"))):
+                return [], [expected]
+            view.append((int(status), copy.deepcopy(witness)))
+    elif isinstance(annotations, list) and annotations:
+        for row in annotations:
+            if (not isinstance(row, dict) or set(row) != {"document", "operation", "http_status", "pointer", "quote"}
+                    or row["document"] != "openapi" or row["operation"] != operation
+                    or type(row["http_status"]) is not int or not 100 <= row["http_status"] <= 599
+                    or any(not isinstance(row[key], str) or not row[key].strip() for key in ("pointer", "quote"))):
+                return [], [expected]
+            view.append((row["http_status"], {"pointer": row["pointer"], "quote": row["quote"]}))
+    else:
+        return [], [expected]
+    if len({status for status, _ in view}) != len(view):
+        return [], [expected]
+    return view, []
 
 
 def _failure_source_errors(active: dict, openapi: dict, permitted: set[str],
@@ -96,28 +133,40 @@ def _failure_source_errors(active: dict, openapi: dict, permitted: set[str],
     if ("commit_promises" in operation_bindings and isinstance(resolution, dict)
             and "api_annotations" in resolution):
         operation = operation_bindings["commit_promises"]["operation"]
-        annotations = resolution["api_annotations"]
-        if (resolution.get("operation") != operation or not isinstance(annotations, dict)
-                or annotations.get("document") != "openapi" or len(annotations) < 2):
-            errors.append("promise_failure_resolution api_annotations requires the selected actual promise operation, document openapi and exact response-status witnesses")
-        else:
-            for status, witness in annotations.items():
-                if status == "document":
-                    continue
-                if (not isinstance(status, str) or len(status) != 3 or not status.isascii()
-                        or not status.isdigit() or not 100 <= int(status) <= 599
-                        or not witness_matches(operation, int(status), witness)):
-                    errors.append("promise_failure_resolution api_annotations must bind literal witnesses to the selected actual operation and exact response status")
-                    continue
-                # Reconcile structured declared annotations only. We do not
-                # parse counter prose or supply omitted guarantees ourselves.
-                matches = [row for row in guarantees.get(operation, [])
-                           if row["http_status"] == int(status)
-                           and row.get("api_source", {}).get("pointer", "").removeprefix("#") == witness["pointer"].removeprefix("#")
-                           and row.get("api_source", {}).get("quote") == witness["quote"]]
-                if not matches:
-                    errors.append("promise_failure_resolution declared API annotation is omitted or differs from operative nonpersistent_failures api_source")
+        annotations, shape_errors = _counted_annotation_view(resolution, operation)
+        errors.extend(shape_errors)
+        for status, witness in annotations:
+            if not witness_matches(operation, status, witness):
+                errors.append("promise_failure_resolution api_annotations must bind literal witnesses to the selected actual operation and exact response status")
+                continue
+            # Reconcile explicit annotations only; never supply absent matchers.
+            matches = [row for row in guarantees.get(operation, [])
+                       if row["http_status"] == status
+                       and row.get("api_source", {}).get("pointer", "").removeprefix("#") == witness["pointer"].removeprefix("#")
+                       and row.get("api_source", {}).get("quote") == witness["quote"]]
+            if not matches:
+                errors.append("promise_failure_resolution declared API annotation is omitted or differs from operative nonpersistent_failures api_source")
     return sorted(set(errors))
+
+
+def _local_disposition_errors(actions: list[str], contract: dict, execution: dict,
+                              inspection_plan: dict, bindings: dict) -> list[str]:
+    """Check current local closure representability, never supply bank rules.
+
+    The private guarded-profile selector is the authority for notes/reasons and
+    outcome wire decoding. Its detached normalized result is inspected only;
+    neither source policy nor frozen execution inputs are modified. The global
+    closing vocabulary does not prove phase applicability or semantic meaning.
+    """
+    local_account_actions = {"get_account", "stage_note", "finalize_notes", "close_call"}
+    if (not local_account_actions <= set(actions)
+            or execution["profile"].get("record_notes") is not False):
+        return []
+    normalized = _profile(contract, execution, inspection_plan, bindings)
+    if ("paid" in normalized.get("close_reasons", {})
+            and "paid" not in normalized.get("note_reasons", [])):
+        return ["local disposition coverage cannot represent the supported paid closing meaning; source-backed note_reasons must include its local marker after frozen wire decoding; record_notes false does not authorize add_note or supply a default"]
+    return []
 
 
 def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
@@ -206,7 +255,11 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
                 raise ExecutionRequirementsError([
                     "promise_failure_disposition reason must belong to note_reasons after frozen wire-code decoding"])
         execution = compile_execution_policy(policy, bindings, required_kinds=required)
-        probe = compile_guarded_workflow(_inspection_plan(actions, catalogue), contract, openapi, execution, bindings)
+        inspection_plan = _inspection_plan(actions, catalogue)
+        local_errors = _local_disposition_errors(actions, contract, execution, inspection_plan, bindings)
+        if local_errors:
+            raise ExecutionRequirementsError(local_errors)
+        probe = compile_guarded_workflow(inspection_plan, contract, openapi, execution, bindings)
     except GuardCompileError as exc:
         raise ExecutionRequirementsError(list(exc.errors)) from exc
     except (PolicyError, ActionBindingError) as exc:

@@ -57,3 +57,20 @@ close_precedence encodes only source-supported priorities among overlapping
 protected outcomes. Unique eligible protected facts need no invented ranking;
 multiple facts without a declared applicable priority remain ambiguous. Preserve
 all source-backed closing outcomes and their exact reason vocabularies.
+
+The recognized descriptive promise_failure_resolution extension does not itself
+authorize replay. Its operation is the selected actual API ID. If api_annotations
+is supplied, use either an object with document set to openapi and three-digit
+response-status keys mapped to exact pointer/quote objects, or a nonempty array of
+exact document/operation/http_status/pointer/quote rows. Every array row must
+explicitly say document openapi, the same actual operation and an integer status.
+Do not repeat a status. Retain exact literal API witnesses and matching operative
+nonpersistent_failures entries; neither this format nor descriptive counter prose
+creates a missing guarantee.
+
+The guarded compiler's existing local paid marker represents a sourced paid
+product outcome, not a bank note reason or write permission. When that outcome
+is required by the supplied goal, retain its source-backed local disposition in
+note_reasons alongside applicable no-promise reasons and select the local staging
+and finalization roles. Wire-code bindings may carry the supported semantic label.
+Never invent a paid outcome, banking value or note permission absent from sources.

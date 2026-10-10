@@ -55,10 +55,14 @@ def _arguments(call):
         try:
             value = json.loads(value)
         except (ValueError, TypeError):
-            return {}
-    if isinstance(value, dict) and isinstance(value.get("body"), dict):
+            raise ValueError("malformed tool arguments") from None
+    if not isinstance(value, dict):
+        raise ValueError("malformed tool arguments")
+    if "body" in value:
+        if not isinstance(value["body"], dict):
+            raise ValueError("malformed tool body")
         return value["body"]
-    return value if isinstance(value, dict) else {}
+    return value
 
 
 def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_last4"),
@@ -125,14 +129,22 @@ def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_l
     if outcome_meaning in ("not_reached", "no_contact", "unreached"):
         if any(c.get("tool") in ("verify_identity", "get_account") for c in calls):
             fail("identity/account tools used with a third party or unreached customer")
-    verified, wrong = set(), 0
+    verified, wrong, account_loaded = set(), 0, False
     successful_writes, write_attempts = {}, {}
     recorded = {collection: [] for collection in required[:-1]}
     persisted_actions = {"create_promise": "promises", "add_note": "notes",
                          "schedule_callback": "callbacks", "transfer_to_agent": "transfers"}
     allowed = {"verify_identity", "get_account", "create_promise", "add_note", "schedule_callback", "transfer_to_agent", "close_call"}
     for index, call in enumerate(calls):
-        tool, result, args = call.get("tool"), call.get("result"), _arguments(call)
+        tool, result = call.get("tool"), call.get("result")
+        try:
+            args = _arguments(call)
+        except ValueError:
+            fail("malformed tool arguments", "infrastructure")
+            continue
+        if any(first in args and second in args and args[first] != args[second]
+               for first, second in (("field", "question_code"), ("product_id", "account_ref"))):
+            fail("conflicting tool argument aliases", "evidence")
         if not isinstance(tool, str):
             fail("malformed tool name", "infrastructure")
             continue
@@ -154,6 +166,9 @@ def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_l
             if "ok" in result and type(result["ok"]) is not bool:
                 fail("malformed identity action result", "infrastructure")
                 continue
+            if "verified" in result and type(result["verified"]) is not bool:
+                fail("malformed identity verification result", "infrastructure")
+                continue
             field = args.get("field", args.get("question_code"))
             if field is None:
                 missing.append("identity arguments absent from ledger")
@@ -164,7 +179,7 @@ def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_l
                 fail("identity field is not permitted by the contract")
             elif field in verified:
                 fail("an already verified identity factor was checked again")
-            elif field != identity_fields[0] and identity_fields[0] not in verified:
+            elif not set(identity_fields[:identity_fields.index(field)]).issubset(verified):
                 fail("identity factors were asked out of order")
             if wrong >= wrong_limit:
                 fail("identity check continued after total wrong-answer limit")
@@ -173,15 +188,30 @@ def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_l
             elif result.get("verified") is True and field is not None:
                 verified.add(field)
             elif result.get("verified") is False:
-                error = str(result.get("error", "")).lower()
-                unreadable = any(word in error for word in ("unreadable", "invalid date", "parse"))
-                if result.get("hint") != "day_month_swapped" and not unreadable:
+                # Failed actions did not check an answer. Error prose cannot
+                # exempt a processed wrong answer from the shared counter.
+                if result.get("ok") is not False and result.get("hint") != "day_month_swapped":
                     wrong += 1
             elif result.get("hint") != "day_month_swapped" and not (result.get("ok") is False and result.get("error")):
                 missing.append("identity verification result absent")
+            if "wrong_answers_left" in result:
+                remaining = result["wrong_answers_left"]
+                if type(remaining) is not int or not 0 <= remaining <= wrong_limit:
+                    fail("malformed identity wrong-answer counter", "infrastructure")
+                elif remaining != max(0, wrong_limit - wrong):
+                    fail("identity wrong-answer counter contradicts recorded checks", "evidence")
+            if "all_verified" in result:
+                if type(result["all_verified"]) is not bool:
+                    fail("malformed identity completion flag", "infrastructure")
+                elif result["all_verified"] != set(identity_fields).issubset(verified):
+                    fail("identity completion flag contradicts recorded checks", "evidence")
         if tool in ("get_account", "create_promise") and not set(identity_fields).issubset(verified):
             fail("account access or promise occurred before both identity factors passed")
+        if tool == "get_account" and result.get("ok") is True and set(identity_fields).issubset(verified):
+            account_loaded = True
         if tool == "create_promise":
+            if not account_loaded:
+                fail("promise attempted before a successful account lookup")
             product = args.get("product_id", args.get("account_ref"))
             if not isinstance(product, str) or not product:
                 missing.append("promise product arguments absent or invalid")

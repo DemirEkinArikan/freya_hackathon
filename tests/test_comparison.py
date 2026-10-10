@@ -201,6 +201,7 @@ class ComparisonTests(unittest.TestCase):
         other["build"]["ended_at"] = "2032-04-07T08:00:01+03:00"
         for row in other["trials"]["train"]["report"]["rows"]:
             row["ledger"]["promises"][0]["amount"] = "999999.00"
+            row["ledger"]["calls"][3]["args"]["amount"] = "999999.00"
         result = compare(baseline, other)
         self.assertTrue(result["comparable"])
         train = result["splits"][0]
@@ -323,6 +324,83 @@ class ComparisonTests(unittest.TestCase):
         behavior_failure(other)
         other["trials"]["train"]["report"]["rows"][0]["ledger"]["promises"][0]["amount"] = []
         self.assertEqual(compare(bundle("baseline"), other)["reason"], "promise_amount_evidence_invalid")
+
+
+class ComparisonAuditTests(unittest.TestCase):
+    def test_false_passes_with_contradictory_tool_behavior_are_not_ranked(self):
+        for mutation in ("duplicate-attempt", "close-failed", "premature-account", "counter", "missing-account"):
+            other = bundle("structured")
+            calls = other["trials"]["train"]["report"]["rows"][0]["ledger"]["calls"]
+            if mutation == "duplicate-attempt":
+                duplicate = deepcopy(calls[3])
+                duplicate["result"]["ok"] = False
+                calls.insert(-1, duplicate)
+            elif mutation == "close-failed":
+                calls[-1]["result"]["ok"] = False
+            elif mutation == "premature-account":
+                calls.insert(0, calls.pop(2))
+            elif mutation == "counter":
+                calls[0]["result"]["wrong_answers_left"] = 0
+            else:
+                calls.pop(2)
+            with self.subTest(mutation=mutation):
+                self.assertFalse(compare(bundle("baseline"), other)["comparable"])
+
+    def test_incomplete_or_inconsistent_tool_evidence_is_never_a_behavior_result(self):
+        for mutation in ("missing-args", "missing-success", "write-terms", "malformed-args", "missing-evidence-type"):
+            for failed in (False, True):
+                other = bundle("structured")
+                if failed:
+                    behavior_failure(other)
+                row = other["trials"]["train"]["report"]["rows"][0]
+                calls = row["ledger"]["calls"]
+                if mutation == "missing-args":
+                    calls[-1].pop("args")
+                elif mutation == "missing-success":
+                    calls[3]["result"] = {}
+                elif mutation == "write-terms":
+                    calls[3]["args"]["amount"] = "999.00"
+                elif mutation == "malformed-args":
+                    calls[2]["args"] = []
+                else:
+                    row["missing_evidence"] = False
+                with self.subTest(mutation=mutation, failed=failed):
+                    self.assertFalse(compare(bundle("baseline"), other)["comparable"])
+
+    def test_behavioral_ledger_failure_remains_comparable_when_recorded_as_failure(self):
+        other = bundle("structured")
+        behavior_failure(other)
+        other["trials"]["train"]["report"]["rows"][0]["ledger"]["calls"][-1]["result"]["ok"] = False
+        self.assertTrue(compare(bundle("baseline"), other)["comparable"])
+
+    def test_failed_judge_must_have_a_recorded_conversation_failure(self):
+        other = bundle("structured")
+        behavior_failure(other)
+        row = other["trials"]["train"]["report"]["rows"][0]
+        row["judge"]["outcome"] = "fail"
+        self.assertFalse(compare(bundle("baseline"), other)["comparable"])
+        row["failures"][0]["category"] = "conversation"
+        self.assertTrue(compare(bundle("baseline"), other)["comparable"])
+
+    def test_transcript_must_have_call_attribution_and_supplied_deployment_ids_must_match(self):
+        for mutation in ("missing-id", "agent-id", "workflow-id"):
+            other = bundle("structured")
+            row = other["trials"]["train"]["report"]["rows"][0]
+            if mutation == "missing-id":
+                row["transcript"].pop("id")
+            elif mutation == "agent-id":
+                row["judge"]["agentId"] = "different-agent"
+            else:
+                row["transcript"]["workflowId"] = "different-workflow"
+            with self.subTest(mutation=mutation):
+                self.assertFalse(compare(bundle("baseline"), other)["comparable"])
+        other = bundle("structured")
+        report = other["trials"]["train"]["report"]
+        row = report["rows"][0]
+        row["transcript"]["callId"] = row["transcript"].pop("id")
+        row["judge"]["agentId"] = report["deployment_pin"]["before"]["agent_id"]
+        row["transcript"]["workflowId"] = report["deployment_pin"]["before"]["workflow_id"]
+        self.assertTrue(compare(bundle("baseline"), other)["comparable"])
 
 
 if __name__ == "__main__":

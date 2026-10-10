@@ -116,6 +116,28 @@ can explicitly bind renamed API fields. Canonical names are accepted only when
 they exist exactly in the supplied schema; ambiguous/missing fields fail.
 Opaque wire vocabularies use T06's API-validated detached category bindings.
 
+### Renamed operation IDs
+
+`tool_aliases` maps canonical semantic roles (`verify_identity`, `get_account`,
+`create_promise`, `add_note`, `schedule_callback`, `transfer_to_agent`,
+`close_call`) to exact actual operation IDs in this run's permitted API. Each
+role must resolve uniquely; duplicate targets and collisions with unchanged
+canonical operation IDs are rejected. A renamed operation without its explicit
+frozen alias fails rather than being guessed from URL, field names or prose.
+
+`action_fields` and `result_fields` remain keyed by canonical role. The compiler
+keeps the actual API operation ID, URL, request/result schemas and security
+configuration intact. Binding categories point to those actual IDs and exact
+bound fields. Protected counters/state use stable semantic roles, so operation
+renaming never changes identity order or per-product budgets.
+
+`nonpersistent_failures` uses actual permitted API operation IDs, not guessed
+canonical names. The compiler resolves guarantees through the same frozen
+injective alias map before rendering kernel code. A guarantee attached to a
+nonexistent or nonpermitted operation fails compilation. The account catalogue
+also retains a detached exact `product_schema` for later approved dialogue-fact
+projection; that schema does not itself authorize disclosure.
+
 `nonpersistent_failures` must describe a supplied API guarantee, with provenance
 reviewed alongside API documentation. It is not a model-set runtime permission
 flag. Only matching immutable engine HTTP status/result and an actual negative

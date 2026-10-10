@@ -241,11 +241,24 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
     action_fields = rules.get("action_fields", {}).get("value", {})
     result_fields = rules.get("result_fields", {}).get("value", {})
     product_fields = rules.get("product_fields", {}).get("value", {})
+    aliases = rules.get("tool_aliases", {}).get("value", {})
+    if (not isinstance(aliases, dict) or set(aliases) - set(_FIELDS)
+            or any(not isinstance(actual, str) or not actual for actual in aliases.values())):
+        raise GuardCompileError(["tool_aliases must map supported canonical roles to actual API operation IDs"])
+    permitted = {op["name"]: op for op in contract["permitted_operations"]}
+    if set(aliases.values()) - set(permitted):
+        raise GuardCompileError(["tool_aliases references an unknown or nonpermitted API operation"])
+    resolved = {role: aliases.get(role, role) for role in _FIELDS
+                if aliases.get(role, role) in permitted}
+    if len(set(resolved.values())) != len(resolved):
+        raise GuardCompileError(["tool_aliases must resolve semantic roles injectively, including canonical defaults"])
+    if set(permitted) - set(resolved.values()):
+        raise GuardCompileError(["renamed API operations require explicit unambiguous tool_aliases"])
+    role_for_actual = {actual: role for role, actual in resolved.items()}
     for op in contract["permitted_operations"]:
-        name = op["name"]
-        if name not in _FIELDS:
-            raise GuardCompileError(["unsupported bank operation semantic role: " + name])
-        if name not in tools or tools[name]["function"]["parameters"]["properties"]["url"]["default"] != op["url"]:
+        actual_name = op["name"]
+        name = role_for_actual[actual_name]
+        if actual_name not in tools or tools[actual_name]["function"]["parameters"]["properties"]["url"]["default"] != op["url"]:
             raise GuardCompileError(["OpenAPI differs from frozen operation catalogue"])
         request = op["request_schema"]
         response = next((s for media in op["response_schemas"].values() for s in media.values()
@@ -291,8 +304,8 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 valid = kind == "string"
             if not valid:
                 raise GuardCompileError([name + ": unsupported trusted result schema for " + semantic])
-        catalog[name] = {"request_schema": copy.deepcopy(request), "fields": fields,
-                         "results": results, "tool": copy.deepcopy(tools[name])}
+        catalog[name] = {"name": actual_name, "request_schema": copy.deepcopy(request), "fields": fields,
+                         "results": results, "tool": copy.deepcopy(tools[actual_name])}
         if name == "get_account":
             product_schema = response["properties"][results["products"]].get("items", {})
             keys = product_schema.get("properties", {})
@@ -300,13 +313,23 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
             if any(field not in keys for field in mapping.values()):
                 raise GuardCompileError(["get_account: product field aliases require explicit active product_fields"])
             catalog[name]["product_fields"] = mapping
+            catalog[name]["product_schema"] = copy.deepcopy(product_schema)
     if bindings:
         _hash_checked(bindings, "action bindings")
-        for category in bindings.get("categories", {}).values():
-            op = category.get("operation", {}).get("name")
+        category_roles = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
+                          "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
+        for category_name, category in bindings.get("categories", {}).items():
+            actual_op = category.get("operation", {}).get("name")
+            op = role_for_actual.get(actual_op)
             field = category.get("field")
             if op not in catalog or field not in catalog[op]["request_schema"].get("properties", {}):
                 raise GuardCompileError(["action binding references an unknown operation or request field"])
+            if (category_name not in category_roles or op != category_roles[category_name][0]
+                    or field != catalog[op]["fields"].get(category_roles[category_name][1])):
+                raise GuardCompileError(["action binding category does not match its canonical semantic operation/field"])
+            expected_operation = permitted[actual_op]
+            if category.get("operation") != {key: expected_operation[key] for key in ("name", "method", "url")}:
+                raise GuardCompileError(["action binding operation differs from exact frozen API identity"])
             enum = catalog[op]["request_schema"]["properties"][field].get("enum", [])
             forward = category.get("semantic_to_wire", {})
             reverse = category.get("wire_to_semantic", {})
@@ -864,6 +887,16 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         raise GuardCompileError(errors)
     profile = _profile(contract, execution_policy, plan, bindings)
     catalog = _catalogue(contract, openapi, bindings)
+    if "nonpersistent_failures" in profile:
+        failure_rules = profile["nonpersistent_failures"]
+        actual_operations = {op["name"] for op in catalog.values()}
+        if set(failure_rules) - actual_operations:
+            raise GuardCompileError(["nonpersistent_failures must name exact permitted API operation IDs"])
+        # The kernel uses semantic roles; source guarantees are bound to actual
+        # API IDs. Resolve through the same frozen injective alias map as calls.
+        profile["nonpersistent_failures"] = {
+            role: copy.deepcopy(failure_rules[op["name"]]) for role, op in catalog.items()
+            if op["name"] in failure_rules}
     display = profile.get("promise_readback")
     if display is not None:
         products = catalog.get("get_account", {}).get("product_fields", {})

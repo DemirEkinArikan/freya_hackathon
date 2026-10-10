@@ -37,6 +37,8 @@ from .execution_requirements import compile_execution_requirements, validate_pla
 from .guards import execution_action_catalogue
 from .policy import execution_rule_guidance
 from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
+from .repair_diagnostics import repair_test_summary as _repair_test_summary
+from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -271,99 +273,6 @@ def _known_secrets() -> tuple[str, ...]:
                   k in {"FREYA_BANK_TEAM_KEY"} or k.startswith("FREYA_TOOL_AUTH_")))
 
 
-_SAFE_TEST_DIAGNOSTICS = {
-    "outcome/reason do not match the independent oracle":
-        "Choose the closing outcome and reason from the supplied brief and observed conversation state.",
-    "promises do not match the independent oracle":
-        "Recheck commitment eligibility, confirmation, write arguments, and successful-write state against the supplied brief.",
-    "notes do not match the independent oracle":
-        "Recheck whether a note is allowed or required, its scope, and its reason against the supplied brief.",
-    "callbacks do not match the independent oracle":
-        "Recheck callback eligibility and the agreed date and time against the supplied brief's calendar rules.",
-    "transfers do not match the independent oracle":
-        "Recheck transfer eligibility and queue selection against the supplied brief and tool contract.",
-    "close_call must occur exactly once and be the final tool":
-        "Close the call without duplication after all permitted actions; prevent further tool calls after closing.",
-    "Brief A forbids add_note":
-        "Remove note writes when the applicable supplied brief forbids them.",
-    "a transfer forbids notes before or after it":
-        "Enforce the applicable transfer and note exclusion before performing either write.",
-    "identity/account tools used with a third party or unreached customer":
-        "Gate identity checks and account access on reaching the intended customer.",
-    "tool is outside the seven permitted banking capabilities":
-        "Use only capabilities declared in the supplied tool contract.",
-    "identity field is not permitted by the contract":
-        "Select identity fields only from the supplied contract and applicable policy.",
-    "an already verified identity factor was checked again":
-        "Preserve successful identity checks and do not ask for a verified factor again.",
-    "identity factors were asked out of order":
-        "Ask identity factors in the order required by the supplied brief.",
-    "identity check continued after total wrong-answer limit":
-        "Stop identity checks when the supplied brief's wrong-answer limit is reached.",
-    "account access or promise occurred before both identity factors passed":
-        "Prevent account access and commitment writes until all required identity factors have passed.",
-    "promise retries exceeded one retry per product":
-        "Enforce the supplied brief's retry limit separately for each product; distinguish explicit rejection from ambiguous persistence.",
-    "more than one successful promise write for a product":
-        "Prevent duplicate successful commitment writes for the same product.",
-    "recorded-success claim precedes successful write":
-        "Claim that an action was recorded only after the tool confirms the write succeeded.",
-}
-
-
-def _repair_test_summary(result: dict, policy: dict | None = None) -> dict:
-    # Only exact, data-free scorer messages are accepted. Free-form judge reasons may
-    # contain scripts, customer identities, or expected amounts and never reach the model.
-    known_rule_ids = {rule.get("id") for rule in (policy or {}).get("rules", [])
-                      if isinstance(rule, dict) and isinstance(rule.get("id"), str)}
-    fallbacks = {
-        "behavior": "Recheck the applicable banking actions and their ordering against the supplied brief and tool contract.",
-        "conversation": "Recheck the conversation instructions and required confirmations in the supplied brief.",
-        "honesty": "Keep claims about account state and completed actions consistent with observed successful tool results.",
-        "policy": "Recheck the applicable constraints in the supplied brief and their enforcement before tool calls.",
-    }
-    failures, seen = [], set()
-    for failure in result.get("failures", []):
-        if not isinstance(failure, dict):
-            continue
-        category = failure.get("category")
-        if not isinstance(category, str) or category not in fallbacks:
-            category = "behavior"
-        message = failure.get("message")
-        diagnostic = _SAFE_TEST_DIAGNOSTICS.get(message, fallbacks[category]) if isinstance(message, str) else fallbacks[category]
-        rule_id = failure.get("rule_id")
-        rule_id = rule_id if isinstance(rule_id, str) and rule_id in known_rule_ids else None
-        key = (category, diagnostic, rule_id)
-        if key in seen:
-            continue
-        seen.add(key)
-        row = {"category": category, "diagnostic": diagnostic}
-        if rule_id is not None:
-            row["rule_id"] = rule_id
-        failures.append(row)
-        if len(failures) >= 32:
-            break
-    return {"status": "behavioral_failure", "passed": result.get("passed"), "total": result.get("total"),
-            "failures": failures}
-
-
-def _test_infrastructure_failed(result: Any) -> bool:
-    if not isinstance(result, dict):
-        return True
-    total, passed = result.get("total"), result.get("passed")
-    if type(total) is not int or total <= 0 or type(passed) is not int or not 0 <= passed <= total:
-        return True
-    failures = result.get("failures", [])
-    if not isinstance(failures, list) or any(not isinstance(failure, dict) for failure in failures):
-        return True
-    status = result.get("status")
-    if not isinstance(status, str) or status not in {"passed", "completed", "failed", "behavioral_failure"}:
-        return True
-    if (passed < total and not failures) or (passed == total and failures):
-        return True
-    return any(
-        isinstance(failure.get("category"), str) and failure["category"] in {"infrastructure", "evidence"}
-        for failure in failures)
 
 
 def execute(args, *, generator=None, client_factory: Callable = FreyaClient, test_runner: Callable | None = None,

@@ -10,7 +10,7 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _profile_errors
+from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -177,12 +177,22 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
 def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict | None) -> dict:
     _hash_checked(contract, "contract")
     _hash_checked(execution_policy, "execution policy")
+    # The conditional-policy library can inspect these rules, but this kernel
+    # has no protected consumer for them. Inspection is never authorization,
+    # including a descriptor that claims it is clear or already enforced.
+    if "conditional_conflicts" in contract or "conditional_conflicts" in contract.get("active_rules", {}):
+        raise GuardCompileError(["conditional policy conflicts lack a protected runtime guard; inspection cannot authorize execution"])
     if "bindings_sha256" in execution_policy and execution_policy["bindings_sha256"] != (bindings or {}).get("sha256"):
         raise GuardCompileError(["execution policy is bound to different action bindings"])
     profile = execution_policy.get("profile")
     if not isinstance(profile, dict):
         raise GuardCompileError(["execution policy requires a typed profile"])
     errors = []
+    # An optional frozen execution rule cannot be silently omitted by a caller
+    # supplying a narrower profile (for example, transfer confirmation).
+    for kind in set(contract.get("active_rules", {})) & (_PROFILE_KINDS | _EXECUTION_ONLY_KINDS):
+        if kind not in profile:
+            errors.append("active execution rule omitted from profile: " + kind)
     for kind in required_execution_kinds(plan):
         if kind not in profile:
             errors.append("missing typed execution kind: " + kind)
@@ -603,7 +613,7 @@ def guard_new(customer_id, now):
                 identity_status='pending', products=list(), account_loaded=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
-                transfer=dict(), callbacks=list(), notes_finalized=False, closed=False,
+                transfer=dict(), callbacks=list(), notes_finalized=False, closed=False, close_attempted=False,
                 quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict())
 
 def guard_close(state, proposed, profile, maps):
@@ -809,7 +819,7 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
 
 def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
-    if state['closed'] or state['quarantined'] or state['inflight']:
+    if state['closed'] or state.get('close_attempted') or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
     local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
     if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
@@ -958,6 +968,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             items = [semantic]
         else:
             raise ValueError('unsupported action')
+        # Validate the entire frozen batch before the first side effect. A
+        # later item's API bounds must not be discovered after an earlier write.
+        for item in items:
+            guard_body(item, operation, catalog)
         batch = dict(action=action, operation=operation, items=items, index=0)
         state['batch'] = batch
         state['consent'] = ''
@@ -972,6 +986,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
 
 def guard_send(state, catalog):
     batch = state['batch']
+    if state['consent']:
+        snapshot = json.loads(state['consent'])
+        if any(snapshot[key] != batch[key] for key in ('action', 'operation', 'items')):
+            raise ValueError('confirmed snapshot changed')
     semantic = batch['items'][batch['index']]
     operation = batch['operation']
     body = guard_body(semantic, operation, catalog)
@@ -981,19 +999,36 @@ def guard_send(state, catalog):
         raise ValueError('duplicate or unresolved bank write')
     state['attempts'][key] = dict(status='sent', count=previous.get('count', 0) + 1)
     state['inflight'] = dict(action=batch['action'], operation=operation, body=body, semantic=semantic, key=key)
+    if batch['action'] == 'close_call':
+        state['close_attempted'] = True
     return state, 'allow', body, ''
 
-def guard_confirm(state, consent, catalog):
+def guard_confirm(state, consent, catalog, expected_action):
     state = json.loads(guard_json(state))
-    if state['closed'] or state['quarantined'] or not state['batch'] or state['inflight'] or consent != 'yes':
+    if state['closed'] or state.get('close_attempted') or state['quarantined'] or not state['batch'] or state['inflight'] or state['batch']['action'] != expected_action:
         raise ValueError('fresh explicit confirmation is absent')
+    if consent != 'yes':
+        state['batch'] = dict()
+        state['consent'] = ''
+        return state, 'blocked', dict(), ''
     state['consent'] = guard_json(state['batch'])
     return guard_send(state, catalog)
 
-def guard_result(state, data, profile, catalog):
+def guard_continue(state, catalog):
+    # Keep the result just reconciled even if preparation of the next request
+    # fails. The outer code handler only has the state before that result.
+    try:
+        return guard_send(state, catalog)
+    except Exception:
+        state['quarantined'] = True
+        state['batch'] = dict()
+        state['consent'] = ''
+        return state, 'failure', dict(), ''
+
+def guard_result(state, data, profile, catalog, expected_action):
     state = json.loads(guard_json(state))
     tx = state['inflight']
-    if not tx or state['closed'] or state['quarantined']:
+    if not tx or state['closed'] or state['quarantined'] or tx['action'] != expected_action:
         raise ValueError('no trusted pending result')
     action = tx['action']
     ok = data.get('ok')
@@ -1004,6 +1039,16 @@ def guard_result(state, data, profile, catalog):
                         ('error' not in case or data.get('error') == case['error'])
                         for case in profile.get('nonpersistent_failures', dict()).get(tx['operation'], list()))
     negative_ok = ok is False or type(ok) is str and ok in ('false', 'False')
+    # Every close result is terminal, including malformed or negative evidence.
+    # Attempting a close does not establish that the bank recorded it.
+    if action == 'close_call':
+        state['inflight'] = dict()
+        state['batch'] = dict()
+        state['consent'] = ''
+        state['closed'] = guard_true(ok)
+        state['quarantined'] = not state['closed']
+        state['attempts'][tx['key']]['status'] = 'recorded' if state['closed'] else 'unknown_persistence'
+        return state, 'closed', dict(), ''
     if action == 'commit_promises' and nonpersistent and negative_ok:
         state['inflight'] = dict()
         state['attempts'][tx['key']]['status'] = 'nonpersistent_failed'
@@ -1011,14 +1056,14 @@ def guard_result(state, data, profile, catalog):
         failures = state['promise_failures'].get(pid, 0) + 1
         state['promise_failures'][pid] = failures
         if failures < profile['promise_failure_limit']:
-            return guard_send(state, catalog)
+            return guard_continue(state, catalog)
         disposition = profile.get('promise_failure_disposition', dict())
         if disposition.get('clear_pending') is True and disposition.get('reason') in profile.get('note_reasons', list()):
             state['pending_promises'].pop(pid, None)
             state['pending_notes'][pid] = disposition['reason']
             state['batch']['index'] += 1
             if state['batch']['index'] < len(state['batch']['items']):
-                return guard_send(state, catalog)
+                return guard_continue(state, catalog)
             state['batch'] = dict()
             state['consent'] = ''
             return state, 'failure', dict(), ''
@@ -1094,15 +1139,10 @@ def guard_result(state, data, profile, catalog):
         state['transfer']['status'] = 'recorded'
     elif action == 'schedule_callback':
         state['callbacks'].append(tx['semantic'])
-    elif action == 'close_call':
-        state['closed'] = True
-        return state, 'closed', dict(), ''
     batch = state['batch']
     batch['index'] += 1
     if batch['index'] < len(batch['items']):
-        if state['consent'] and json.loads(state['consent'])['items'] != batch['items']:
-            raise ValueError('confirmed snapshot changed')
-        return guard_send(state, catalog)
+        return guard_continue(state, catalog)
     state['batch'] = dict()
     state['consent'] = ''
     return state, 'done', dict(), ''
@@ -1127,12 +1167,12 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     else:
         tail += "    state = json.loads(str(vars.get('bg_state') or ''))\n    previous_state = state\n"
         if phase == "prepare":
-            tail += "    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
+            tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
         elif phase == "confirm":
-            tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'])\n"
+            tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"
         else:
-            tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'])\n"
-    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('closed') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
+            tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'], spec['action'])\n"
+    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
@@ -1142,7 +1182,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
     if phase != "prepare":
-        tail += "    vars['bg_state'] = json.dumps(dict(quarantined=True))\n"
+        tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        retained['quarantined'] = True\n        retained['batch'] = dict()\n        retained['consent'] = ''\n        vars['bg_state'] = guard_json(retained)\n    except Exception:\n        vars['bg_state'] = json.dumps(dict(quarantined=True))\n"
     else:
         tail += "    vars['bg_state'] = str(vars.get('bg_state') or '')\n"
     for name in sorted(result_vars.values()):
@@ -1269,8 +1309,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             nodes[accept] = _code_node(accept, _code("confirm", action, {}, profile, catalog, maps, result_vars),
                 [_transition(api, "allow"), _transition(blocked)])
         nodes[reconcile] = _code_node(reconcile, _code("result", action, {}, profile, catalog, maps, result_vars),
-            [_transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
-             _transition(failure, "failure"), _transition(failure)])
+            ([_transition("bg_terminal")] if action == "close_call" else
+             [_transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
+              _transition(failure, "failure"), _transition(failure)]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:
         workflow["system_prompt"] = copy.deepcopy(plan["system_prompt"])
@@ -1321,7 +1362,7 @@ def run_guard_step(phase: str, state: dict | None, action: str = "", inputs: dic
     if phase == "prepare":
         return namespace["guard_prepare"](state, action, inputs or {}, profile, catalog, maps or {})
     if phase == "confirm":
-        return namespace["guard_confirm"](state, (inputs or {}).get("consent"), catalog)
+        return namespace["guard_confirm"](state, (inputs or {}).get("consent"), catalog, action or (state or {}).get('batch', {}).get('action', ''))
     if phase == "result":
-        return namespace["guard_result"](state, result or {}, profile, catalog)
+        return namespace["guard_result"](state, result or {}, profile, catalog, action or (state or {}).get('inflight', {}).get('action', ''))
     raise ValueError("unknown local guard phase")

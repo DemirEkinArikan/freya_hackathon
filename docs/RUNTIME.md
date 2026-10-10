@@ -170,7 +170,7 @@ one `thread.started` with a nonempty thread identifier, one `turn.started`, and
 exactly one `turn.completed` as the final event. A zero process exit is
 insufficient. Malformed JSON, duplicate keys, nonfinite values, unknown event
 types, repeated/out-of-order starts, incomplete turns, and events after
-completion fail closed. Precisely recognized startup warning items remain
+completion fail closed. The precise host-discovery experimental warning remains
 accepted; unknown error diagnostics and all tool-action items remain rejected.
 
 Only the final completed agent message is parsed for the requested stage
@@ -184,3 +184,11 @@ ephemeral generation process and the mandatory isolation gate.
 This completion fix is verified with injected local event streams only. No
 additional model probe or Freya call was made, and the failed isolation evidence
 continues to block substantive generation.
+
+Each actual generation stage also rejects a precisely recognized skills-budget
+warning when its omitted-skill count is nonzero, matching the preflight audit.
+A cached passing audit cannot authorize loader discoveries in a later fresh CLI
+process. The trace retains the warning category and count. Count zero and the
+exact host-discovery experimental warning remain accepted; zero alone is not
+an exhaustive loader proof. A local regression exercises a successful first
+stage followed by a rejected second stage under the same cached audit.

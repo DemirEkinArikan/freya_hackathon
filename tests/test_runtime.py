@@ -25,6 +25,7 @@ class RuntimeTests(unittest.TestCase):
         self.directory = Path(self.tmp.name)
         # These tests isolate generation/process parsing. Dedicated preflight
         # tests exercise the mandatory isolation gate and before-brief boundary.
+        self.real_check_isolation = CodexGenerator.check_isolation
         self.isolation = patch.object(CodexGenerator, "check_isolation")
         self.isolation.start()
         self.addCleanup(self.isolation.stop)
@@ -195,7 +196,7 @@ class RuntimeTests(unittest.TestCase):
         candidate = {"policy": {"version": 1, "rules": []}, "workflow": {"initial_node": "done", "nodes": {}}}
         warnings = [
             "Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /example/config.toml.",
-            "Exceeded skills context budget. All skill descriptions were removed and 4 additional skills were not included in the model-visible skills list."]
+            "Exceeded skills context budget. All skill descriptions were removed and 0 additional skills were not included in the model-visible skills list."]
         events = [{"type": "item.completed", "item": {"type": "error", "message": message}} for message in warnings]
         events += [json.loads(line) for line in completed_stream(candidate).splitlines()]
         def run(argv, **kwargs):
@@ -205,6 +206,37 @@ class RuntimeTests(unittest.TestCase):
         generator._checked = True
         self.assertEqual(generator.generate("public request"), candidate)
         self.assertEqual(trace.path.read_text().count('"event": "generation_cli_warning"'), 2)
+        recorded = [json.loads(line) for line in trace.path.read_text().splitlines()]
+        warnings = [row for row in recorded if row["event"] == "generation_cli_warning"]
+        self.assertEqual([row["kind"] for row in warnings],
+                         ["skip_host_skill_discovery_is_experimental", "skill_descriptions_removed_by_context_budget"])
+        self.assertEqual(warnings[1]["omitted_skill_count"], 0)
+
+    def test_later_generation_stage_rejects_omitted_skills_after_cached_isolation_pass(self):
+        calls = []
+        warning = "Exceeded skills context budget. All skill descriptions were removed and 3 additional skills were not included in the model-visible skills list."
+        def run(argv, **kwargs):
+            calls.append(kwargs["input"])
+            if len(calls) == 1:
+                text = completed_stream({"policy_json": "{}", "workflow_json": "{}"})
+            else:
+                text = json.dumps({"type": "item.completed", "item": {"type": "error", "message": warning}})
+                text += "\n" + completed_stream({"plan_json": "{}", "contract_sha256": "a" * 64})
+            return subprocess.CompletedProcess(argv, 0, text, "")
+        trace = Trace(self.directory / "trace.jsonl")
+        generator = CodexGenerator(self.directory, trace, Deadline(), run=run)
+        generator._checked = generator._isolation_checked = True
+        # Exercise the real cached-pass path rather than the setUp isolation stub.
+        generator.check_isolation = self.real_check_isolation.__get__(generator, CodexGenerator)
+        self.assertEqual(generator.generate("approved policy inputs"), {"policy": {}, "workflow": {}})
+        with self.assertRaisesRegex(GenerationError, "omitted skills after its isolation audit"):
+            generator.generate_plan("approved frozen policy", contract_sha256="a" * 64)
+        self.assertEqual(calls, ["approved policy inputs", "approved frozen policy"])
+        self.assertTrue(generator._isolation_checked)
+        row = next(json.loads(line) for line in trace.path.read_text().splitlines()
+                   if json.loads(line)["event"] == "generation_cli_warning")
+        self.assertEqual(row["kind"], "skill_descriptions_removed_by_context_budget")
+        self.assertEqual(row["omitted_skill_count"], 3)
 
     def test_unknown_error_diagnostic_remains_fatal(self):
         def run(argv, **kwargs):

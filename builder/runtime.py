@@ -411,7 +411,15 @@ class CodexGenerator:
                 warning = _expected_cli_warning(item.get("message"))
                 if warning is None:
                     raise GenerationError("Codex reported an unrecognized error diagnostic; see sanitized trace")
-                self.trace.emit("generation_cli_warning", kind=warning)
+                if warning == "skill_descriptions_removed_by_context_budget":
+                    # Every stage starts a fresh CLI process. A cached probe
+                    # pass cannot authorize later skill-loader discoveries.
+                    omitted = int(re.search(r"(\d+) additional skills", item["message"])[1])
+                    self.trace.emit("generation_cli_warning", kind=warning, omitted_skill_count=omitted)
+                    if omitted:
+                        raise GenerationError("Codex generation reported omitted skills after its isolation audit; see sanitized trace")
+                else:
+                    self.trace.emit("generation_cli_warning", kind=warning)
                 continue
             if item_type and item_type not in {"agent_message", "reasoning"}:
                 raise GenerationError("Generation attempted a prohibited tool action")

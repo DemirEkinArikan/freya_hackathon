@@ -95,6 +95,11 @@ _SHAPE_GUIDANCE = {
 }
 
 
+def execution_rule_guidance() -> dict[str, str]:
+    """Return detached descriptions of accepted typed interfaces, not values."""
+    return {kind: _SHAPE_GUIDANCE[kind] for kind in sorted(_SHAPE_GUIDANCE)}
+
+
 def _json_type(value: Any) -> str:
     """A fixed type label, never a supplied value or native class name."""
     if value is None:

@@ -213,6 +213,20 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         elif kind == "identity_close":
             if not isinstance(value, dict) or set(value) != {"failed", "incomplete", "unreached"} or any(not isinstance(p, dict) or set(p) - {"outcome", "reason"} or not isinstance(p.get("outcome"), str) or ("reason" in p and not isinstance(p["reason"], str)) for p in value.values()):
                 errors.append("identity_close requires failed, incomplete and unreached outcome/reason records")
+        elif kind == "identity_close_choices":
+            if not isinstance(value, dict) or not value or set(value) - {"unreached", "incomplete"}:
+                errors.append("identity_close_choices requires a nonempty subset of unreached/incomplete scopes")
+            else:
+                for scope, choices in value.items():
+                    if not isinstance(choices, list) or not choices:
+                        errors.append("identity_close_choices scopes require nonempty choice arrays")
+                        continue
+                    for choice in choices:
+                        if (not isinstance(choice, dict) or set(choice) - {"outcome", "reason", "requires"}
+                                or not isinstance(choice.get("outcome"), str) or not choice["outcome"]
+                                or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback")
+                                or "reason" in choice and (not isinstance(choice["reason"], str) or not choice["reason"])):
+                            errors.append("identity_close_choices require outcome, optional nonempty reason and supported evidence")
         elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account"} for k, v in value.items())):
             errors.append("transfer_prerequisites requires queue-to-none/identity/account mapping")
         elif kind == "promise_readback":
@@ -242,6 +256,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if "identity_close" in result:
         result["identity_close"] = {k: {field: decode("outcomes" if field == "outcome" else "reasons", value)
                                       for field, value in proposal.items()} for k, proposal in result["identity_close"].items()}
+    if "identity_close_choices" in result:
+        result["identity_close_choices"] = {scope: [
+            {key: decode("outcomes" if key == "outcome" else "reasons", value)
+             if key in {"outcome", "reason"} else value for key, value in choice.items()}
+            for choice in choices] for scope, choices in result["identity_close_choices"].items()}
     if "promise_failure_disposition" in result:
         result["promise_failure_disposition"]["reason"] = decode("reasons", decode("notes", result["promise_failure_disposition"]["reason"]))
     if set(result.get("confirmation_actions", [])) - {"commit_promises", "commit_transfer", "schedule_callback"}:
@@ -254,6 +273,23 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed is None or (allowed and proposal.get("reason") not in allowed) or (not allowed and proposal.get("reason")):
             raise GuardCompileError(["identity_close disposition conflicts with allowed closing outcomes/reasons"])
+    for scope, choices in result.get("identity_close_choices", {}).items():
+        fixed = result.get("identity_close", {}).get(scope)
+        seen = set()
+        for choice in choices:
+            if fixed is None or choice["outcome"] != fixed["outcome"]:
+                raise GuardCompileError(["identity closing choice outcome must match its fixed scope"])
+            allowed = result.get("close_reasons", {}).get(choice["outcome"])
+            reason = choice.get("reason", "")
+            if allowed is None or (allowed and reason not in allowed) or (not allowed and reason):
+                raise GuardCompileError(["identity closing choice conflicts with allowed closing reasons"])
+            if reason in seen:
+                raise GuardCompileError(["identity closing choices have duplicate decoded reasons"])
+            seen.add(reason)
+            if reason == "callback" and choice["requires"] != "recorded_callback":
+                raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
+            if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
+                raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
     return result
 
 
@@ -539,12 +575,29 @@ def guard_close(state, proposed, profile, maps):
             facts['no_promise'] = dict(outcome='no_promise', reason=reason)
     proposal = next((facts[outcome] for outcome in profile['close_precedence'] if outcome in facts), None)
     if proposal is None:
-        outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
         table = profile['identity_close']
         if state['identity_status'] == 'failed' and not state['account_loaded']:
             proposal = dict(table['failed'])
         elif state['identity_status'] != 'verified' and not state['account_loaded']:
-            proposal = dict(table['unreached'] if outcome == table['unreached']['outcome'] and not state['verified_fields'] else table['incomplete'])
+            if not isinstance(proposed.get('outcome', ''), str):
+                raise ValueError('identity closing outcome proposal must be text')
+            outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
+            scope = 'unreached' if outcome == table['unreached']['outcome'] and not state['verified_fields'] else 'incomplete'
+            choices = profile.get('identity_close_choices', dict()).get(scope)
+            if choices is None:
+                proposal = dict(table[scope])
+            else:
+                if not isinstance(proposed.get('reason', ''), str):
+                    raise ValueError('identity closing reason proposal must be text')
+                reason = guard_decode('reasons', proposed.get('reason', ''), maps)
+                matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]
+                if len(matching) != 1:
+                    raise ValueError('identity closing proposal lacks one declared eligible choice')
+                choice = matching[0]
+                requirement = choice['requires']
+                if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
+                    raise ValueError('identity closing proposal lacks required callback evidence')
+                proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
         else:
             raise ValueError('closing lacks protected evidence')
     reasons = profile['close_reasons']
@@ -553,6 +606,10 @@ def guard_close(state, proposed, profile, maps):
     allowed = reasons[proposal['outcome']]
     if (allowed and proposal.get('reason') not in allowed) or (not allowed and proposal.get('reason')):
         raise ValueError('closing reason outside policy')
+    if proposal.get('reason') == 'callback' and not state['callbacks']:
+        raise ValueError('callback-success closing requires a recorded callback')
+    if proposal.get('reason') == 'no_callback' and state['callbacks']:
+        raise ValueError('no_callback closing cannot hide a recorded callback')
     return proposal
 
 def guard_known_counts(state):

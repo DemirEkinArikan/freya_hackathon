@@ -162,6 +162,7 @@ callbacks, reasons, confirmation and failure limits. Additional guard kinds are:
 | `product_order` | `{mode: "account_order"}` or `{field, direction: "ascending"/"descending", tie_breaker: "account_order"}` |
 | `close_precedence` | ordered array of semantic outcome names |
 | `identity_close` | `{failed: {outcome, reason?}, incomplete: {...}, unreached: {...}}` |
+| `identity_close_choices` | Optional nonempty subset of `unreached`/`incomplete`, each a nonempty array of `{outcome, reason?, requires: "none"/"recorded_callback"/"no_recorded_callback"}` |
 | `nonpersistent_failures` | `{operation: [{http_status: integer, error?: string}]}` |
 | `promise_failure_disposition` | `{reason: string, clear_pending: boolean}` |
 | `transfer_prerequisites` | `{queue: "none"/"identity"/"account"}` |
@@ -172,6 +173,35 @@ callbacks, reasons, confirmation and failure limits. Additional guard kinds are:
 can explicitly bind renamed API fields. Canonical names are accepted only when
 they exist exactly in the supplied schema; ambiguous/missing fields fail.
 Opaque wire vocabularies use T06's API-validated detached category bindings.
+
+Each identity closing choice must retain its scope's fixed `identity_close`
+outcome and use a permitted reason. Reasons must be unique after wire decoding;
+a reason is mandatory when that outcome's policy reason list is nonempty.
+`failed` is never a configurable choice scope: protected counter exhaustion
+always selects the fixed failed record before inspecting untrusted proposals.
+Recorded transfers, promises and product dispositions retain their existing
+precedence over these language-derived identity endings.
+
+For a scope with choices, pass public proposed `outcome` and `reason` variables
+to the `close_call` placeholder. They must identify exactly one eligible declared
+choice; missing, invalid or ambiguous proposals block the action. A scope omitted
+from the optional choice map retains its already explicit fixed record. Neither
+source order nor a model's label supplies an implicit choice fallback.
+`recorded_callback` needs an actual successful callback in protected state;
+`no_recorded_callback` requires none. A decoded callback-success reason always
+requires recorded callback evidence, even for a legacy fixed record. Callback
+choices cannot downgrade this requirement to `none`. Evidence modes and wire
+values come from active source-backed policy; no public bank values are added by
+the compiler. Symmetrically, a decoded `no_callback` choice must require
+`no_recorded_callback`, and any such closing (including a fixed legacy record)
+is blocked when a callback was actually recorded.
+
+These checks establish choice/evidence eligibility. They cannot prove that a
+wrong number, death, refusal, second invalid slot or unclear answer actually
+occurred in speech. Those classifications and dialogue counters need separate
+conversation checks. Callback service failure has no invented ending: uncertain
+or failed writes remain quarantined unless the supplied policy and supported
+guards explicitly provide another safe path.
 
 `nonpersistent_failures` must describe a supplied API guarantee, with provenance
 reviewed alongside API documentation. It is not a model-set runtime permission

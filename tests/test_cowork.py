@@ -4,6 +4,8 @@ import contextlib
 import copy
 import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import timedelta
@@ -12,6 +14,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tools import cowork
+
+
+class CliPortabilityTests(unittest.TestCase):
+    def test_script_imports_helpers_in_isolated_python_from_another_directory(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            result = subprocess.run([sys.executable, '-I', str(cowork.ROOT / 'tools/cowork.py'), '--help'],
+                                    cwd=cwd, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('checkpoint', result.stdout)
+
+    def test_handoff_rejects_exact_local_team_key_without_posting(self):
+        with tempfile.TemporaryDirectory() as cwd, patch.object(cowork, 'ROOT', Path(cwd)):
+            (Path(cwd) / '.env').write_text('FREYA_BANK_TEAM_KEY=synthetic-private-team-key\n')
+            gh = FakeGitHub()
+            with self.assertRaises(ValueError):
+                cowork.record(gh, {'number': 2}, 'DemirEkinArikan', 'checkpoint', done='synthetic-private-team-key')
+            self.assertEqual(gh.mutations, [])
 
 
 class FakeGitHub:

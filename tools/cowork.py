@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -13,6 +14,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from builder.config import read_local_environment
+from builder.safety import assert_no_secrets
 TASKS = ROOT / "docs" / "tasks.json"
 BOARD = ROOT / "docs" / "github-board.json"
 MARKER = "<!-- freya-task-board:v1 -->"
@@ -294,8 +298,10 @@ def record(gh, issue, actor, action, **values):
     body = "<!-- freya-handoff: " + json.dumps(meta, separators=(",", ":")) + " -->\n"
     body += f"**{action.upper()} — @{actor}**\n\n"
     body += "\n".join(f"- **{k.replace('_', ' ').title()}:** {v}" for k, v in values.items())
-    from builder.safety import assert_no_secrets
-    assert_no_secrets(body)
+    credentials = {**read_local_environment(ROOT / ".env"), **os.environ}
+    known = tuple(v for k, v in credentials.items() if v and
+                  any(s in k for s in ("API_KEY", "TEAM_KEY", "TOKEN", "SECRET", "TOOL_AUTH")))
+    assert_no_secrets(body, forbidden_values=known)
     return gh.api("POST", gh.repo(f"issues/{issue['number']}/comments"), {"body": body})
 
 

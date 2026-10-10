@@ -58,6 +58,42 @@ class ExecutionCapabilityMetadataTests(unittest.TestCase):
     def stage_note(self):
         return self.prepare("stage_note", {"product_id": "invented-item", "reason": "N_DISP"})
 
+    def test_identity_ok_does_not_pass_factor_and_remaining_budget_is_cumulative(self):
+        self.profile = {"identity_fields": ["factor_alpha", "factor_beta"], "identity_wrong_limit": 4}
+        self.catalog = {"verify_identity": {"name": "invented_check_op", "fields": {
+            "customer_id": "member_wire", "field": "factor_wire", "answer": "answer_wire"},
+            "request_schema": {"type": "object", "properties": {
+                "member_wire": {"type": "string"},
+                "factor_wire": {"type": "string", "enum": ["factor_alpha", "factor_beta"]},
+                "answer_wire": {"type": "string"}},
+                "required": ["member_wire", "factor_wire", "answer_wire"]}}}
+        self.maps = {}
+        self.state = run_guard_step("init", None, profile=self.profile, catalog=self.catalog,
+                                   customer_id="invented-member", now="2031-05-02T10:00:00")[0]
+
+        def check(field, data):
+            _, route, body, _ = self.prepare("verify_identity", {"field": field, "answer": "invented-answer"})
+            self.assertEqual((route, body), ("allow", {"member_wire": "invented-member",
+                "factor_wire": field, "answer_wire": "invented-answer"}))
+            return self.result("verify_identity", {"_http_status": 200, **data})[0]
+
+        self.assertEqual(check("factor_alpha", {"ok": True, "verified": False, "wrong_answers_left": 3}), "done")
+        self.assertEqual((self.state["wrong_answers"], self.state["verified_fields"], self.state["identity_status"]),
+                         (1, [], "pending"))
+        self.assertEqual(check("factor_alpha", {"ok": True, "verified": False, "wrong_answers_left": 4}), "done")
+        self.assertEqual((self.state["wrong_answers"], self.state["verified_fields"]), (1, []))
+        self.assertEqual(check("factor_alpha", {"ok": True, "verified": True, "wrong_answers_left": 3}), "done")
+        self.assertEqual((self.state["wrong_answers"], self.state["verified_fields"], self.state["identity_status"]),
+                         (1, ["factor_alpha"], "pending"))
+        self.assertEqual(check("factor_beta", {"ok": True, "verified": False, "wrong_answers_left": 2}), "done")
+        self.assertEqual((self.state["wrong_answers"], self.state["verified_fields"], self.state["identity_status"]),
+                         (2, ["factor_alpha"], "pending"))
+        self.assertEqual(check("factor_beta", {"ok": True, "verified": True}), "failure")
+        self.assertTrue(self.state["quarantined"])
+        self.assertEqual((self.state["wrong_answers"], self.state["verified_fields"], self.state["identity_status"]),
+                         (2, ["factor_alpha"], "pending"))
+
+
     def test_catalogue_nested_metadata_is_detached_and_required_kind_dynamics_preserved(self):
         first = execution_action_catalogue()
         original = copy.deepcopy(first)

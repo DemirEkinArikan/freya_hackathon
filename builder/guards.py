@@ -65,7 +65,8 @@ _REQUIRED = {
 _CONTROLLER_STATE_EFFECTS = {
     "verify_identity": {
         "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
-        "positive_recording": ["Validated identity evidence updates passed factors and the returned total wrong-answer counter."]},
+        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, identity_wrong_limit - returned wrong_answers_left); ok=true alone does not verify a factor.",
+                               "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
     "get_account": {
         "accepted_staging": ["Sending the account request does not establish loaded products."],
         "positive_recording": ["Validated positive account evidence loads the returned products once."]},

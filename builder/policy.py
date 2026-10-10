@@ -51,6 +51,97 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
                          "promise_readback", "account_disclosure_fields", "identity_close_choices"}
 
+# Interface descriptions contain no bank values. They explain an existing
+# rejection; the predicates below remain the authority for accepted shapes.
+_SHAPE_GUIDANCE = {
+    "identity_fields": "a nonempty array of unique nonempty strings in factor order",
+    "identity_wrong_limit": "a positive integer; booleans are not integers",
+    "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
+    "business_weekdays": "a nonempty array of integers from 0 through 6",
+    "band_ranges": "a nonempty array of objects with nonempty name and integer min/max; min <= max, names unique, intervals nonoverlapping",
+    "deadline_days": "a nonempty object mapping band names to nonnegative integers",
+    "floor_fields": "an object mapping nonempty product-type names to nonempty field names",
+    "callback_window": "an object with start/end local HH:MM strings, start <= end; optional allow_today is boolean and next_business_days is a nonnegative integer",
+    "note_reasons": "a nonempty array of unique nonempty strings",
+    "close_reasons": "a nonempty object mapping outcome names to arrays of nonempty reason strings; arrays may be empty",
+    "transfer_reasons": "an object mapping nonempty queue names to nonempty reason strings",
+    "require_confirmation": "a boolean, not a string or integer",
+    "promise_failure_limit": "a positive integer; booleans are not integers",
+    "tool_aliases": "an object mapping nonempty semantic operation names to nonempty API operation names",
+    "persuasion_limits": "a nonempty object mapping band names to nonnegative integers",
+    "identity_hint_exemptions": "an array of unique nonempty strings; an empty array is allowed",
+    "write_retryable_errors": "an array of unique nonempty strings; an empty array is allowed",
+    "confirmation_scope": 'the string "each" or "batch"',
+    "note_failure_limit": "a positive integer; booleans are not integers",
+    "callback_failure_limit": "a positive integer; booleans are not integers",
+    "transfer_failure_limit": "a positive integer; booleans are not integers",
+    "action_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
+    "result_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
+    "product_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
+    "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique",
+    "nonpersistent_failures": "an object mapping operation names to arrays of unique objects containing only http_status (integer 100..599) and optional error (nonempty string)",
+    "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
+    "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
+    "close_precedence": "a nonempty array of unique nonempty outcome strings",
+    "identity_close": "an object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string)",
+    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback")',
+    "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean)",
+    "record_notes": "a boolean, not a string or integer",
+    "resolve_all_products": "a boolean, not a string or integer",
+    "transfer_prerequisites": 'a nonempty object mapping queue names to "none", "identity", or "account"',
+    "promise_readback": "an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps",
+    "account_disclosure_fields": "an array of unique nonempty strings excluding customer_id/product_id; an empty array is allowed",
+}
+
+
+def _json_type(value: Any) -> str:
+    """A fixed type label, never a supplied value or native class name."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    return "unsupported native value"
+
+
+def _structured_error(kind: str, value: Any, domain: str) -> str:
+    message = (f"{domain} rule {kind} has an invalid structured value: "
+               f"{kind}.value expected {_SHAPE_GUIDANCE[kind]}; received {_json_type(value)}")
+    if kind == "identity_close" and isinstance(value, dict):
+        scopes = {"failed", "incomplete", "unreached"}
+        missing = sorted(scopes - set(value))
+        if missing:
+            message += "; missing required scopes: " + ", ".join(missing)
+        if set(value) - scopes:
+            message += "; unsupported scope fields are present"
+        for scope in ("failed", "incomplete", "unreached"):
+            if scope not in value:
+                continue
+            proposal = value[scope]
+            location = "identity_close.value." + scope
+            if not isinstance(proposal, dict):
+                message += f"; {location} must be an object, received {_json_type(proposal)}"
+                continue
+            if not isinstance(proposal.get("outcome"), str) or not proposal["outcome"]:
+                message += f"; {location}.outcome is required and must be a nonempty string"
+            if "reason" in proposal and (not isinstance(proposal["reason"], str) or not proposal["reason"]):
+                message += f"; {location}.reason must be a nonempty string when supplied"
+            if set(proposal) - {"outcome", "reason"}:
+                message += f"; {location} permits only outcome and optional reason"
+        message += "; identity_close_choices does not replace the required fixed scope entries"
+    # All fragments above are fixed interface labels; supplied keys and values
+    # are omitted, keeping repairs bounded and free of fixture/secret literals.
+    return message
+
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
     def strings(item: Any, *, empty: bool = False) -> bool:
@@ -113,7 +204,7 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
                 valid = False
         if valid:
             valid = type(value.get("allow_today", False)) is bool and type(value.get("next_business_days", 0)) is int and value.get("next_business_days", 0) >= 0
-    return [] if valid else [f"policy rule {kind} has an invalid structured value"]
+    return [] if valid else [_structured_error(kind, value, "policy")]
 
 
 def _execution_errors(kind: str, value: Any) -> list[str]:
@@ -180,7 +271,7 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                         or len({canonical_json(failure) for failure in failures}) != len(failures)):
                     valid = False
                     break
-    return [] if valid else [f"execution rule {kind} has an invalid structured value"]
+    return [] if valid else [_structured_error(kind, value, "execution")]
 
 
 def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None,

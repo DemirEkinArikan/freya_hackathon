@@ -7,6 +7,7 @@ or termination of conversations. See ``assess_workflow`` for that distinction.
 from __future__ import annotations
 
 import ast
+import math
 import re
 from collections import deque
 from typing import Any, Mapping
@@ -23,17 +24,42 @@ OPERATORS = {"equals", "not_equals", "greater_than", "less_than", "contains",
 VARIABLE_OPERATORS = OPERATORS - {"always", "matches_intent"}
 _NAME = re.compile(r"^[a-zA-Z_]\w*$")
 _FORBIDDEN_CALLS = {"open", "exec", "eval", "compile", "__import__", "getattr", "setattr",
-                    "delattr", "globals", "locals", "input", "breakpoint", "help", "exit", "quit"}
+                    "delattr", "globals", "locals", "input", "breakpoint", "help", "exit", "quit", "iter"}
 _ALLOWED_MODULES = {"json", "re", "datetime", "decimal", "math", "collections"}
 _FORBIDDEN_ATTRIBUTES = {"read", "read_text", "read_bytes", "write_text", "write_bytes",
                          "system", "popen", "connect", "request", "urlopen", "socket",
                          "load", "dump", "today", "now", "utcnow", "sys", "os", "modules",
                          "environ", "getenv", "open", "exec", "eval", "compile", "getattr",
                          "setattr", "delattr", "globals", "locals", "builtins"}
+_EVENT_NODE_TYPES = {"conversation", "api_request", "code", "end_call"}
 
 
 def _obj(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _json_errors(value: Any, path: str) -> list[str]:
+    """Bound recursive validators before parsing untrusted candidate structures."""
+    stack = [(value, 0, frozenset())]
+    count = 0
+    while stack:
+        item, depth, ancestors = stack.pop()
+        count += 1
+        if depth > 80 or count > 200000:
+            return [path + ": JSON exceeds local depth/complexity limits"]
+        if isinstance(item, (dict, list)):
+            if id(item) in ancestors:
+                return [path + ": cyclic input is not JSON"]
+            lineage = ancestors | {id(item)}
+            if isinstance(item, dict) and any(not isinstance(k, str) for k in item):
+                return [path + ": JSON object keys must be strings"]
+            stack.extend((child, depth + 1, lineage) for child in
+                         (item.values() if isinstance(item, dict) else item))
+        elif type(item) not in {str, int, float, bool, type(None)}:
+            return [path + ": input must contain only JSON values"]
+        elif type(item) is float and not math.isfinite(item):
+            return [path + ": nonfinite numbers are not JSON"]
+    return []
 
 
 def _nulls(value: Any, path: str, errors: list[str]) -> None:
@@ -91,6 +117,23 @@ def _assigned_vars(nodes: list[ast.stmt]) -> set[str]:
     return names
 
 
+def _definite_vars(nodes: list[ast.stmt]) -> set[str]:
+    assigned = set()
+    for node in nodes:
+        if isinstance(node, (ast.Raise, ast.Return, ast.Break, ast.Continue)):
+            break
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            assigned.update(_assigned_vars([node]))
+        elif isinstance(node, ast.If):
+            assigned.update(_definite_vars(node.body) & _definite_vars(node.orelse))
+        elif isinstance(node, ast.Try):
+            branches = [_definite_vars(node.body + node.orelse)] + [_definite_vars(h.body) for h in node.handlers]
+            if node.handlers:
+                assigned.update(set.intersection(*branches))
+            assigned.update(_definite_vars(node.finalbody))
+    return assigned
+
+
 def validate_code(code: Any, path: str = "code", *, require_fallback: bool = True,
                   guard_request_config: bool = False) -> list[str]:
     errors: list[str] = []
@@ -107,6 +150,37 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
     if len(list(ast.walk(tree))) > 12000:
         errors.append(path + ": code exceeds local validation complexity limit")
     parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    functions = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+    functions.update({node.targets[0].id: node.value for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                      and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                      and any(isinstance(child, ast.Lambda) for child in ast.walk(node.value))})
+    aliases = {name: {name} for name in functions}
+    assignments = [(target.id, {v.id for v in ast.walk(n.value) if isinstance(v, ast.Name)})
+                   for n in ast.walk(tree) if isinstance(n, ast.Assign)
+                   and isinstance(n.value, (ast.Name, ast.List, ast.Tuple, ast.Dict, ast.Lambda))
+                   for assignment in n.targets for target in ast.walk(assignment)
+                   if isinstance(target, ast.Name) and isinstance(target.ctx, ast.Store)]
+    for _ in range(len(assignments) + 1):
+        changed = False
+        for target, sources in assignments:
+            before = set(aliases.get(target, set()))
+            aliases.setdefault(target, set()).update(set().union(*(aliases.get(source, set()) for source in sources)))
+            changed |= before != aliases[target]
+        if not changed:
+            break
+    references = {name: set().union(*(aliases.get(n.id, set()) for n in ast.walk(node) if isinstance(n, ast.Name)
+                         and isinstance(n.ctx, ast.Load)))
+                  for name, node in functions.items()}
+    for name in references:
+        pending, seen = list(references[name]), set()
+        while pending:
+            target = pending.pop()
+            if target == name:
+                errors.append(path + ": recursive callable references are forbidden")
+                break
+            if target not in seen:
+                seen.add(target)
+                pending.extend(references[target] - seen)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
@@ -123,6 +197,12 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
                     errors.append(path + ": unsafe imported functions are forbidden, including aliases")
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             errors.append(path + ": dunder names are forbidden")
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in {"Exception", "BaseException"}:
+            errors.append(path + ": exception fallback classes must not be rebound")
+        if ((isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in {"Exception", "BaseException"})
+                or isinstance(node, ast.alias) and (node.asname or node.name) in {"Exception", "BaseException"}
+                or isinstance(node, ast.ExceptHandler) and node.name in {"Exception", "BaseException"}):
+            errors.append(path + ": exception fallback classes must not be rebound")
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in _FORBIDDEN_CALLS:
             errors.append(path + ": unsafe builtin references are forbidden, including aliases")
         if isinstance(node, ast.Attribute) and (node.attr.startswith("_") or node.attr in _FORBIDDEN_ATTRIBUTES):
@@ -133,12 +213,20 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
             errors.append(path + ": vars is a workflow mapping, not a callable")
         if isinstance(node, ast.While):
             try:
-                constant_condition = ast.literal_eval(node.test)
+                unreachable = not bool(ast.literal_eval(node.test))
             except (ValueError, TypeError, SyntaxError, RecursionError):
+                unreachable = False
+            if not unreachable:
+                errors.append(path + ": unbounded while loop is forbidden; use bounded iteration")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "range":
+            try:
+                args = [ast.literal_eval(arg) for arg in node.args]
+                if all(type(arg) is int for arg in args) and len(range(*args)) > 10000:
+                    errors.append(path + ": literal range exceeds local iteration limit")
+            except OverflowError:
+                errors.append(path + ": literal range exceeds local iteration limit")
+            except (ValueError, TypeError, RecursionError):
                 pass
-            else:
-                if bool(constant_condition):
-                    errors.append(path + ": unbounded while loop is forbidden")
         if guard_request_config and isinstance(node, ast.Name) and node.id == "config":
             parent = parents.get(node)
             if not (isinstance(parent, ast.Subscript) and parent.value is node
@@ -149,11 +237,16 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
         if not tries or any(not node.handlers for node in tries):
             errors.append(path + ": code node requires try/except and fallback values")
         else:
-            defaults = _assigned_vars([node for node in tree.body if not isinstance(node, ast.Try)])
             for attempt in tries:
+                defaults = _definite_vars(tree.body[:tree.body.index(attempt)])
+                if not any(handler.type is None or isinstance(handler.type, ast.Name) and handler.type.id in {"Exception", "BaseException"}
+                           for handler in attempt.handlers):
+                    errors.append(path + ": code node requires a broad exception fallback")
                 written = _assigned_vars(attempt.body)
                 for handler in attempt.handlers:
-                    if written - defaults - _assigned_vars(handler.body):
+                    if any(isinstance(n, ast.Raise) for statement in handler.body for n in ast.walk(statement)):
+                        errors.append(path + ": exception fallback must not re-raise")
+                    if written - defaults - _definite_vars(handler.body):
                         errors.append(path + ": exception path omits assigned-variable fallbacks")
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and type(node.value.value) is bool:
@@ -167,12 +260,60 @@ def _mapping(mapping: Any, path: str, errors: list[str]) -> None:
     if not isinstance(mapping, list):
         errors.append(path + ": response_mapping must be an array")
         return
+    variables = set()
     for i, entry in enumerate(mapping):
         if not isinstance(entry, dict) or not isinstance(entry.get("variable"), str) or not entry.get("variable"):
             errors.append(f"{path}[{i}]: mapping requires a variable")
             continue
+        variable = entry["variable"]
+        if not _NAME.fullmatch(variable) or variable in variables:
+            errors.append(f"{path}[{i}]: mapping variable must be a unique identifier")
+        variables.add(variable)
         if not isinstance(entry.get("path"), str) or not entry["path"].startswith("data."):
             errors.append(f"{path}[{i}]: API result mappings must begin with data.")
+        elif not re.fullmatch(r"data\.[A-Za-z_]\w*(?:\.(?:[A-Za-z_]\w*|[0-9]+))*", entry["path"]):
+            errors.append(f"{path}[{i}]: invalid API result mapping path")
+
+
+def _response_mapping(mapping: Any, tool: dict, operations: dict, path: str,
+                      errors: list[str]) -> None:
+    """Check result fields against the supplied API and explicit hook additions."""
+    props = _obj(_obj(_obj(tool.get("function")).get("parameters")).get("properties"))
+    url, method = _obj(props.get("url")).get("default"), _obj(props.get("method")).get("default")
+    if not isinstance(url, str) or not isinstance(method, str) or not isinstance(mapping, list):
+        return
+    operation = operations.get((url, method.upper()), (None, {}))[1]
+    schemas = [_obj(_obj(media).get("schema")) for response in _obj(operation.get("responses")).values()
+               for media in _obj(_obj(response).get("content")).values()]
+    additions = set()
+    hook = tool.get("post_process_code", "")
+    if isinstance(hook, str):
+        try:
+            for node in ast.walk(ast.parse(hook)):
+                if (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store)
+                        and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)
+                        and isinstance(node.value, ast.Subscript) and isinstance(node.value.value, ast.Name)
+                        and node.value.value.id == "result" and isinstance(node.value.slice, ast.Constant)
+                        and node.value.slice.value == "data"):
+                    additions.add(node.slice.value)
+        except (SyntaxError, RecursionError):
+            pass
+    for entry in mapping:
+        result_path = _obj(entry).get("path")
+        if not isinstance(result_path, str) or not result_path.startswith("data."):
+            continue
+        parts = result_path.split(".")[1:]
+        if len(parts) == 1 and parts[0] in additions:
+            continue
+        def exists(schema: dict) -> bool:
+            for part in parts:
+                schema = (_obj(schema.get("items")) if schema.get("type") == "array" and part.isdigit()
+                          else _obj(_obj(schema.get("properties")).get(part)))
+                if not schema:
+                    return False
+            return True
+        if not any(exists(schema) for schema in schemas):
+            errors.append(path + ": result mapping path is absent from OpenAPI response schemas/hooks")
 
 
 def _operations(openapi: Mapping[str, Any]) -> dict[tuple[str, str], tuple[str, dict[str, Any]]]:
@@ -211,10 +352,15 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
         errors.append(path + ": parameters require an object schema with properties")
         return name, handler
     props = params["properties"]
+    required_params = params.get("required", [])
+    if (not isinstance(required_params, list) or any(not isinstance(x, str) or x not in props for x in required_params)):
+        errors.append(path + ": parameters.required must reference declared properties")
     if placement == "pre_actions" and tool.get("response_mapping"):
         errors.append(path + ": pre_action response_mapping belongs on the node")
     elif "response_mapping" in tool:
         _mapping(tool["response_mapping"], path + ".response_mapping", errors)
+        if handler == "__function__:api_call":
+            _response_mapping(tool["response_mapping"], tool, operations, path, errors)
     for hook in ("pre_process_code", "post_process_code"):
         if tool.get(hook):
             if handler != "__function__:api_call":
@@ -275,6 +421,8 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
         if not isinstance(required, list):
             errors.append(path + ": body.required must be an array")
             required = []
+        if any(not isinstance(x, str) or x not in fields for x in required) or len(set(x for x in required if isinstance(x, str))) != len(required):
+            errors.append(path + ": body.required must reference unique declared fields")
         for required_name in schema.get("required", []):
             field = fields.get(required_name)
             if not isinstance(field, dict):
@@ -291,6 +439,21 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
                 errors.append(path + ": body field type differs from OpenAPI")
             if "default" not in field:
                 errors.append(path + ": each body leaf requires default (literal or variable template)")
+            literal = field.get("default")
+            templated = isinstance(literal, str) and "{{" in literal
+            if templated:
+                if not re.fullmatch(r"\{\{[A-Za-z_]\w*\}\}", literal):
+                    errors.append(path + ": body binding must be one complete variable template")
+            elif "default" in field:
+                kind = expected.get("type")
+                matches = {"string": isinstance(literal, str), "integer": type(literal) is int,
+                           "number": type(literal) in {int, float}, "boolean": type(literal) is bool,
+                           "object": isinstance(literal, dict), "array": isinstance(literal, list)}
+                if not matches.get(kind, False):
+                    errors.append(path + ": fixed body value type differs from OpenAPI")
+                elif kind in {"integer", "number"} and ("minimum" in expected and literal < expected["minimum"]
+                        or "maximum" in expected and literal > expected["maximum"]):
+                    errors.append(path + ": fixed body value violates OpenAPI numeric bounds")
             if expected.get("enum"):
                 enum = field.get("enum", [])
                 literal = field.get("default")
@@ -310,6 +473,11 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
 def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
                       *, guard_context: Mapping[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
+    for value, label in ((workflow, "workflow"), (openapi, "openapi"), (policy, "policy"),
+                         (guard_context, "guard_context")):
+        errors.extend(_json_errors(value, label))
+    if errors:
+        return errors
     if guard_context is not None:
         from .guards import validate_guarded_workflow
         if not isinstance(guard_context, Mapping):
@@ -317,8 +485,12 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         else:
             try:
                 errors.extend(validate_guarded_workflow(workflow, openapi=dict(openapi), **dict(guard_context)))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, KeyError, AttributeError, RecursionError):
                 errors.append("guard_context has unsupported or missing compilation inputs")
+        if errors:
+            # No candidate execution or expensive source inspection is needed
+            # once correspondence to the frozen controller has failed.
+            return sorted(set(errors))
     if not isinstance(workflow, dict):
         return ["workflow must be an object"]
     _nulls(workflow, "workflow", errors)
@@ -342,11 +514,73 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     if overlap:
         errors.append("normal/global node names must not overlap")
     all_nodes = {**nodes, **globals_}
+    # Public data bindings are declarations, not evidence of runtime persistence.
+    # Exact trusted recompilation separately seals all protected code and state.
+    declared = {"customer_id", "now", "BANK_TOKEN"}
+    declared.update(_obj(workflow.get("test_variables")))
+    if any(name.startswith("bg_") for name in _obj(workflow.get("test_variables"))):
+        errors.append("workflow.test_variables cannot override protected guard values")
+    def declarations(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, child in value.items():
+                if key == "extraction_schema" and isinstance(child, list):
+                    declared.update(x["name"] for x in child if isinstance(x, dict) and isinstance(x.get("name"), str))
+                elif key == "response_mapping" and isinstance(child, list):
+                    declared.update(x["variable"] for x in child if isinstance(x, dict) and isinstance(x.get("variable"), str))
+                elif key == "code" and isinstance(child, dict) and isinstance(child.get("default"), str):
+                    try:
+                        declared.update(_assigned_vars(ast.parse(child["default"]).body))
+                    except (SyntaxError, RecursionError):
+                        pass
+                declarations(child)
+        elif isinstance(value, list):
+            for child in value:
+                declarations(child)
+    declarations(workflow)
+    for tool in (x for n in all_nodes.values() if isinstance(n, dict) for p in ("tools", "pre_actions")
+                 for x in (n[p] if isinstance(n.get(p), list) else []) if isinstance(x, dict)):
+        fn = _obj(tool.get("function"))
+        if isinstance(fn.get("name"), str):
+            # Documented engine result bindings, not invented static defaults.
+            declared.update(fn["name"] + suffix for suffix in ("_status_code", "_result", "_args"))
+    operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
+    def text_bindings(value: Any, path: str, *, spoken: bool = False, readback: bool = False) -> None:
+        if isinstance(value, str):
+            stripped = re.sub(r"\{\{[^{}]+\}\}", "", value)
+            if "{{" in stripped or "}}" in stripped:
+                errors.append(path + ": malformed unresolved template")
+            for match in re.finditer(r"\{\{([^{}]+)\}\}", value):
+                binding = match[1]
+                root = binding.split(".")[0]
+                if root not in declared and not binding.startswith("extractor."):
+                    errors.append(path + ": unresolved required binding " + binding)
+                if (root == "customer_id" or root.startswith("bg_") and root != "bg_facts" and not (readback and root == "bg_readback")
+                        or any(root.startswith(op + "_") for op in operation_names)
+                        or spoken and root == "bg_facts"):
+                    errors.append(path + ": authored text cannot read raw protected engine values")
+        elif isinstance(value, dict):
+            for key, child in value.items():
+                text_bindings(child, path + "." + str(key), spoken=spoken or key == "on_enter", readback=readback)
+        elif isinstance(value, list):
+            for i, child in enumerate(value):
+                text_bindings(child, f"{path}[{i}]", spoken=spoken, readback=readback)
+    if "system_prompt" in workflow:
+        text_bindings(workflow["system_prompt"], "workflow.system_prompt")
+    for name, node in all_nodes.items():
+        if isinstance(node, dict):
+            for field in ("task_message", "routing_prompt", "on_enter", "extraction_schema"):
+                if field in node:
+                    # The only protected spoken projection is the compiler's
+                    # fixed confirmation readback. A node prefix proves nothing.
+                    readback = (field == "on_enter" and node[field] == {"type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"})
+                    text_bindings(node[field], "node." + str(name) + "." + field, readback=readback)
     initial = workflow.get("initial_node")
     if not isinstance(initial, str) or initial not in nodes:
         errors.append("workflow.initial_node must identify a normal node")
     graph: dict[str, set[str]] = {name: set() for name in all_nodes}
     terminals: set[str] = set()
+    api_nodes, close_nodes = set(), set()
+    automatic: dict[str, str] = {}
     for name, node in all_nodes.items():
         path = "node." + str(name)
         if not isinstance(name, str) or not _NAME.fullmatch(name):
@@ -360,14 +594,23 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if not isinstance(node_type, str) or node_type not in NODE_TYPES:
             errors.append(path + ": unknown node_type")
             node_type = None
+        elif node_type not in _EVENT_NODE_TYPES:
+            errors.append(path + ": node type invokes tools outside the bank-only event allowlist")
         if node.get("tools") and node_type != "conversation":
             errors.append(path + ": tools belong only on conversation nodes")
         if node.get("pre_actions") and node_type not in {"api_request", "code"}:
             errors.append(path + ": pre_actions belong on API/code nodes")
-        if node.get("response_mapping"):
+        if "response_mapping" in node:
             if node_type not in {"api_request", "code"}:
                 errors.append(path + ": nonempty node response_mapping belongs on API/code nodes")
             _mapping(node["response_mapping"], path + ".response_mapping", errors)
+            if node_type == "api_request" and isinstance(node.get("pre_actions"), list):
+                api_tools = [t for t in node["pre_actions"] if isinstance(t, dict)
+                             and _obj(t.get("function")).get("handler") == "__function__:api_call"]
+                if len(api_tools) == 1:
+                    _response_mapping(node["response_mapping"], api_tools[0], operations, path, errors)
+                elif node["response_mapping"]:
+                    errors.append(path + ": node result mappings require one unambiguous API pre_action")
         for flag in ("passthrough", "on_enter_first_entry_only", "disable_inactivity_monitor", "suppress_tool_results"):
             if flag in node and type(node[flag]) is not bool:
                 errors.append(path + ": node boolean flags must be booleans")
@@ -376,15 +619,29 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             errors.append(path + ": invalid on_enter")
         elif entry.get("type") == "tts" and not isinstance(entry.get("text"), str):
             errors.append(path + ": tts entry requires text")
+        elif entry.get("type") == "audio":
+            errors.append(path + ": external audio URLs are outside the bank-only event allowlist")
         for placement in ("tools", "pre_actions"):
             tools = node.get(placement, [])
             if not isinstance(tools, list):
                 errors.append(path + "." + placement + ": must be an array")
                 continue
             for i, tool in enumerate(tools):
-                _, handler = _tool(tool, f"{path}.{placement}[{i}]", errors, operations, placement, policy)
+                function_name, handler = _tool(tool, f"{path}.{placement}[{i}]", errors, operations, placement, policy)
+                if handler == "__function__:api_call":
+                    api_nodes.add(name)
+                    if function_name == "close_call":
+                        if name in close_nodes or placement != "pre_actions":
+                            errors.append(path + ": close_call must be one engine-run final action")
+                        close_nodes.add(name)
+                if handler == "__function__:api_call" and placement == "pre_actions" and isinstance(tool, dict):
+                    props = _obj(_obj(_obj(tool.get("function")).get("parameters")).get("properties"))
+                    for field in _obj(_obj(props.get("body")).get("properties")).values():
+                        default = _obj(field).get("default")
+                        if isinstance(default, str) and re.fullmatch(r"\{\{[A-Za-z_]\w*\}\}", default) and default[2:-2] not in declared:
+                            errors.append(path + ": engine-run API has an unresolved required binding")
                 if handler == "__function__:end_call":
-                    terminals.add(name)
+                    errors.append(path + ": call-ending handlers belong only on a final end_call terminal")
         if node_type == "end_call":
             terminals.add(name)
             terminal = node.get("terminal")
@@ -414,6 +671,16 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             else:
                 graph[name].add(target)
             _condition(transition.get("condition"), tpath + ".condition", errors)
+            if guard_context is not None and not name.startswith("bg_"):
+                def condition_bindings(condition: Any) -> None:
+                    if isinstance(condition, dict):
+                        if "variable" in condition and (not isinstance(condition["variable"], str) or condition["variable"] not in declared):
+                            errors.append(tpath + ": authored route has an unresolved required binding")
+                        for child in condition.get("conditions", []) if isinstance(condition.get("conditions", []), list) else []:
+                            condition_bindings(child)
+                condition_bindings(transition.get("condition"))
+            if transition.get("condition") == {"operator": "always"} and i != len(transitions) - 1:
+                errors.append(tpath + ": unconditional route shadows later transitions")
             if "is_tool_call" in transition and type(transition["is_tool_call"]) is not bool:
                 errors.append(tpath + ": is_tool_call must be boolean")
         for field in ("passthrough_default_transition", "max_turn_transition"):
@@ -430,6 +697,10 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                 errors.append(path + ": passthrough requires default transition")
             if not transitions or _obj(transitions[-1]).get("condition") != {"operator": "always"}:
                 errors.append(path + ": passthrough requires a final unconditional fallback")
+            if len(transitions) == 1 and _obj(transitions[0]).get("condition") == {"operator": "always"}:
+                target = _obj(transitions[0]).get("target_node")
+                if isinstance(target, str) and target in all_nodes:
+                    automatic[name] = target
         if "max_node_turns" in node:
             if type(node["max_node_turns"]) is not int or node["max_node_turns"] < 1:
                 errors.append(path + ": max_node_turns must be a positive integer")
@@ -441,7 +712,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         else:
             for i, variable in enumerate(extraction):
                 ep = f"{path}.extraction_schema[{i}]"
-                if not isinstance(variable, dict) or not isinstance(variable.get("name"), str):
+                if not isinstance(variable, dict) or not isinstance(variable.get("name"), str) or not _NAME.fullmatch(variable["name"]):
                     errors.append(ep + ": extracted variable requires name")
                     continue
                 if not isinstance(variable.get("type"), str) or variable["type"] not in {"string", "integer", "float", "boolean", "date", "datetime", "name", "phone_number"}:
@@ -478,8 +749,14 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             excluded = node.get("excluded_nodes", [])
             if isinstance(excluded, list) and any(terminal not in excluded for terminal in terminals):
                 errors.append("global node." + name + ": terminal nodes must be excluded")
+    if not isinstance(workflow.get("tools", []), list):
+        errors.append("workflow.tools must be an array")
     for i, tool in enumerate(workflow.get("tools", []) if isinstance(workflow.get("tools", []), list) else []):
-        _tool(tool, f"workflow.tools[{i}]", errors, operations, "lifecycle", policy)
+        function_name, handler = _tool(tool, f"workflow.tools[{i}]", errors, operations, "lifecycle", policy)
+        if handler == "__function__:end_call":
+            errors.append(f"workflow.tools[{i}]: lifecycle must not duplicate terminal closing")
+        if function_name == "close_call":
+            errors.append(f"workflow.tools[{i}]: lifecycle close_call cannot establish final-close discipline")
         when = _obj(tool.get("config")).get("alwaysRunsAt", []) if isinstance(tool, dict) else []
         if not isinstance(when, list) or not when or any(not isinstance(x, str) or x not in {"start_of_call", "end_of_call"} for x in when):
             errors.append(f"workflow.tools[{i}]: lifecycle requires implemented alwaysRunsAt")
@@ -504,6 +781,25 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         can_end.update(added)
     for name in reachable - can_end:
         errors.append("node." + name + ": no graph path to a call-ending handler")
+    for name in automatic:
+        cursor, seen = name, set()
+        while cursor in automatic:
+            if cursor in seen:
+                errors.append("node." + name + ": unconditional passthrough cycle cannot terminate")
+                break
+            seen.add(cursor)
+            cursor = automatic[cursor]
+    for name in close_nodes:
+        pending, seen = list(graph[name]), set()
+        while pending:
+            target = pending.pop()
+            if target in seen:
+                continue
+            seen.add(target)
+            if target in api_nodes or _obj(all_nodes[target]).get("node_type") == "conversation":
+                errors.append("node." + name + ": close_call must be final before the call-ending terminal")
+            if target not in terminals:
+                pending.extend(graph[target] - seen)
     return sorted(set(errors))
 
 
@@ -529,6 +825,8 @@ def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[s
                 else:
                     inspect(value)
                     continue
+                if len(code) > 100000:
+                    continue
                 try:
                     for node in ast.walk(ast.parse(code)):
                         if isinstance(node, ast.Import):
@@ -540,7 +838,8 @@ def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[s
         elif isinstance(item, list):
             for child in item:
                 inspect(child)
-    inspect(workflow)
+    if not _json_errors(workflow, "workflow"):
+        inspect(workflow)
     unverified -= {"json", "re", "datetime"}
     return {"structural_errors": errors, "structurally_valid": not errors,
             "action_guard_compilation_verified": guard_context is not None and not errors,
@@ -553,4 +852,6 @@ def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[s
                 "notes remain staged until transfers are ruled out; close_call is exactly last",
                 "tool results and Python variable writes persist in the deployed platform",
                 "conversation loops terminate within caller and platform time limits",
+                "authored dialogue makes only source-authorized financial commitments, fee and interest claims",
+                "identity factors follow the supplied ordering and challenge policy in actual dialogue",
             ]}

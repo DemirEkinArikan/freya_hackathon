@@ -24,7 +24,9 @@ def check_call_variables(value: Any) -> tuple[str, ...]:
         raise CallVariablesError("call_variables requires a name array or a name-to-description mapping")
     if (len(names) > 128
             or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,127}", name)
-                   or name.casefold().startswith(("bg_", "auth_")) or name.casefold() == "bank_token" for name in names)
+                   or name.casefold().startswith(("bg_", "auth_")) or name.casefold() == "bank_token"
+                   or re.search(r"(?:^|_)(?:token|secret|password|credentials?|api_key|access_key|auth_key|team_key|authorization)(?:_|$)", name, re.I)
+                   for name in names)
             or len(set(names)) != len(names)):
         raise CallVariablesError("call_variables requires unique ordinary variable names; protected controller names are forbidden")
     return tuple(names)
@@ -50,6 +52,16 @@ def declared_call_variables(contract: Any) -> tuple[str, ...]:
     if not isinstance(rule, dict):
         raise CallVariablesError("call_variables requires a source-backed active rule")
     names = check_call_variables(rule.get("value"))
+    # Canonical roles appear as alias keys; actual operation names come from
+    # this exact frozen contract. Neither namespace can be supplied by a call.
+    operation_names = {operation["name"] for operation in contract.get("permitted_operations", [])
+                       if isinstance(operation, dict) and isinstance(operation.get("name"), str)}
+    aliases = active.get("tool_aliases", {})
+    aliases = aliases.get("value", {}) if isinstance(aliases, dict) else {}
+    if isinstance(aliases, dict):
+        operation_names.update(name for name in aliases if isinstance(name, str))
+    if any(name.startswith(operation + "_") for name in names for operation in operation_names):
+        raise CallVariablesError("call_variables cannot declare protected API-result variable names")
     sources = contract.get("sources")
     provenance, rule_ids = rule.get("provenance"), rule.get("rule_ids")
     if (not isinstance(sources, list) or not isinstance(provenance, list) or not provenance

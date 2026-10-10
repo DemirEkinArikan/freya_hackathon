@@ -119,10 +119,16 @@ class ClosingChoiceTests(unittest.TestCase):
         self.assertEqual(body["reason"], "callback")
 
     def test_no_callback_cannot_hide_a_recorded_callback(self):
-        self.setup_context()
-        self.book_callback()
-        with self.assertRaisesRegex(ValueError, "callback evidence"):
-            self.close("not_reached", "no_callback")
+        for opaque in (False, True):
+            with self.subTest(opaque=opaque):
+                self.setup_context(opaque=opaque)
+                self.book_callback()
+                before = copy.deepcopy(self.state)
+                _, route, body, _ = self.close(self.outcomes["not_reached"], self.reasons["no_callback"])
+                self.assertEqual(route, "allow")
+                self.assertEqual((body["outcome"], body["reason"]),
+                                 (self.outcomes["not_reached"], self.reasons["callback"]))
+                self.assertEqual(self.state, before)
 
     def test_failed_or_unknown_callback_result_cannot_claim_success_or_fabricate_no_callback(self):
         for result in ({"ok": False, "error": "synthetic_failure"}, {}):

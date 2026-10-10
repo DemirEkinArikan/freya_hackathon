@@ -26,11 +26,27 @@ def _default(path: tuple, key: str, parent: dict) -> tuple[bool, object]:
     if not path:
         return key in _TOP_DEFAULTS, _TOP_DEFAULTS.get(key)
     if len(path) == 2 and path[0] == "nodes":
-        if key == "max_node_turns" and parent.get("node_type") in {"end_call", "code", "api_request"}:
-            return True, None
+        if key == "max_node_turns":
+            if parent.get("node_type") in {"end_call", "code", "api_request"}:
+                return True, None
+            if (parent.get("node_type") == "conversation"
+                    and parent.get("max_turn_transition") is None):
+                # Observed live serialization of an omitted cap is null. The
+                # kit documents an engine default of 10; null is not a claim
+                # of unlimited turns, and must not erase an authored fallback.
+                return True, None
         return key in _NODE_DEFAULTS, _NODE_DEFAULTS.get(key)
     if (len(path) == 5 and path[0] == "nodes" and path[2] == "transitions"
             and type(path[3]) is int and path[4] == "condition" and key == "mode"):
+        return True, "exact"
+    if (len(path) == 7 and path[0] == "nodes" and path[2] == "transitions"
+            and type(path[3]) is int and path[4:6] == ("condition", "conditions")
+            and type(path[6]) is int and key == "mode"
+            and parent.get("operator") == "equals"
+            and isinstance(parent.get("variable"), str) and parent["variable"]
+            and "operand" in parent):
+        # Observed on immediate equality leaves of transition groups. Keep
+        # deeper groups, other operators and unrelated paths fail-closed.
         return True, "exact"
     if key == "description" and path[0] == "nodes":
         if len(path) == 4 and path[2] == "response_mapping" and type(path[3]) is int:

@@ -1,0 +1,52 @@
+# Evaluator-only banking benchmarks
+
+The builder must not read this directory, customer scripts, oracles or results. Only selected policy documents and their OpenAPI may be supplied as explicit compiler inputs. All generated policy profiles are **invented synthetic test policy, not Freya's official policy**. Synthetic `.invalid` service URLs are never attached to live agents.
+
+`catalog.json` contains 60 banking archetypes. `fixtures/offline.json` allocates 120 cases: 36 training cases, 24 validation cases and 60 reserved holdout slots. The first 60 have concrete account facts, identity data, customer turns/branches, ledger oracles, contract extraction expectations and independently generated calendar/floor/band expectations. Profiles vary identity schemas, floor field names, amounts, calendars, limits, bank-specific outcome/reason/note/queue codes, and call objectives. Clean specifications and raw prose/table/email/memo/code-list packets supply literal provenance. Holdout values do not exist until a candidate is frozen. These fixtures support local contract/helper checks; they are not evidence that a Freya conversation was executed or passed.
+
+`canonical_expected` records logical action meanings. `expected` uses the bank's opaque wire codes in normalized ledger fields. `wire_codes` declares the mapping; enum-bearing contract rule values match the exact input API enums. Contact/callback, exception triage and commitment resolution are policy-defined objectives selected by the synthetic `call_goal` variable; they add no API operation.
+
+`fixtures/hosted.json` separately allocates 120 wording variants: 78 public seed/style combinations and 42 compound variants. It also starts with 60 materialized and 60 reserved slots. Training/validation subsets for each policy brief are available as separate files. Security questions back are restricted to after verification so they do not accidentally change decline outcomes. Scripts are audited by construction, not empirically verified against the persona model.
+
+## Offline inspection and checks
+
+```sh
+python3 -m benchmarks.offline
+python3 -m benchmarks.offline --split validation --check-helpers
+python3 -m benchmarks.hosted --dry-run --split train --brief A
+python3 -m unittest discover -s tests -p 'test_benchmarks.py'
+python3 -m unittest discover -s tests -p 'test_scoring.py'
+```
+
+These commands use no network and spend no credits. `benchmarks.offline --candidate-contract <json> --profile <profile-id>` compares extracted rule values against the expected policy, including compiler `policy_json` string responses and explicit overrides. `--ledgers <json>` checks observed normalized ledgers keyed by fixture ID; missing ledgers fail. Helper checks deliberately report `helper_check_only`; ledger checks report honesty as not assessed without explicit evidence. Neither executes dialogue. Regenerate initial fixtures with `python3 -m benchmarks.generate` only before freezing; the generator refuses to overwrite frozen manifests.
+
+To evaluate compilation without exposing the benchmark, export only bank source documents/schema to a new directory outside `benchmarks`: `python3 -m benchmarks.export_inputs --profile train-2 --out artifacts/evaluator-inputs/train-2`. Pass only the returned brief paths and OpenAPI to the compiler in offline mode. This excludes scripts, expected ledgers, correct security answers and helper oracles. Synthetic `.invalid` endpoints must never be deployed on Freya.
+
+## Candidate freeze and holdout lifecycle
+
+```sh
+python3 -m benchmarks.freeze create --candidate-root builder --config-file artifacts/runtime-config.json --record benchmarks/freezes/candidate-1.json
+python3 -m benchmarks.freeze generate-holdout --record benchmarks/freezes/candidate-1.json
+python3 -m benchmarks.freeze consume --record benchmarks/freezes/candidate-1.json --reason 'repair after held-out evaluation'
+```
+
+Freeze captures source/config files under the candidate root, excluding credentials, hidden files and caches. `--config-file` includes nonsecret resolved CLI/model/runtime configuration in the digest; hosted holdout requires at least `model` and `reasoning_effort`, matched against the actual builder deployment manifest. Optional `concurrency`, `reps` and `budget_seconds` also match evaluation arguments. Pure offline freezes may omit config. Holdout generation verifies the snapshot, creates two fresh policy profiles and fills exactly 60 reserved slots in each manifest. It refuses silent regeneration. If any candidate source or resolved config changes, verification rejects the old snapshot. After repair or disclosure, mark the holdout consumed; a new candidate requires a new record and fresh initial manifests in another evaluator directory. A previously exposed set becomes validation, never a fresh blind holdout. This is procedural isolation, not filesystem access control.
+
+## Hosted evaluation: explicit execution only
+
+```sh
+python3 -m benchmarks.hosted --execute --agent-id <id> --brief A --split train --reps 3
+python3 -m benchmarks.hosted --execute --agent-id <id> --deployment-manifest artifacts/<run>/manifest.json --brief B --split holdout --reps 3
+```
+
+Do not run execution commands under the current no-spend boundary. The default is dry-run; it does not initialize a client or require credentials. Live execution needs a Freya API key and a team bank key of at least 16 characters. Each agent evaluates one brief; use the A/B subset files or `--brief` to avoid incompatible note semantics. Optional baseline and mandatory holdout `--deployment-manifest` pin the exported graph, agent and published version ID/number; real-client read-back verifies them before and after evaluation. Per-call version metadata is also checked when supplied. A changed/missing graph or evidence is an infrastructure failure, not a conversation pass. Output paths remain inside the project and cannot traverse symlinks. Bank HTTP redirects are blocked so team credentials cannot be forwarded to another host.
+
+Every variant has a unique `fixture_id` and a separate known `bank_case_id`. The latter alone is sent to `/v1/practice/sessions`. Server-returned variables are preserved unchanged, with fresh sessions for every case and repetition. The adapter rejects reused customer/session IDs, duplicate persona IDs and unknown bank seeds. One workspace simulation runs at a time through the platform client's shared lease; per-simulation call concurrency defaults to the kit's five. Three repetitions require every repetition to pass. No automatic slow-run retries spend additional credits.
+
+The supplied server does not document arbitrary fixture registration, reset, policy/schema deployment or fault injection. Local `faults`, products, dates and identity data are not uploaded. Hosted results therefore measure wording robustness under known public seeds and policies, **not unseen-policy generalization**. Do not redirect live agents to synthetic external services.
+
+## Scoring and evidence
+
+The stronger local scorer checks exact decimal amounts, records including duplicates, total identity wrong-answer limits, factor order, no premature account access, retry limits, no notes on transfers and exactly one final close. Missing ledger/arguments/judge evidence is reported explicitly. Spoken honesty is never inferred from a successful ledger alone: the platform judge and retained transcript cover conversation checks. Optional independently normalized claim-order evidence can expose success claims before a successful write. Infrastructure failures remain separate from behavioral failures. Hosted results redact keys and ephemeral session secrets before writing.
+
+`run_builder_tests(client, deployment, cases_path, output_dir, deadline)` is an explicitly invoked controller hook, one repetition only. It accepts a single-brief subset or `deployment['brief']`; its caller owns execution authorization. Reserve 300 seconds for export through the scoped platform client deadline. Only sanitized failure categories/rule identifiers may feed a repair prompt; never feed oracles or customer scripts to code generation.

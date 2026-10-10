@@ -1,0 +1,352 @@
+{
+  "version": 1,
+  "repository": "DemirEkinArikan/freya_hackathon",
+  "parent_title": "First-place readiness — adaptive banking builder, kit v3",
+  "collaborators": {
+    "Demir": "DemirEkinArikan",
+    "Naci": "burhan-launchway"
+  },
+  "checkpoint_minutes": 15,
+  "takeover_stale_minutes": 30,
+  "deadline": {
+    "opens": "2026-10-11T20:00:00+03:00",
+    "closes": "2026-10-11T23:00:00+03:00"
+  },
+  "tasks": [
+    {
+      "id": "T01",
+      "title": "Pin kit and protect repository",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [],
+      "acceptance": [
+        "Record kit v3 and source precedence.",
+        "Review tracked source notes and use an explicit submission allowlist.",
+        "Exclude credentials, kickoff email, archives, caches and raw generated evidence."
+      ],
+      "checks": [
+        "python3.11 tools/package_submission.py --check"
+      ],
+      "phase": "setup",
+      "branch": "task/t01-pin-kit-and-protect-repository"
+    },
+    {
+      "id": "T02",
+      "title": "Reproducible runtime",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T01"
+      ],
+      "acceptance": [
+        "Python 3.11 setup is reproducible on both computers.",
+        "Each collaborator uses their own Codex sign-in.",
+        "Generation-only isolation is tested with benign forbidden-path sentinels; record tool/context exposure."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_runtime.py' -v",
+        "codex login status"
+      ],
+      "phase": "setup",
+      "branch": "task/t02-reproducible-runtime"
+    },
+    {
+      "id": "T03",
+      "title": "Staging deployment adapter",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T02"
+      ],
+      "acceptance": [
+        "Persistent slots validate, save, publish, read back and export.",
+        "Keep event model and browser-like User-Agent.",
+        "Record published version; reject material platform field stripping; bound every API wait."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_platform.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t03-staging-deployment-adapter"
+    },
+    {
+      "id": "T04",
+      "title": "Policy contract and provenance",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T01"
+      ],
+      "acceptance": [
+        "Extract objectives, actions, identity, calendars, amounts, attempts and outcomes with source evidence.",
+        "Compose base/overlay and resolve applicable amendments.",
+        "Changed policy and schema values require no builder-source edits."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_policy.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t04-policy-contract-and-provenance"
+    },
+    {
+      "id": "T05",
+      "title": "Fresh builder controller",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T02",
+        "T04"
+      ],
+      "acceptance": [
+        "Support repeated --brief and explicit --tool-api.",
+        "Generate policy/workflow through isolated Codex stdin; credentials stay in controller.",
+        "Enforce 30-minute deadline and reserve export time; emit sanitized required trace."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_builder.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t05-fresh-builder-controller"
+    },
+    {
+      "id": "T06",
+      "title": "Deterministic policy helpers",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T04"
+      ],
+      "acceptance": [
+        "Integer cents, deadlines, holidays, relative weekdays and supplied now pass boundary checks.",
+        "Identity counters preserve successful factors and ignore allowed hints.",
+        "Stable product IDs, per-product attempts and confirmed commitments are enforced."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_policy.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t06-deterministic-policy-helpers"
+    },
+    {
+      "id": "T07",
+      "title": "Adaptive workflow generation",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T03",
+        "T05",
+        "T06"
+      ],
+      "acceptance": [
+        "Generate routes/extraction/dialogue and code from goal, policy and current schema.",
+        "Resolve fields and enum values from OpenAPI, with no case-ID shortcuts.",
+        "Compile different supported banking goals; every executable path terminates safely."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_validation.py' -v",
+        "python3.11 -m unittest discover -s tests -p 'test_builder.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t07-adaptive-workflow-generation"
+    },
+    {
+      "id": "T08",
+      "title": "Irreversible-action handling",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T07"
+      ],
+      "acceptance": [
+        "Write only confirmed final terms; never duplicate a recorded promise.",
+        "Stage notes until non-transfer close; discard pending notes and unwritten commitments on transfer.",
+        "Keep successful promises after partial failure; close exactly once."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_policy.py' -v",
+        "python3.11 -m unittest discover -s tests -p 'test_scoring.py' -v"
+      ],
+      "phase": "builder",
+      "branch": "task/t08-irreversible-action-handling"
+    },
+    {
+      "id": "T09",
+      "title": "Structural and semantic validation",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T07",
+        "T08"
+      ],
+      "acceptance": [
+        "Reject nulls, invalid paths, unsafe code, unresolved required bindings and forbidden URLs.",
+        "Check response mapping, passthrough fallbacks, factor ordering and final-close discipline.",
+        "Report unproven dialogue behavior as requiring hosted evidence."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_validation.py' -v"
+      ],
+      "phase": "benchmark",
+      "branch": "task/t09-structural-and-semantic-validation"
+    },
+    {
+      "id": "T10",
+      "title": "Local development fixtures",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T04"
+      ],
+      "acceptance": [
+        "Author 36 training and 24 validation fixtures with independent policy-bound oracles.",
+        "Cover raw/clean equivalence, schema changes, calendars, amounts and state invariants.",
+        "Do not claim local deterministic checks prove real dialogue behavior."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_benchmarks.py' -v"
+      ],
+      "phase": "benchmark",
+      "branch": "task/t10-local-development-fixtures"
+    },
+    {
+      "id": "T11",
+      "title": "Hosted runner adapter",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T03"
+      ],
+      "acceptance": [
+        "Use unique fixture_id and known bank_case_id without dictionary collisions.",
+        "Start fresh sessions per fixture and repetition; preserve server seed facts.",
+        "Bound polling, page all results, attribute versions and coordinate one simulation lease."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_benchmarks.py' -v"
+      ],
+      "phase": "benchmark",
+      "branch": "task/t11-hosted-runner-adapter"
+    },
+    {
+      "id": "T12",
+      "title": "Hosted development scenarios",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T04",
+        "T11"
+      ],
+      "acceptance": [
+        "Audit the first 60 training/validation variants against their official seeds.",
+        "Cover fragments, corrections, questions, digressions, worded values and compound attacks.",
+        "Persona behavior and oracle must agree; security questions must not silently change expected outcomes."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_benchmarks.py' -v"
+      ],
+      "phase": "benchmark",
+      "branch": "task/t12-hosted-development-scenarios"
+    },
+    {
+      "id": "T13",
+      "title": "Stronger scoring and evidence",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T09",
+        "T10",
+        "T11",
+        "T12"
+      ],
+      "acceptance": [
+        "Compare exact ledger multisets and enforce ordering, counters, duplicate-write and transfer-note checks.",
+        "Capture transcripts, call/run IDs, judge verdict, latency and preserved retries.",
+        "Missing/incomplete evidence is not a pass; separate local and hosted claims."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_scoring.py' -v"
+      ],
+      "phase": "benchmark",
+      "branch": "task/t13-stronger-scoring-and-evidence"
+    },
+    {
+      "id": "T14",
+      "title": "Bounded autonomous repair",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T05",
+        "T13"
+      ],
+      "acceptance": [
+        "Repair from input rules and sanitized violation explanations, not customer IDs/expected-value shortcuts.",
+        "Republish and inspect each candidate; reserve time to export.",
+        "Retain failed/incomplete attempts and original infrastructure evidence."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_builder.py' -v"
+      ],
+      "phase": "evaluation",
+      "branch": "task/t14-bounded-autonomous-repair"
+    },
+    {
+      "id": "T15",
+      "title": "Development evaluation",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T14"
+      ],
+      "acceptance": [
+        "Compare baseline and structured builder on training then validation.",
+        "After authorization, run actual hosted cases and check regressions.",
+        "Prioritize strict pass rate and zero policy/security failures before amount/speed."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -v"
+      ],
+      "phase": "evaluation",
+      "branch": "task/t15-development-evaluation"
+    },
+    {
+      "id": "T16",
+      "title": "Fresh held-out evaluation",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T15"
+      ],
+      "acceptance": [
+        "Freeze a candidate, then author 60 new local and 60 hosted holdouts.",
+        "Score policy/schema adaptation separately from wording robustness.",
+        "Consume holdout if used for repair; require a fresh set for new blind claims."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -p 'test_benchmarks.py' -v"
+      ],
+      "phase": "evaluation",
+      "branch": "task/t16-fresh-held-out-evaluation"
+    },
+    {
+      "id": "T17",
+      "title": "Final rehearsal and freeze",
+      "assignee": "burhan-launchway",
+      "depends_on": [
+        "T16"
+      ],
+      "acceptance": [
+        "Reproduce exact builder from clean checkout with fresh policy/schema inputs.",
+        "Verify traces, publication/export agreement, allowed model/tools and <30-minute build.",
+        "Record commit/config/model and critical cases passing all 3 repetitions."
+      ],
+      "checks": [
+        "python3.11 -m unittest discover -s tests -v",
+        "python3.11 tools/package_submission.py --check"
+      ],
+      "phase": "final",
+      "branch": "task/t17-final-rehearsal-and-freeze"
+    },
+    {
+      "id": "T18",
+      "title": "Hidden builds and submission package",
+      "assignee": "DemirEkinArikan",
+      "depends_on": [
+        "T17"
+      ],
+      "acceptance": [
+        "Run two hidden inputs without manual workflow edits or source/prompt rule additions.",
+        "Produce two exports, selected build traces, commit and submission manifest.",
+        "Finish broad tests before 20:00 Istanbul; preserve a 22:45-23:00 submission buffer."
+      ],
+      "checks": [
+        "python3.11 tools/package_submission.py --check"
+      ],
+      "phase": "final",
+      "branch": "task/t18-hidden-builds-and-submission-package"
+    }
+  ]
+}

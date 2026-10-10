@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "files": {
+    ".claude/skills/build-phone-agent/SKILL.md": "6b4df78dcb3c66543502902f8060667f65d59f22a439a9f0d6d3c81756b5488c",
+    "README.md": "45034ae6079693b8c5eb6e6cc3857d47fdf3629b8b1d2a84fd73fb2f51415d58",
+    "VERSION": "1121cfccd5913f0a63fec40a6ffd44ea64f9dc135c66634ba001d10bcf4302a2",
+    "briefs/brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+    "briefs/brief-b.md": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+    "docs/api.md": "6003c0ba733f33b5981822d3418c20e042d29107fbb1045213b35dad6bf95157",
+    "docs/tools-and-code.md": "56be9c87fbfddf5855c25fe83d4633bafd885d7cba5677133c15d211eb21b711",
+    "docs/workflow-format.md": "4ff70b5a37b647122e6a6f3ca1a523b207dbcdf6afb32058de8451a8c7d1dcfc",
+    "env.example": "1dc7f597ef9e5af1c53829c294ec615dfcb4d2a793c8abb90068a40521dd8551",
+    "examples/agent_builder.py": "36b3359436d534a108f6680cb042af93a5f77b26e6b8607fee00672b1d2e4a67",
+    "examples/base-agent.json": "7eb462e9c910ab99f067c2f62dab272952c1395446247db396b4f695bde7ca68",
+    "freya.py": "881c5c86c784e16fe3b53d40a7e9a9d9318f45b6ce6fe4be992c27e522c7732b",
+    "public-test-set.json": "fb7f4c0082eecb724a6faab771b4339bc62655627e49251e6bb2a0cf59a72fcb",
+    "tools/openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+    "tools/run_cases.py": "c96da9f9189d82850e46bfc551603ff5a62847025b5c50a77b923ad999f3767c",
+    "tools/score.py": "daf55989d47915d9a4f0387c2a4f6748580fcdf66b7d3ec61356925efb0d17d7"
+  }
+}

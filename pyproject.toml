@@ -1,0 +1,9 @@
+[project]
+name = "freya-banking-builder"
+version = "0.1.0"
+description = "Isolated, adaptive banking-workflow builder for Build the Builder kit v3"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.unittest]
+start-directory = "tests"

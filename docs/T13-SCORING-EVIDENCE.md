@@ -100,10 +100,16 @@ As of 11 October 2026 Istanbul, the latest primary-thread checkpoint records a
 public-A build that failed safely at 1057.68 seconds, with no validated generated
 banking deployment. T11's documented bank TLS prerequisite also remains
 unresolved. The canonical lease records a previously completed synthetic
-simulation; its actual server status must still be checked before live use.
-Automatic approval review blocked reading this repo's `.env` for that read-back;
-explicit credential approval is pending. The lease was preserved and no
-simulation was started here.
+simulation. At 00:13:57 Istanbul on 11 October (21:13:57 UTC on 10 October),
+a bounded read-only server request under the canonical lock verified simulation
+`03229c8e-5d0c-41fd-8179-35a50c6cc43e` is `completed`, with the matching agent.
+The lease and iteration `ca839f71-ddae-40ae-8e56-9cfaeed37a34` were preserved;
+no new simulation or remote mutation occurred. Initial automatic review rejected
+credential loading, then approved the same request after reviewing README's
+explicit authorization for this repository's controller-owned credentials.
+Sanitized private evidence is retained at the canonical repo's
+`artifacts/t13-evidence-20261010/lease-readback.json`. Reconcile current primary
+and actual server state again immediately before a future live simulation.
 
 T09/T11/T12 remain dependency acceptance gates. This scorer PR does not close
 issue14. The outstanding deliverable is an actual accepted generated-agent
@@ -116,3 +122,18 @@ and `.simulation.json`. No evaluator records may enter generation inputs; no
 holdouts may be consumed for this development audit. Once the actual evidence
 and dependencies are complete, `tools/cowork.py complete` must use the merged
 same-repository PR whose head matches the checked, pushed completion commit.
+
+## Merged verification
+
+PR64 merged checked/pushed head `2afe55f8d6d5bec8fbbb6312aeee0790a6c16667`
+as `d1f044256660a904fd6032661ccee9b90787198e`. The three scoring files match the
+checked head exactly. Both independent reviews approved it. The checked branch
+passed 65 scoring tests and 754 full-suite tests. Isolated verification of the
+merge commit passed all 766 Python 3.11 tests in 57.664 seconds, kit16,
+source160 and diff checks. No GitHub CI checks were reported. Original logs are
+retained in `/private/tmp/freya-t13-merged-check/artifacts/t13-merge-check/`;
+pre-fix and branch checks remain in the isolated scoring worktree.
+
+This subsequent document update records verified lease evidence and merged
+checks; it changes no scorer, fixture, builder or generated-agent behavior.
+Issue14 remains open for actual pinned generated-agent evidence and dependencies.

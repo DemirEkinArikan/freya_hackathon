@@ -37,6 +37,7 @@ class GenerationFormatTests(unittest.TestCase):
             (json.dumps({"policy_json": "[]", "workflow_json": "{}"}), "inner_shape"),
             (json.dumps({"policy_json": {}, "workflow_json": "{}"}), "wire_shape"),
             (json.dumps({"policy_json": "{}", "workflow_json": "{}", "extra": True}), "wire_shape"),
+            (json.dumps({"policy_json": "{broken", "workflow_json": "{}", "policy": {}, "workflow": {}}), "wire_shape"),
             ('{"policy_json":"{}","policy_json":"{}","workflow_json":"{}"}', "outer_json"),
             (json.dumps({"policy_json": '{"bad":NaN}', "workflow_json": "{}"}), "inner_json")]
         for text, code in cases:

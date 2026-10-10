@@ -552,7 +552,9 @@ class CodexGenerator:
             if not isinstance(plan, dict):
                 raise GenerationFormatError("inner_shape")
             return {"plan": plan, "contract_sha256": plan_contract_sha256}
-        if isinstance(value, dict) and set(value) == {"policy_json", "workflow_json"}:
+        if isinstance(value, dict) and ("policy_json" in value or "workflow_json" in value):
+            if set(value) != {"policy_json", "workflow_json"}:
+                raise GenerationFormatError("wire_shape")
             if not all(isinstance(value[key], str) for key in ("policy_json", "workflow_json")):
                 raise GenerationFormatError("wire_shape")
             try:

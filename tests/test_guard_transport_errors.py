@@ -19,7 +19,9 @@ class BodyIndependentErrorTests(unittest.TestCase):
         # Its source authorizes replay only for this exact transport result.
         context["openapi"]["paths"]["/create_promise"]["post"]["responses"]["409"] = {
             "description": "Nothing is persisted on this response; it may be repeated."}
-        profile["nonpersistent_failures"] = {actual: [{"http_status": 409}]}
+        profile["nonpersistent_failures"] = {actual: [{"http_status": 409, "api_source": {
+            "pointer": "/paths/~1create_promise/post/responses/409/description",
+            "quote": "Nothing is persisted on this response; it may be repeated."}}]}
         self.harness.context = aliases.recompile_context(context, profile)
         self.harness.workflow = compile_guarded_workflow(**self.harness.context)["workflow"]
         self.harness.variables = {"customer_id": "synthetic-session", "now": "2031-05-02"}

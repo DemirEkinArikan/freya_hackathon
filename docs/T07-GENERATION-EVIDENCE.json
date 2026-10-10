@@ -271,7 +271,15 @@
       "evaluator_inputs_included": false,
       "source_checks_limit": "No exact combined pre-run full-suite count is asserted here; contributing merged PR checks are separate.",
       "error_family": "unsupported constraints; raw profile additionally retains invalid rule scope fields",
-      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations."
+      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations.",
+      "sources": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "27ee7511731188e7b287ff7de25aed1287fbaa8a3a3b491c70e51f0def0803d2"
+        }
+      ],
+      "tool_api_sha256": "d1ef8916e24c5b9fd49a6781a676c39e581a3134f3f71396c012e6b733ad2a4f"
     },
     {
       "profile": "train-2",
@@ -311,7 +319,35 @@
         "Supplied effective-date and goal conditions need typed executable selection; stripping invalid extra scope fields would lose constraints.",
         "API remaining budget maximum two does not prove contradiction with total wrong limit three; do not infer initial budget or call date.",
         "Nonpromise definite-failure retry support and source triggers remain unresolved; preserve obligations without invented counter scope."
-      ]
+      ],
+      "sources": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "a3df9c87ca910d95bd7f55a8a6ed6397e79f3b1b42d286b81ba71d64216fb6ee"
+        },
+        {
+          "id": "brief-2",
+          "file": "effective-memo.md",
+          "sha256": "2d5aaf68dadf46298ff42720ca462e0c5590c7807c4f8a49f3aefbf6158430d4"
+        },
+        {
+          "id": "brief-3",
+          "file": "historical-policy.md",
+          "sha256": "9dab0f53683559f19d0d2f341cda7b2780d2fa346131a2285a82e9119448acb9"
+        },
+        {
+          "id": "brief-4",
+          "file": "operations-mail.md",
+          "sha256": "2d94e82066af72fe47a81e6229f92a5edc1f54612c50c5f735fae7c39ebeb47b"
+        },
+        {
+          "id": "brief-5",
+          "file": "code-list.md",
+          "sha256": "5bc32b39e009688154d529e4a9354da433bbc1a8d768a26c207477c50509ac7c"
+        }
+      ],
+      "tool_api_sha256": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761"
     }
   ],
   "changed_schema_trials": {
@@ -330,7 +366,6 @@
     "Safe termination of conversation and action cycles; source-required speech in actual speaking nodes",
     "Future hosted use only: reconcile the canonical primary simulation lease with the server"
   ],
-  "latest_reviewed_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
   "dependency_update": {
     "T03": "closed",
     "T05": "closed",
@@ -360,5 +395,8 @@
     "Fresh audited generation after coordinated generic semantic/controller guidance repair",
     "Actual routes/extraction/dialogue/code compilation for different complete approved policy/schema inputs",
     "T05 dependency acceptance and shared-lease server reconciliation before hosted use"
-  ]
+  ],
+  "initial_source_commit_scope": "Top-level source_commit binds the initial two policy-only runs; each later record binds its own exact source.",
+  "generation_inputs_scope": "Top-level generation_inputs describes the initial organizer runs; later approved development runs bind their own input inventories.",
+  "latest_structurally_validated_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3"
 }

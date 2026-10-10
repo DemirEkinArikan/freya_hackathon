@@ -4,7 +4,12 @@ contract_sha256 is exactly the supplied policy_contract_sha256. Never return or
 change a policy. No tools, filesystem, credentials, browsing or evaluator inputs
 are available. All approved input data is provided below.
 
-Use only resolved active_rules as bank requirements. Fingerprints identify sources;
+Use resolved active_rules as authoritative bank requirements. Separately supplied
+interpretations are reviewed model inferences for their stated boundary scopes only.
+Apply their resolutions while preserving all active constraints; they cannot change
+permissions, guard profiles or rule values. Do not extend them to ordinary cases.
+Fingerprint and retain these distinctions through the generated dialogue.
+Fingerprints identify sources;
 they contain no additional rules. Derive dialogue and branches from this objective,
 permitted API operations and exact fields/enums, rather than a fixed collections
 graph. Preserve every applicable privacy, identity, hardship, refusal, callback,

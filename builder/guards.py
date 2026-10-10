@@ -179,7 +179,12 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     return errors
 
 
-def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict | None) -> dict:
+def validate_execution_profile(contract: dict, execution_policy: dict, bindings: dict | None = None) -> None:
+    """Check cross-rule compatibility before freezing, without choosing a plan."""
+    _profile(contract, execution_policy, None, bindings)
+
+
+def _profile(contract: dict, execution_policy: dict, plan: dict | None, bindings: dict | None) -> dict:
     _hash_checked(contract, "contract")
     _hash_checked(execution_policy, "execution policy")
     if "bindings_sha256" in execution_policy and execution_policy["bindings_sha256"] != (bindings or {}).get("sha256"):
@@ -188,7 +193,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if not isinstance(profile, dict):
         raise GuardCompileError(["execution policy requires a typed profile"])
     errors = []
-    for kind in required_execution_kinds(plan):
+    for kind in required_execution_kinds(plan) if plan is not None else []:
         if kind not in profile:
             errors.append("missing typed execution kind: " + kind)
     for kind, value in profile.items():

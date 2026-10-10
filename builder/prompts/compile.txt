@@ -23,7 +23,8 @@ Every supplied brief source must have a literal citation in at least one rule; d
 silently drop a base brief, amendment, raw policy document or code list.
 Each rule has id, kind,
 value and source {id, quote}, where quote occurs verbatim in that supplied source.
-Keep unsupported requirements in unsupported_constraints instead of guessing.
+Keep direct conflicts and requirements without a supported safe interpretation in
+unsupported_constraints instead of guessing.
 unsupported_constraints is an array of strings, empty when there is no unresolved
 bank requirement. Preserve each rule's scope, precondition and temporal phase.
 Preserve the full consequence of every exhausted counter, rejected proposal and
@@ -41,6 +42,35 @@ unspecified behavior as unspecified; do not invent retries, outcomes or actions.
 Put all policy values in typed rules. Never add top-level policy keys that bypass
 rule provenance. An override may replace only rules of its own semantic kind;
 split an amendment that changes several concepts into one rule per concept.
+For an underspecified operational boundary, you may propose a narrow contextual
+completion in an optional top-level interpretations array. Preserve explicit source
+requirements and literal quotations: inferences cannot override them.
+Each item requires {id, kind: "boundary_completion", issue, scope, rule_ids,
+preserved_rule_ids, resolution, rationale}. Use nonempty strings for textual fields;
+rule_ids lists all supporting active rule IDs; preserved_rule_ids is a nonempty
+subset naming constraints that the completion must preserve. State the precise
+trigger and resulting behavior in scope/resolution. Distinguish proposals from
+committed operations. Prefer a minimal extension of a source-defined branch while
+preserving every explicit prohibition, limit, permitted operation and ordinary case.
+Do not add new terms, permissions, outcomes, retries or guarantees. If that is
+impossible, retain an unsupported constraint. Do not record a proposed resolved
+boundary as still unsupported merely because its completion is inferred. The
+controller separately reviews interpretations against the original sources before
+freezing; approval remains a model inference, never organizer authority.
+At an unspecified boundary, prefer a minimal extension of an existing admissible
+proposal branch over knowingly uttering unusable terms and repairing them after
+acceptance. Apply all existing explicit branches first; a completion must not
+replace cases already covered by a rule. Keep distinct boundary cases separately
+scoped so a repair for one cannot change another. Review feedback may repair an
+inference before freeze; it is diagnostic evidence, not a new bank amendment.
+If a completion supplies a typed executable value, put that value in the relevant
+source-bound rule, and add its ID to optional derived_rule_ids in the interpretation
+(and to rule_ids). Do not leave required executable settings only in resolution
+prose: that prose is not executed. Such rule values are explicitly labelled model
+inferences in the compiled contract; their literal supporting quote is evidence,
+not a claim that the value was stated verbatim. Derived rules cannot have overrides
+or contradict explicit source requirements. Preserve the source-defined scope.
+
 Use integer version=1 and a concrete goal, unique allowed_actions, sources, rules and
 unsupported_constraints. Allowed actions are operation names from the supplied API.
 
@@ -100,6 +130,24 @@ extract every supported required kind before the contract is frozen. Include all
 required members of each typed object; several language-dependent choices do not
 remove that object's required scope records. Never select an arbitrary disposition
 to satisfy a schema. Preserve only source-supported semantics.
+Interpret these interface names in their execution context, not as additional bank
+requirements. Limit completeness checks to the brief's declared scope: behavior for
+an excluded input population is not an unresolved in-scope bank requirement. A
+neutral encoding of an ordering over a singleton does not introduce a multi-item
+priority rule. Preserve cardinality and scope in the policy and dialogue.
+identity_close scope records classify allowed closing dispositions; with
+identity_close_choices present they do not automatically end incomplete checks.
+Choices in each scope must keep its fixed outcome. A transfer is handled through
+stage_transfer/commit_transfer and actual transfer evidence, not an identity-close
+choice claiming a transfer occurred. An unreached scope still needs one source-
+permitted baseline reason when its outcome requires a reason; choices retain the
+other permitted reasons and dialogue preconditions. No baseline permits bypassing
+those preconditions. Do not close merely because identity is still pending.
+Derive transfer prerequisites from the rule's stated scope and process phase;
+include every permitted queue. Do not invent an extra identity/account condition
+where no such restriction applies. If scope is genuinely underdetermined, state a
+narrow interpretation for review rather than silently choosing a prerequisite.
+
 These typed interfaces must encode supplied requirements; do not create defaults
 merely to satisfy a compiler. Missing/ambiguous semantics remain unsupported.
 

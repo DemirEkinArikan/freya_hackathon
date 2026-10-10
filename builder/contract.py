@@ -12,6 +12,7 @@ import copy
 from typing import Any, Mapping
 
 from .policy import _active_rules, validate_policy
+from .interpretations import compile_interpretations
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
 
@@ -227,9 +228,19 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str
                         "superseded_provenance": [{"rule_id": ident, "id": by_id[ident]["source"]["id"],
                                                    "quote": by_id[ident]["source"]["quote"]}
                                                   for ident in ancestors]}
+    for item in policy.get("interpretations", []):
+        for ident in item.get("derived_rule_ids", []):
+            entry = active[by_id[ident]["kind"]]
+            entry["authority"] = "model_inference"
+            entry.setdefault("interpretation_ids", []).append(item["id"])
+    for entry in active.values():
+        if "interpretation_ids" in entry:
+            entry["interpretation_ids"] = sorted(set(entry["interpretation_ids"]))
     contract = {"version": 1, "goal": policy["goal"], "active_rules": active,
                 "permitted_operations": catalogue, "sources": copy.deepcopy(manifest),
                 "provenance_is_operative": False,
                 "semantic_correctness_verified": False}
+    if policy.get("interpretations"):
+        contract["interpretations"] = compile_interpretations(policy)
     contract["sha256"] = digest(contract)
     return contract

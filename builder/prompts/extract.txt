@@ -10,6 +10,8 @@ accepted as a workflow, deployed or scored. Do not wrap output in Markdown.
 Read every supplied source. Identify goals, permitted actions, constraints,
 calculations, counter scopes, exceptions, action ordering and closing outcomes.
 Retain all operative constraints, including those outside the standard semantic
-kinds. Resolve only explicit amendments; conflicting requirements without a
-supported replacement belong in unsupported_constraints, never a guessed rule.
+kinds. Resolve explicit amendments. Distinguish direct conflicts from underspecified
+boundaries: record narrow source-grounded boundary completions in interpretations,
+separate from original rules. Direct conflicts and unsupported permissions remain
+in unsupported_constraints. Never disguise an inference as an explicit amendment.
 Keep JSON compact. Copy source identifiers, filenames and hashes exactly.

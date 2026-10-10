@@ -17,6 +17,7 @@ if __package__ in (None, ""):
 
 from .platform import FreyaClient, PlatformError
 from .readback import verify_readback
+from .interpretations import review_prompt, review_errors
 from .contract import compile_policy_contract, PolicyContractError, api_provenance_source
 from .runtime import CodexGenerator, Deadline, DeadlineExceeded, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
@@ -24,7 +25,7 @@ from .toolbindings import assert_live_contract, bind_controller_auth, derive_too
 from .validation import validate_workflow
 from .action_bindings import compile_action_bindings
 from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
-from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError, execution_rule_requirements
+from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError, execution_rule_requirements, validate_execution_profile
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -37,7 +38,7 @@ class FrozenPolicyContractError(ValueError):
 
 
 class UnresolvedPolicyError(ValueError):
-    """A source ambiguity survived review and needs authoritative clarification."""
+    """A policy requirement or proposed interpretation remains unresolved."""
 
 
 class HostedTestInfrastructureError(RuntimeError):
@@ -144,20 +145,24 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
                "active_rules": {kind: copy.deepcopy(rule["value"]) for kind, rule in contract["active_rules"].items()},
                "permitted_operations": contract["permitted_operations"], "sources": contract["sources"],
                "runtime_reference": reference}
+    if contract.get("interpretations"):
+        payload["interpretations"] = copy.deepcopy(contract["interpretations"])
     if repair:
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets):
-    repair = None
-    for attempt in range(MAX_REPAIRS + 1):
+def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets,
+                    *, initial_repair=None, max_repairs=MAX_REPAIRS, attempt_offset=0):
+    repair = initial_repair
+    for attempt in range(max_repairs + 1):
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
         extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
                                        purpose="Extract banking policy and source/API bindings", max_seconds=450)
         policy = extracted.get("policy")
         errors = []
+        compiled = None
         assert_no_secrets(policy, forbidden_values=secrets)
         try:
             compiled = compile_policy_contract(policy, sources, openapi)
@@ -168,12 +173,15 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         # model turns discovering one class of error at a time.
         if isinstance(policy, dict):
             try:
-                compile_execution_policy(policy, compile_action_bindings(policy, openapi))
+                bindings = compile_action_bindings(policy, openapi)
+                execution = compile_execution_policy(policy, bindings)
+                if compiled is not None:
+                    validate_execution_profile(compiled, execution, bindings)
             except ValueError as exc:
                 errors.extend(getattr(exc, "errors", [str(exc)]))
         if errors:
             errors = sorted(set(errors))
-            _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
+            _write_json(run_dir / f"policy.rejected-{attempt_offset + attempt + 1}.json", sanitize(
                 {"policy": policy, "validation_errors": errors}, secrets=secrets))
             trace.emit("policy_validation", passed=False, errors=errors)
             if (attempt >= 1 and isinstance(policy, dict)
@@ -182,7 +190,7 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                     and all(isinstance(item, str) for item in policy["unsupported_constraints"])):
                 raise UnresolvedPolicyError("Source constraints remain unresolved after extraction review: "
                                             + "; ".join(policy["unsupported_constraints"]))
-            if attempt == MAX_REPAIRS:
+            if attempt == max_repairs:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors))
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
             continue
@@ -395,13 +403,47 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
             compiled = compile_policy_contract(policy, sources, openapi)
-            compile_execution_policy(policy, compile_action_bindings(policy, openapi))
+            bindings = compile_action_bindings(policy, openapi)
+            execution = compile_execution_policy(policy, bindings)
+            validate_execution_profile(compiled, execution, bindings)
             policy_repairs = 0
             policy_origin = "provided_and_revalidated"
         else:
             policy, compiled, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values)
             policy_origin = "extracted"
+        review_attempt = 0
+        while policy.get("interpretations"):
+            review_attempt += 1
+            _write_json(run_dir / "policy.interpretation-candidate.json", sanitize(policy, secrets=secret_values))
+            _write_json(run_dir / f"policy.interpretation-candidate-{review_attempt}.json", sanitize(policy, secrets=secret_values))
+            deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            prompt = review_prompt(policy, sources, openapi)
+            assert_no_secrets(prompt, forbidden_values=secret_values)
+            reviewed = generator.generate(prompt, purpose="Review source-grounded boundary interpretations",
+                                          max_seconds=180)
+            review = reviewed.get("policy")
+            assert_no_secrets(review, forbidden_values=secret_values)
+            review_issues = review_errors(review, policy)
+            evidence = sanitize({"policy_sha256": digest(policy), "review": review, "errors": review_issues,
+                                 "accepted": not review_issues, "organizer_approval_verified": False}, secrets=secret_values)
+            _write_json(run_dir / "interpretation-review.json", evidence)
+            _write_json(run_dir / f"interpretation-review-{review_attempt}.json", evidence)
+            trace.emit("interpretation_review", passed=not review_issues, count=len(policy["interpretations"]),
+                       attempt=review_attempt, policy_sha256=digest(policy), errors=review_issues)
+            if not review_issues:
+                break
+            if args.policy_file or policy_repairs >= MAX_REPAIRS:
+                raise UnresolvedPolicyError("Boundary interpretation review failed: " + "; ".join(review_issues))
+            repair = {"validation_errors": review_issues, "interpretation_review": review,
+                      "previous_policy": sanitize(policy, secrets=secret_values)}
+            # Semantic review repairs share the same total budget as structural
+            # extraction and plan repairs. Never rewrite a frozen policy.
+            offset = policy_repairs + 1
+            policy, compiled, additional = _extract_policy(
+                generator, sources, openapi, run_dir, trace, deadline, secret_values,
+                initial_repair=repair, max_repairs=MAX_REPAIRS - offset, attempt_offset=offset)
+            policy_repairs = offset + additional
         stage_durations["policy"] = round(time.monotonic() - stage_started, 3)
         trace.emit("stage_completed", stage="policy", elapsed_seconds=stage_durations["policy"],
                    repairs=policy_repairs, origin=policy_origin)

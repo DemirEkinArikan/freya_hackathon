@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
 
 from .safety import canonical_json, digest
+from .interpretations import interpretation_errors
 
 
 class RuleSource(TypedDict):
@@ -196,7 +197,7 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
         return ["policy must be an object"]
     if type(policy.get("version", 1)) is not int or policy.get("version", 1) != 1 or (strict and "version" not in policy):
         errors.append("policy.version must be 1")
-    if strict and set(policy) - {"version", "goal", "allowed_actions", "sources", "rules", "unsupported_constraints"}:
+    if strict and set(policy) - {"version", "goal", "allowed_actions", "sources", "rules", "unsupported_constraints", "interpretations"}:
         errors.append("policy contains unsupported top-level fields; rule values belong in rules")
     if not isinstance(policy.get("goal"), str) or not policy["goal"].strip():
         errors.append("policy.goal must be a nonempty string")
@@ -327,6 +328,7 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                 errors.extend(_profile_errors(kind, value))
         except (PolicyError, TypeError, ValueError):
             errors.append(f"policy rules for {kind} are conflicting or malformed")
+    errors.extend(interpretation_errors(policy))
     unsupported = policy.get("unsupported_constraints", [])
     if not isinstance(unsupported, list) or any(not isinstance(x, str) for x in unsupported):
         errors.append("policy.unsupported_constraints must be a string list")

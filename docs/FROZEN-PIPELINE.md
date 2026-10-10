@@ -5,7 +5,7 @@ Policy may cite the supplied OpenAPI through the optional controller-derived
 API guarantees must not be attributed to unrelated brief quotations. Extraction
 receives the compiler's action-to-required-rule interface, never fabricated values.
 Independent provenance/shape errors are returned in the same bounded repair. A
-source ambiguity surviving one extraction review stops as `unsupported_policy`,
+unresolved conflict surviving one extraction review stops as `unsupported_policy`,
 retaining both rejected outputs instead of repeatedly spending model turns.
 
 The default builder extracts policy once, resolves amendment precedence against all
@@ -61,3 +61,27 @@ brief documents, so an API-only guarantee needs an explicit auditable representa
 before authorizing retries from that source.
 
 No Freya trial, purchase or private Launchway input is part of local verification.
+
+## Source-grounded boundary interpretations
+
+The optional policy `interpretations` list records narrow boundary completions
+separately from authoritative rules. Each cites existing active rules, identifies
+the scope, resolution and rationale, and names preserved constraints. Compilation
+retains exact source witnesses and fingerprints these inferences. When a boundary
+completion supplies a typed executable representation, its `derived_rule_ids`
+must cite the corresponding rules; the contract labels these as `model_inference`.
+Derived rules cannot override other rules. Review must check their values against
+the source constraints; the compiler does not prove natural-language semantics.
+Source files and controller-owned guard algorithms remain unchanged.
+
+Before any policy freeze or deployment (including supplied-policy resumption), a
+separate tool-free model call reviews every interpretation against the original
+briefs and OpenAPI. Missing, rejected, stale-hash or malformed review decisions
+stop the build. Review is bounded to 180 seconds within the existing total budget
+and is persisted as `interpretation-review.json`. Only approved frozen inferences
+reach plan generation. Explicit unresolved conflicts still stop the run.
+
+Structural validation and independent model review do not prove bank intent or
+spoken-offer correctness. Existing calendar, amount, identity and consent guards
+remain unchanged; conversation tests must validate the inferred boundary behavior.
+No Brief A dates or special-case branches are hardcoded into the builder.

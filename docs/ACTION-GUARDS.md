@@ -49,6 +49,62 @@ An action placeholder has this shape:
 Inputs map semantic field names to public variable names, never literal values.
 Customer identity and the clock come only from engine call variables.
 
+## Read-only dialogue facts
+
+Every compiler-authored code step clears and replaces the protected `bg_facts`
+JSON string. Dialogue instructions may read `{{bg_facts}}`; authored extraction
+cannot write it. Direct authored template references to raw `bg_state`, request
+bodies, protected result variables, customer identifiers and canonical or aliased
+automatic operation-result variables fail compilation. Reading supplied `now`
+remains allowed. Authored `on_enter` speech cannot template `bg_facts`, because
+the view includes explicitly internal product references. Engine confirmation
+readback continues to use its separate human wording.
+
+The same raw-value denylist applies to nested authored `condition.variable`
+reads; conditions may read `bg_facts`, `now` and ordinary public variables.
+Conversation nodes may supply a string `routing_prompt` with `{{bg_facts}}` so
+the router sees these facts explicitly. The kit makes `task_message` invisible
+to the routing model; task instructions alone are insufficient routing context.
+
+The allowlist view contains route/call status, identity progress and the next
+supplied factor, monotone remaining answers, staged/recorded product statuses,
+recorded-action counts, callback date/time, transfer and close status. An identity
+hint/check belongs only to the immediate verified API result and is cleared at
+the next guard step. A successful write appears only after actual result evidence;
+staging or waiting for consent never claims it was recorded. Unknown persistence
+removes identity/account displays and internal action references while retaining
+only true recorded-action counts and a safe failure status. Parse/execution
+exceptions replace the view with `unavailable`, clearing prior facts. A projection
+failure after valid action reconciliation quarantines the reconciled state and
+retains its true recorded counts, while removing displays and new request bodies.
+API extras are never copied.
+
+`internal_action_references.products` contains stable product IDs solely for
+proposing actions. Its `position` follows the policy processing order and
+`returned_position` identifies the original account-array position. Never speak
+these references. When the protected profile/account supplies them, each internal
+reference also contains the normalized product type, unique policy band,
+integer-cent floor and past-due cap, bounded business-day deadline, exact
+staged/recorded/local-finalized resolution and remaining write-failure budget.
+Missing or unsupported data marks proposal constraints `unavailable`; inflight,
+recorded, exhausted or sealed products mark them `blocked`. These are routing
+and proposal facts, not additional disclosure permission. No persuasion count is
+asserted because this kernel has no protected persuasion counter.
+Account narration is blocked until an optional active typed
+`account_disclosure_fields` rule lists unique, exact returned product-schema
+fields. Only those scalar fields are then projected in `account.products`, by
+position, without identifiers or undeclared API fields. The compiler rejects
+customer/product identifier aliases and missing or structured schema fields.
+Runtime missing, malformed or nonfinite selected values clear the view; selected
+text containing actual customer/product IDs is not projected.
+
+This field list supplies an unconditional per-run disclosure allowance. It cannot
+express conditional, per-product or purpose-specific permissions; retain those
+constraints as unsupported until a suitable typed guard exists. The structural
+template checks do not prove that an LLM follows every speech instruction or
+never mentions data from another context. Hosted dialogue/privacy checks and
+semantic source review remain required.
+
 | Action | Required inputs | Optional inputs |
 | --- | --- | --- |
 | `verify_identity` | `field`, `answer` | |
@@ -110,6 +166,7 @@ callbacks, reasons, confirmation and failure limits. Additional guard kinds are:
 | `promise_failure_disposition` | `{reason: string, clear_pending: boolean}` |
 | `transfer_prerequisites` | `{queue: "none"/"identity"/"account"}` |
 | `promise_readback` | `{product_fields: [string], value_labels?: {field: {wire_value: spoken_label}}}`; internal/customer IDs excluded |
+| `account_disclosure_fields` | Optional unique list of exact scalar account-product schema fields; absent blocks account narration |
 
 `action_fields`, `result_fields` and `product_fields` active rule dictionaries
 can explicitly bind renamed API fields. Canonical names are accepted only when

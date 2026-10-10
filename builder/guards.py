@@ -57,7 +57,7 @@ _REQUIRED = {
     "finalize_notes": {"note_reasons", "record_notes", "product_order", "resolve_all_products"},
     "stage_transfer": {"transfer_reasons", "transfer_prerequisites"}, "commit_transfer": {"transfer_reasons", "transfer_prerequisites"},
     "schedule_callback": {"callback_window", "holidays", "business_weekdays"},
-    "close_call": {"close_reasons", "record_notes", "identity_close"},
+    "close_call": {"close_reasons", "record_notes"},
 }
 
 
@@ -298,6 +298,10 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     # fact or a sourced identity disposition, and rejects ambiguous facts.
     # This detached runtime representation is not a frozen policy rule.
     result.setdefault("close_precedence", [])
+    # No sourced identity disposition grants no bank closing choice. The
+    # existing close handler can still use protected account/transfer facts;
+    # otherwise it refuses the request and ends silently without a bank call.
+    result.setdefault("identity_close", {})
     if result.get("policy_applicability") == {"products": "single"}:
         # Conservative kernel invariant: the sole product must be resolved.
         # This is not an invented cross-product policy rule or sort order;

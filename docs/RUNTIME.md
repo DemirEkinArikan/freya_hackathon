@@ -162,3 +162,25 @@ banking prompt, Freya call, purchase, or additional model probe followed this
 failure. No currently accepted Codex generation candidate has been established.
 After integrating main `815ea19`, the isolated capability checkpoint passed all
 279 local tests and `git diff --check`; the failed live audit status is unchanged.
+
+## Generation event completion
+
+Both policy and restricted-plan generation now require a valid JSONL lifecycle:
+one `thread.started` with a nonempty thread identifier, one `turn.started`, and
+exactly one `turn.completed` as the final event. A zero process exit is
+insufficient. Malformed JSON, duplicate keys, nonfinite values, unknown event
+types, repeated/out-of-order starts, incomplete turns, and events after
+completion fail closed. Precisely recognized startup warning items remain
+accepted; unknown error diagnostics and all tool-action items remain rejected.
+
+Only the final completed agent message is parsed for the requested stage
+contract. Started/updated messages, earlier commentary, and earlier valid
+candidates cannot replace an incomplete or invalid final response. These checks
+preserve the strict policy/plan schemas, frozen contract fingerprint, process
+deadline and reserved export time. They do not authenticate arbitrary replayed
+event streams independently of the CLI; each invocation still uses a new
+ephemeral generation process and the mandatory isolation gate.
+
+This completion fix is verified with injected local event streams only. No
+additional model probe or Freya call was made, and the failed isolation evidence
+continues to block substantive generation.

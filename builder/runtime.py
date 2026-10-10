@@ -372,33 +372,79 @@ class CodexGenerator:
         self.trace.emit("generation_process_completed", elapsed_seconds=round(time.monotonic() - started, 2), returncode=result.returncode)
         messages: list[str] = []
         forbidden = {"command_execution", "mcp_tool_call", "web_search", "file_change", "tool_call", "image_generation", "computer_use"}
-        for line in result.stdout.splitlines():
+        allowed_events = {"thread.started", "turn.started", "turn.completed", "item.started", "item.updated", "item.completed"}
+        thread_started = turn_started = completed_turns = 0
+        last_event = None
+        last_agent_event = None
+        for line in self._text(result.stdout).splitlines():
             try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+                event = _strict_json(line)
+            except (json.JSONDecodeError, ValueError):
+                raise GenerationError("Codex emitted malformed generation events; see sanitized trace") from None
             if not isinstance(event, dict):
-                continue
+                raise GenerationError("Codex emitted a malformed event; see sanitized trace")
+            event_type = event.get("type")
+            if not isinstance(event_type, str):
+                raise GenerationError("Codex emitted a malformed event type; see sanitized trace")
+            if event_type in ("turn.failed", "error"):
+                raise GenerationError("Codex reported a failed generation turn; see sanitized trace")
+            if event_type in forbidden:
+                raise GenerationError("Generation attempted a prohibited tool action")
+            if event_type not in allowed_events:
+                raise GenerationError("Codex emitted an unrecognized generation event; see sanitized trace")
+            if completed_turns:
+                raise GenerationError("Codex emitted events after its completed generation turn; see sanitized trace")
+            last_event = event_type
             item = event.get("item", {})
             if not isinstance(item, dict):
                 raise GenerationError("Codex emitted a malformed event; see sanitized trace")
-            if event.get("type") in ("turn.failed", "error"):
-                raise GenerationError("Codex reported a failed generation turn; see sanitized trace")
-            if item.get("type") == "error":
+            item_type = item.get("type")
+            if "type" in item and (not isinstance(item_type, str) or not item_type):
+                raise GenerationError("Codex emitted a malformed item type; see sanitized trace")
+            if "model" in event:
+                if not isinstance(event["model"], str) or not event["model"]:
+                    raise GenerationError("Codex emitted malformed model metadata; see sanitized trace")
+                self.trace.emit("model_actual", model=event["model"])
+            if item_type == "error":
+                if event_type not in {"item.started", "item.updated", "item.completed"}:
+                    raise GenerationError("Codex emitted a malformed diagnostic event; see sanitized trace")
                 warning = _expected_cli_warning(item.get("message"))
                 if warning is None:
                     raise GenerationError("Codex reported an unrecognized error diagnostic; see sanitized trace")
                 self.trace.emit("generation_cli_warning", kind=warning)
                 continue
-            if (item.get("type") and item["type"] not in {"agent_message", "reasoning"}) or event.get("type") in forbidden:
+            if item_type and item_type not in {"agent_message", "reasoning"}:
                 raise GenerationError("Generation attempted a prohibited tool action")
-            if event.get("model"):
-                self.trace.emit("model_actual", model=event["model"])
-            if item.get("type") == "agent_message" and isinstance(item.get("text"), str):
+            if event_type == "thread.started":
+                if (thread_started or turn_started or "item" in event
+                        or not isinstance(event.get("thread_id"), str) or not event["thread_id"]):
+                    raise GenerationError("Codex reported a repeated or malformed thread start; see sanitized trace")
+                thread_started += 1
+            elif event_type == "turn.started":
+                if thread_started != 1 or turn_started or "item" in event:
+                    raise GenerationError("Codex reported a repeated or out-of-order turn start; see sanitized trace")
+                turn_started += 1
+            elif event_type == "turn.completed":
+                if turn_started != 1 or "item" in event or "error" in event:
+                    raise GenerationError("Codex reported an incomplete or malformed generation turn; see sanitized trace")
+                completed_turns += 1
+            elif turn_started != 1 or item_type not in {"agent_message", "reasoning"}:
+                raise GenerationError("Codex emitted an out-of-turn or malformed item; see sanitized trace")
+            if item_type == "agent_message":
+                last_agent_event = event_type
+            if event_type == "item.completed" and item_type == "agent_message":
+                if not isinstance(item.get("text"), str):
+                    raise GenerationError("Codex emitted a malformed completed message; see sanitized trace")
                 messages.append(item["text"])
         if result.returncode:
             raise GenerationError("Codex generation failed; see sanitized trace")
-        for message in reversed(messages):
+        if thread_started != 1 or turn_started != 1 or completed_turns != 1 or last_event != "turn.completed":
+            raise GenerationError("Codex generation did not complete exactly one turn; see sanitized trace")
+        if last_agent_event != "item.completed":
+            raise GenerationError("Codex returned no final completed agent message; see sanitized trace")
+        # Earlier commentary, started/updated items and cached candidates cannot
+        # stand in for the final completed message of this invocation.
+        for message in messages[-1:]:
             text = message.strip()
             if text.startswith("```"):
                 text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()

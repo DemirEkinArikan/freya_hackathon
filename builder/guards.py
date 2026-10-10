@@ -1033,8 +1033,22 @@ def guard_result(state, data, profile, catalog, expected_action):
     action = tx['action']
     ok = data.get('ok')
     status = data.get('_http_status')
-    if isinstance(status, str) and status.isdigit():
+    # Mapped runtime envelopes always carry this field, including an empty
+    # value when transport evidence is missing. Local semantic harnesses may
+    # omit it; a supplied status must be an exact HTTP status, never guessed.
+    if type(status) is str and re.fullmatch(r'[1-5][0-9]{2}', status):
         status = int(status)
+    status_valid = '_http_status' not in data or type(status) is int and 100 <= status <= 599
+    success_status = '_http_status' not in data or status_valid and 200 <= status <= 299
+    if not status_valid or guard_true(ok) and not success_status:
+        state['quarantined'] = True
+        if tx.get('key'):
+            state['attempts'][tx['key']]['status'] = 'unknown_persistence'
+        if action == 'close_call':
+            state['batch'] = dict()
+            state['consent'] = ''
+            return state, 'closed', dict(), ''
+        return state, 'failure', dict(), ''
     nonpersistent = any(type(status) is int and status == case['http_status'] and
                         ('error' not in case or data.get('error') == case['error'])
                         for case in profile.get('nonpersistent_failures', dict()).get(tx['operation'], list()))
@@ -1071,6 +1085,12 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'failure', dict(), ''
     if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):
         state['quarantined'] = True
+        return state, 'failure', dict(), ''
+    if action == 'commit_promises' and guard_true(ok) and (not isinstance(data.get('promise_id'), str) or not data['promise_id'].strip()):
+        # An affirmative flag without the required persisted-record identity is
+        # uncertain evidence. Retain the exact pending request and never retry.
+        state['quarantined'] = True
+        state['attempts'][tx['key']]['status'] = 'unknown_persistence'
         return state, 'failure', dict(), ''
     state['inflight'] = dict()
     if action == 'verify_identity':
@@ -1128,9 +1148,6 @@ def guard_result(state, data, profile, catalog, expected_action):
     state['attempts'][key]['status'] = 'recorded'
     if action == 'commit_promises':
         pid = tx['semantic']['product_id']
-        if not isinstance(data.get('promise_id'), str) or not data['promise_id']:
-            state['quarantined'] = True
-            return state, 'failure', dict(), ''
         state['recorded_promises'][pid] = state['pending_promises'].pop(pid)
     elif action == 'finalize_notes':
         pid = tx['semantic']['product_id']

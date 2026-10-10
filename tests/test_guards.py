@@ -466,10 +466,10 @@ class GuardExecutionTests(unittest.TestCase):
         for field in self.profile["identity_fields"]:
             variables.update(answer_field=field, answer_text="supplied")
             code("identity")
-            variables.update(bg_identity_result_ok="true", bg_identity_result_verified="true", bg_identity_result_wrong_answers_left="4")
+            variables.update(bg_identity_result_ok="true", bg_identity_result_verified="true", bg_identity_result_wrong_answers_left="4", bg_identity_result_http_status="200")
             code("bg_identity_result")
         code("account")
-        variables.update(bg_account_result_ok="true", bg_account_result_products='[{"product_id":"api-owned","type":"revolving","days_late":8,"past_due":300,"minimum_due":37.25}]')
+        variables.update(bg_account_result_http_status="200", bg_account_result_ok="true", bg_account_result_products='[{"product_id":"api-owned","type":"revolving","days_late":8,"past_due":300,"minimum_due":37.25}]')
         code("bg_account_result")
         self.assertEqual(variables["bg_route"], "done")
         variables.update(product="api-owned", amount="50", day="2031-05-06")

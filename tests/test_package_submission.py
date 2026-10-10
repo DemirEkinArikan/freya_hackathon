@@ -69,7 +69,7 @@ class PackageTests(unittest.TestCase):
             for filename, value in [('attempt.json', attempt), ('deployment.json', {**deployment, 'workflow': wf['workflow']}), ('export.json', wf)]:
                 (attempt_path / filename).write_text(json.dumps(value))
         return {"team": "synthetic", "repo": "https://github.com/test/example", "commit": "a" * 40,
-                "run_command": "python3.11 builder/build.py --brief {brief_path} --tool-api {tool_api_path}",
+                "run_command": "python3.11 -m builder.build --brief {brief_path} --tool-api {tool_api_path}",
                 "workflows": {n: n + ".json" for n in ("hidden-1", "hidden-2")},
                 "traces": {n: n + ".jsonl" for n in ("hidden-1", "hidden-2")},
                 'runs': {n: n + '/manifest.json' for n in ('hidden-1', 'hidden-2')},
@@ -233,6 +233,16 @@ class PackageTests(unittest.TestCase):
         source.write_text('synthetic-unpatterned-team-key')
         with self.assertRaisesRegex(ValueError, 'requires review'):
             package.check_content(source)
+
+    def test_short_overridden_local_credentials_and_passwords_remain_private(self):
+        (self.root / '.env').write_text('FREYA_API_KEY=opaque7\n')
+        source = self.root / 'README.md'
+        with patch.dict(package.os.environ, {'FREYA_API_KEY': 'different-live-value', 'service_password': 'pass9'}):
+            for value in ('opaque7', 'different-live-value', 'pass9'):
+                source.write_text(value)
+                with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'requires review') as result:
+                    package.check_content(source)
+                self.assertNotIn(value, str(result.exception))
 
     def test_final_package_bytes_must_match_git_commit(self):
         source = self.root / 'README.md'

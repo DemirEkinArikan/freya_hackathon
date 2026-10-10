@@ -216,8 +216,11 @@ def source_files():
 def check_content(path, *, evidence=False):
     raw = path.read_bytes()
     text = raw.decode("utf-8")
-    credentials = {**read_local_environment(ROOT / ".env"), **os.environ}
-    known = tuple(v for k, v in credentials.items() if any(s in k.upper() for s in ("API_KEY", "TEAM_KEY", "TOKEN", "SECRET", "TOOL_AUTH")) and len(v) >= 12)
+    # An overridden local key is still private, and short opaque credentials
+    # must not bypass exact-value exclusion.
+    credentials = [*read_local_environment(ROOT / '.env').items(), *os.environ.items()]
+    known = tuple(v for k, v in credentials if v and any(s in k.upper()
+                  for s in ('API_KEY', 'TEAM_KEY', 'TOKEN', 'SECRET', 'TOOL_AUTH', 'PASSWORD')))
     # Test source intentionally contains synthetic token examples. Known live
     # values are always forbidden; production source/evidence also gets patterns.
     if not evidence and path.relative_to(ROOT).parts[0] == "tests":

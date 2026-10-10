@@ -2,7 +2,7 @@
 
 The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Naci owns T02, T03, T05, T06, T08, T09, T11, T13, T15 and T17. Demir owns the other eight; the parent is assigned to both. The account that created an issue remains its author independently of its assignee.
 
-The implementation branch is `implementation/adaptive-banking-v3`. Start from that pushed checkpoint rather than the initial repository commit. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
+The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
 
 | Evidence | Current result |
 |---|---|
@@ -11,12 +11,15 @@ The implementation branch is `implementation/adaptive-banking-v3`. Start from th
 | Development fixtures | 36 training and 24 validation fixtures checked against local helpers; no dialogue execution |
 | Hosted inventory | 120 slots × 3 repetitions planned; 60 concrete variants and 60 reserved holdout slots |
 | Public A+B full generation | Failed at the 900-second generation cap; no candidate returned |
+| Public A+B policy extraction | A policy-only run returned in 218.77 seconds with zero structural repairs; independent review found one omitted exhausted-persuasion disposition, so it is development evidence, not a completed semantic gate |
 | Tiny public generation probe | CLI returned a structured response in about six seconds; captured output passes the corrected local parser |
 | Freya staging publication/simulation | Not executed |
 | Blind holdout evidence | None; candidate not frozen and fresh holdouts not generated |
 | Source package | Allowlist and credential check pass; private notes, local environment and raw traces excluded |
 
 The tiny probe exposed two runtime issues: relative generation directories could produce invalid paths, and benign CLI warnings were classified as tool actions. Both are fixed with regression checks. Future timeouts retain bounded sanitized output and emit progress every 30 seconds. The first full timeout lost its buffered CLI output; preserve its failed manifest and do not infer a cause from that missing evidence.
+
+Policy-only extraction excludes workflow examples and preserves rejected policy objects with their validation errors. Earlier extraction probes timed out, and one produced invalid unsupported-constraint objects before its repair timed out. Those failed runs remain local evidence. The extraction prompt now requires complete counter-exhaustion and terminal dispositions, including inherited details and scoped amendments. Literal quotations remain evidence; resolved typed values supply operative requirements.
 
 ## Remaining correctness work
 

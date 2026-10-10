@@ -172,6 +172,19 @@ def _operation_catalogue(openapi: Any, allowed_actions: list[str]) -> list[dict[
         raise PolicyContractError(["OpenAPI cannot be compiled into the supported operation/schema catalogue"]) from None
 
 
+def _superseded_ids(rules: list[dict[str, Any]], by_id: dict[str, dict[str, Any]]) -> list[str]:
+    """Collect historical ancestors after the override graph has been validated."""
+    pending = [ident for rule in rules for ident in rule.get("overrides", [])]
+    ancestors: set[str] = set()
+    while pending:
+        ident = pending.pop()
+        if ident in ancestors:
+            continue
+        ancestors.add(ident)
+        pending.extend(by_id[ident].get("overrides", []))
+    return sorted(ancestors)
+
+
 def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
     """Return a deep-copied, deterministic contract or raise PolicyContractError.
 
@@ -190,14 +203,21 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str
         raise PolicyContractError(errors)
     catalogue = _operation_catalogue(openapi, policy["allowed_actions"])
     active = {}
+    by_id = {rule["id"]: rule for rule in policy["rules"]}
     for kind, rules in sorted(_active_rules(policy).items()):
         ordered = sorted(rules, key=lambda rule: rule["id"])
+        ancestors = _superseded_ids(ordered, by_id)
         active[kind] = {"value": copy.deepcopy(ordered[0]["value"]),
                         "rule_ids": [rule["id"] for rule in ordered],
                         "provenance": [{"rule_id": rule["id"], "id": rule["source"]["id"],
-                                        "quote": rule["source"]["quote"]} for rule in ordered]}
+                                        "quote": rule["source"]["quote"]} for rule in ordered],
+                        "superseded_rule_ids": ancestors,
+                        "superseded_provenance": [{"rule_id": ident, "id": by_id[ident]["source"]["id"],
+                                                   "quote": by_id[ident]["source"]["quote"]}
+                                                  for ident in ancestors]}
     contract = {"version": 1, "goal": policy["goal"], "active_rules": active,
                 "permitted_operations": catalogue, "sources": copy.deepcopy(manifest),
+                "provenance_is_operative": False,
                 "semantic_correctness_verified": False}
     contract["sha256"] = digest(contract)
     return contract

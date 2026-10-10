@@ -21,6 +21,14 @@ value and source {id, quote}, where quote occurs verbatim in that supplied sourc
 Keep unsupported requirements in unsupported_constraints instead of guessing.
 unsupported_constraints is an array of strings, empty when there is no unresolved
 bank requirement. Preserve each rule's scope, precondition and temporal phase.
+Preserve the full consequence of every exhausted counter, rejected proposal and
+terminal branch in its typed value: required disposition, reason, deferred action
+and final selection rule, whenever the source specifies them. A value that only
+says to stop or proceed is incomplete when the source also requires an outcome.
+Carry inherited details into an amendment's resolved value and retain the base
+rule with an explicit override. Apply closing amendments to the final selection
+without erasing the underlying product or account disposition. Literal quotations
+are evidence, not a substitute for encoding their operative requirements.
 An explicit override or scoped exception resolves a conflicting general rule;
 do not remove the exception's context and then invent a contradiction. An API's
 ability to return an error is not itself an additional bank requirement. Record

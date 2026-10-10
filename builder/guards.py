@@ -10,10 +10,11 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS, runtime_input_errors
+from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
+from .call_variables import declared_call_variables
 
 PREFIX = "bg_"
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -101,7 +102,8 @@ def _hash_checked(value: Any, label: str) -> None:
         raise GuardCompileError([label + " has a missing or stale deterministic hash"])
 
 
-def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -> list[str]:
+def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
+                 call_variables: tuple[str, ...] = ()) -> list[str]:
     errors = []
     if not isinstance(plan, dict) or set(plan) - {"initial_node", "nodes", "system_prompt"}:
         return ["plan supports only initial_node, nodes and system_prompt"]
@@ -111,6 +113,7 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     if not isinstance(plan.get("initial_node"), str) or plan.get("initial_node") not in nodes:
         errors.append("plan.initial_node is unknown")
     protected_operations = set(_FIELDS) | set(operation_names)
+    readonly_inputs = set(call_variables)
     def protected_read(name: Any) -> bool:
         return isinstance(name, str) and (name == "customer_id"
             or name.startswith(PREFIX) and name != "bg_facts"
@@ -118,6 +121,9 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     def templates(value: Any, path: str, spoken: bool = False) -> None:
         if isinstance(value, str):
             for match in re.finditer(r"\{\{([^{}]+)\}\}", value):
+                binding = match.group(1)
+                if binding.split(".")[0] in readonly_inputs and binding not in readonly_inputs:
+                    errors.append(path + ": call-input template must reference one declared variable exactly")
                 names = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", match.group(1))
                 if any(protected_read(name) for name in names) or any(
                        re.search(r"(?<![A-Za-z0-9_])" + re.escape(op) + r"_[A-Za-z0-9_]", match.group(1))
@@ -136,7 +142,7 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -
     templates(plan, "plan")
     def variable(name: Any) -> bool:
         return (isinstance(name, str) and bool(_NAME.fullmatch(name)) and not name.startswith(PREFIX)
-                and name not in {"customer_id", "now"}
+                and name not in {"customer_id", "now"} | readonly_inputs
                 and not any(name.startswith(operation + "_") for operation in protected_operations))
     for name, node in nodes.items():
         if not isinstance(name, str) or not _NAME.fullmatch(name) or name.startswith(PREFIX):
@@ -271,15 +277,6 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     or not isinstance(value.get("value_labels", {}), dict)
                     or any(not isinstance(labels, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in labels.items()) for labels in value.get("value_labels", {}).values())):
                 errors.append("promise_readback needs human product fields and optional field value labels, excluding internal IDs")
-    if "runtime_inputs" in profile:
-        runtime = contract.get("active_rules", {}).get("runtime_inputs", {})
-        operations = set(_FIELDS) | {row["name"] for row in contract.get("permitted_operations", [])}
-        errors.extend(runtime_input_errors(profile["runtime_inputs"], operation_names=operations,
-                                           source_quotes=[item["quote"] for item in runtime.get("provenance", [])]))
-        declared_inputs = {name for name in profile["runtime_inputs"] if isinstance(name, str)} if isinstance(profile["runtime_inputs"], list) else set()
-        if any(field.get("name") in declared_inputs for node in plan.get("nodes", {}).values()
-               for field in node.get("extraction_schema", []) if isinstance(field, dict)):
-            errors.append("authored extraction cannot overwrite frozen runtime_inputs")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1274,7 +1271,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
-        tail += "    previous_state = None\n    for name in spec['profile'].get('runtime_inputs', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required runtime input is absent')\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
+        tail += "    previous_state = None\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
     else:
         tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
         if phase == "prepare":
@@ -1333,7 +1330,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     Inputs are controller-owned compilation context. Descriptive untyped policy
     is deliberately unsupported rather than converted into invented rules.
     """
-    errors = _plan_errors(plan, [operation["name"] for operation in contract.get("permitted_operations", [])])
+    errors = _plan_errors(plan, [operation["name"] for operation in contract.get("permitted_operations", [])],
+                          declared_call_variables(contract))
     if errors:
         raise GuardCompileError(errors)
     profile = _profile(contract, execution_policy, plan, bindings)

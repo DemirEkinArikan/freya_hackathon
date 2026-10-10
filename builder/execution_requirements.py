@@ -14,7 +14,7 @@ from .action_bindings import ActionBindingError, compile_action_bindings
 from .contract import PolicyContractError, compile_policy_contract, _resolve_schema_refs
 from .guards import (GuardCompileError, compile_guarded_workflow,
                      execution_action_catalogue, required_execution_kinds)
-from .policy import PolicyError, compile_execution_policy, execution_rule_guidance, runtime_input_errors
+from .policy import PolicyError, compile_execution_policy, execution_rule_guidance
 from .safety import canonical_json, digest
 
 
@@ -173,12 +173,6 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
             or any(type(name) is not str or not name for name in aliases.values())):
         raise ExecutionRequirementsError(["tool_aliases keys must be exact operation_role values from execution_action_catalogue; stage/commit action names are not operation roles"])
     permitted = {operation["name"] for operation in contract["permitted_operations"]}
-    runtime = active.get("runtime_inputs")
-    if runtime is not None:
-        input_errors = runtime_input_errors(runtime["value"], operation_names=roles | permitted,
-                                            source_quotes=[item["quote"] for item in runtime["provenance"]])
-        if input_errors:
-            raise ExecutionRequirementsError(input_errors)
     resolved = {role: aliases.get(role, role) for role in roles if aliases.get(role, role) in permitted}
     if (set(aliases.values()) - permitted or len(set(resolved.values())) != len(resolved)
             or permitted - set(resolved.values())):

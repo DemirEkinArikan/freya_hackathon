@@ -22,7 +22,7 @@ def input_packet(names=None):
     sources[0]["text"] += "\n" + quote
     sources[0]["sha256"] = digest(sources[0]["text"])
     policy["sources"] = [{k: v for k, v in sources[0].items() if k != "text"}]
-    for kind, value, witness in (("runtime_inputs", names, quote),
+    for kind, value, witness in (("call_variables", names, quote),
                                 ("tool_aliases", {"close_call": "conclude_dialogue_v8"}, sources[0]["text"])):
         policy["rules"].append({"id": kind, "kind": kind, "value": copy.deepcopy(value),
                                 "source": {"id": sources[0]["id"], "quote": witness}})
@@ -46,14 +46,14 @@ def initialize(workflow, values):
     return variables
 
 
-class RuntimeInputTests(unittest.TestCase):
+class RequiredCallInputTests(unittest.TestCase):
     def test_source_bound_names_render_without_defaults_or_values_in_facts(self):
         policy, sources, api = input_packet()
         descriptor = compile_execution_requirements(policy, sources, api)
         context, bundle = compilation(policy, sources, api)
         self.assertEqual(validate_workflow(bundle["workflow"], api, policy, guard_context=context), [])
         self.assertEqual(descriptor["policy_sha256"], digest(policy))
-        self.assertEqual(context["execution_policy"]["profile"]["runtime_inputs"], ["recipient_style", "recipient_label"])
+        self.assertEqual(context["execution_policy"]["profile"]["call_variables"], ["recipient_style", "recipient_label"])
         variables = initialize(bundle["workflow"], {"recipient_style": "Mx", "recipient_label": "Invented Recipient"})
         self.assertEqual(variables["bg_route"], "done")
         self.assertEqual(variables["recipient_label"], "Invented Recipient")
@@ -82,31 +82,45 @@ class RuntimeInputTests(unittest.TestCase):
             with self.subTest(value=value):
                 variables = initialize(bundle["workflow"], {"recipient_style": value, "recipient_label": value})
                 self.assertEqual(variables["bg_route"], "done")
+        declaration = next(rule for rule in policy["rules"] if rule["kind"] == "call_variables")
+        declaration["value"] = {"recipient_style": "Style of supplied greeting", "recipient_label": "Supplied party label"}
+        _, mapped = compilation(policy, sources, api)
+        self.assertEqual(initialize(mapped["workflow"], {})["bg_route"], "blocked")
+        mapped_values = initialize(mapped["workflow"], {"recipient_style": 0, "recipient_label": False})
+        self.assertEqual(mapped_values["bg_route"], "done")
+        self.assertEqual(mapped_values["recipient_style"], 0)
+        self.assertIs(mapped_values["recipient_label"], False)
 
     def test_malformed_and_reserved_input_declarations_fail_before_freeze(self):
-        cases = [None, {}, "recipient_label", [], ["recipient_label", "recipient_label"], [1],
-                 [{}], ["bad-name"], ["bg_facts"], ["BANK_TOKEN"], ["service_api_key"],
+        cases = [None, {}, "recipient_label", ["recipient_label", "recipient_label"], [1],
+                 [{}], ["bad-name"], ["bg_facts"], ["BANK_TOKEN"], ["service_api_key"], ["FREYA_API_KEY"], ["customer_password"],
                  ["close_call_response"], ["conclude_dialogue_v8_result"]]
         for names in cases:
             policy, sources, api = input_packet(names)
+            if isinstance(names, list) and all(isinstance(name, str) for name in names):
+                extra = " " + ", ".join(names)
+                next(rule for rule in policy["rules"] if rule["kind"] == "call_variables")["source"]["quote"] += extra
+                sources[0]["text"] += extra
+                sources[0]["sha256"] = digest(sources[0]["text"])
+                policy["sources"][0]["sha256"] = sources[0]["sha256"]
             if names is None:
-                next(r for r in policy["rules"] if r["kind"] == "runtime_inputs")["value"] = None
+                next(r for r in policy["rules"] if r["kind"] == "call_variables")["value"] = None
             with self.subTest(names=names), self.assertRaises(ExecutionRequirementsError):
                 compile_execution_requirements(policy, sources, api)
 
     def test_source_mentions_are_boundary_checked_and_only_active_quotes_count(self):
         policy, sources, api = input_packet(["recipient"])
-        with self.assertRaisesRegex(ExecutionRequirementsError, "active literal source quotes"):
+        with self.assertRaisesRegex(ExecutionRequirementsError, "occur literally"):
             compile_execution_requirements(policy, sources, api)
         policy, sources, api = input_packet()
         quote = "An amendment replaces supplied names with successor_label."
         sources.append({"id": "overlay", "file": "invented-overlay.md", "text": quote, "sha256": digest(quote)})
         policy["sources"] = [{k: v for k, v in s.items() if k != "text"} for s in sources]
-        policy["rules"].append({"id": "overlay-inputs", "kind": "runtime_inputs", "value": ["successor_label"],
-                                "overrides": ["runtime_inputs"], "source": {"id": "overlay", "quote": quote}})
+        policy["rules"].append({"id": "overlay-inputs", "kind": "call_variables", "value": ["successor_label"],
+                                "overrides": ["call_variables"], "source": {"id": "overlay", "quote": quote}})
         descriptor = compile_execution_requirements(policy, sources, api)
         self.assertTrue(descriptor["sha256"])
-        self.assertEqual(compile_execution_policy(policy)["profile"]["runtime_inputs"], ["successor_label"])
+        self.assertEqual(compile_execution_policy(policy)["profile"]["call_variables"], ["successor_label"])
         _, bundle = compilation(policy, sources, api)
         errors = validate_workflow(bundle["workflow"], api, policy)
         self.assertTrue(any("unresolved required binding recipient_label" in error for error in errors))
@@ -118,9 +132,9 @@ class RuntimeInputTests(unittest.TestCase):
         for value in (None, ["recipient_style", "recipient_label", "extra_label"]):
             changed = copy.deepcopy(context)
             if value is None:
-                del changed["execution_policy"]["profile"]["runtime_inputs"]
+                del changed["execution_policy"]["profile"]["call_variables"]
             else:
-                changed["execution_policy"]["profile"]["runtime_inputs"] = value
+                changed["execution_policy"]["profile"]["call_variables"] = value
             changed["execution_policy"]["sha256"] = digest({k: v for k, v in changed["execution_policy"].items() if k != "sha256"})
             with self.subTest(value=value), self.assertRaises(GuardCompileError):
                 compile_guarded_workflow(openapi=api, **changed)
@@ -129,10 +143,10 @@ class RuntimeInputTests(unittest.TestCase):
         policy, sources, api = input_packet()
         candidate = plan(["close_call"])
         candidate["nodes"]["talk"]["extraction_schema"] = [{"name": "recipient_label", "type": "string", "min_confidence": 1}]
-        with self.assertRaisesRegex(GuardCompileError, "cannot overwrite frozen runtime_inputs"):
+        with self.assertRaisesRegex(GuardCompileError, "extraction cannot write protected or engine variables"):
             compilation(policy, sources, api, candidate)
 
-    def test_runtime_input_declaration_does_not_authorize_private_read_or_undeclared_names(self):
+    def test_call_input_declaration_does_not_authorize_private_read_or_undeclared_names(self):
         policy, sources, api = input_packet(["customer_id", "now", "recipient_style", "recipient_label"])
         source = policy["rules"][-2]["source"]
         source["quote"] = sources[0]["text"] + " customer_id now"
@@ -148,8 +162,8 @@ class RuntimeInputTests(unittest.TestCase):
         bundle["workflow"]["nodes"]["talk"]["task_message"] += " {{unexpected_name}}"
         self.assertTrue(any("unresolved required binding unexpected_name" in error
                             for error in validate_workflow(bundle["workflow"], api, policy)))
-        self.assertTrue(any("runtime_inputs" in error for error in validate_workflow(
-            bundle["workflow"], api, {"runtime_inputs": ["unexpected_name"]})))
+        self.assertTrue(any("unresolved required binding" in error for error in validate_workflow(
+            bundle["workflow"], api, {"call_variables": ["unexpected_name"]})))
 
 
 if __name__ == "__main__":

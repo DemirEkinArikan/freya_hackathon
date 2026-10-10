@@ -14,6 +14,16 @@ kinds. Resolve only explicit amendments; conflicting requirements without a
 supported replacement belong in unsupported_constraints, never a guessed rule.
 Keep JSON compact. Copy source identifiers, filenames and hashes exactly.
 
+When supplied sources declare variables available at call start, retain their
+exact names in a source-backed call_variables array, including the declaration
+in its literal quotation. These are read-only inputs, not customer answers or
+tool results. Declare names only, never values, examples or defaults. Do not
+invent names or initial inputs absent from the source. An existing source-backed
+name-to-description mapping is also accepted; descriptions are never target
+values or defaults. The rule is optional
+when the source declares none. Keep controller credentials and protected state
+out of this declaration; existing customer_id/now restrictions still apply.
+
 The supplied execution_interface is controller format metadata, not bank policy.
 Select all sealed action roles needed to implement the supplied goal in a
 source-backed execution_actions rule (a nonempty unique array). Use only listed
@@ -30,14 +40,6 @@ annotation, not a shared status from another operation. Quarantine uncertain
 persistence. When a sourced promise_failure_disposition is supported, also supply
 its sourced reason vocabulary. Interface shapes do not authorize invented values.
 Unsupported or contradictory requirements remain explicit failures.
-
-When the approved sources explicitly supply call inputs, retain their names in a
-source-backed runtime_inputs rule: a nonempty unique array of identifier strings.
-The active source quote must literally name every declared input. This interface
-declares read-only supplied symbols, not their values, datatypes or defaults.
-Never declare credentials, protected engine symbols or automatic API-result names.
-Do not infer extra inputs from examples in the workflow reference. Runtime checks
-require every declared input to be supplied before dialogue can begin.
 
 Every operative nonpersistent_failures matcher must include api_source with
 pointer and quote. The pointer is a local OpenAPI JSON pointer scoped through

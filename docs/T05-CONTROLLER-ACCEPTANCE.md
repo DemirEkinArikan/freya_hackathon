@@ -188,9 +188,10 @@ on the qualified failure path, never successful persistence.
 
 The same source review found supplied call symbols could not be used in authored
 opening templates unless falsely declared as extracted conversation values.
-An optional `runtime_inputs` rule now declares only names literally present in
-its active source quotes. It supplies no values, defaults or inferred data
-types. The frozen profile permits those names in text, rejects authored
+The integration uses main's canonical optional `call_variables` rule, declaring
+only names literally present in its active source quotes. An accepted mapping
+contains descriptions, not call values. It supplies no defaults or inferred data
+types. The frozen contract permits those names in text, rejects authored
 extraction that shadows them, and checks actual call values before the first
 dialogue. Missing, null or empty-text values take the quarantine terminal;
 zero and false remain valid supplied values. Existing protected-value privacy

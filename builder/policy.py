@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import copy
 import json
-import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
 
 from .safety import canonical_json, digest
+from .call_variables import CallVariablesError, check_call_variables
 
 
 class RuleSource(TypedDict):
@@ -46,16 +46,16 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "promise_failure_limit", "tool_aliases", "persuasion_limits", "identity_hint_exemptions",
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
-_PROFILE_KINDS.update({"wire_codes", "policy_applicability", "runtime_inputs"})
+_PROFILE_KINDS.update({"wire_codes", "policy_applicability"})
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields", "identity_close_choices"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
-    "runtime_inputs": "a nonempty unique array of safe identifier strings naming read-only call inputs, each literally named in active source quotes; no values, types or defaults",
+    "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
@@ -87,7 +87,7 @@ _SHAPE_GUIDANCE = {
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
     "identity_close": "an object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string)",
-    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback")',
+    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
     "resolve_all_products": "a boolean, not a string or integer",
@@ -151,32 +151,11 @@ def _structured_error(kind: str, value: Any, domain: str) -> str:
     return message
 
 
-def runtime_input_errors(names: Any, *, operation_names=(), source_quotes=None) -> list[str]:
-    """Authorize declared symbols only; quoted names do not prove supplied values."""
-    if (not isinstance(names, list) or not names
-            or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) for name in names)
-            or len(set(names)) != len(names)):
-        return ["runtime_inputs requires a nonempty unique array of identifier strings"]
-    errors = []
-    for name in names:
-        if (name.casefold().startswith("bg_") or name.casefold() == "bank_token"
-                or re.search(r"(?:^|_)(?:token|secret|password|credentials?|api_key|access_key|authorization)(?:_|$)", name, re.I)
-                or any(name.startswith(operation + "_") for operation in operation_names)):
-            errors.append("runtime_inputs cannot declare protected, credential or API-result symbols")
-        if source_quotes is not None and not any(
-                isinstance(quote, str) and re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])", quote)
-                for quote in source_quotes):
-            errors.append("runtime_inputs name is absent from its active literal source quotes")
-    return sorted(set(errors))
-
-
 def _profile_errors(kind: str, value: Any) -> list[str]:
     def strings(item: Any, *, empty: bool = False) -> bool:
         return isinstance(item, list) and (empty or bool(item)) and all(isinstance(x, str) and x for x in item)
     valid = True
-    if kind == "runtime_inputs":
-        valid = not runtime_input_errors(value)
-    elif kind == "policy_applicability":
+    if kind == "policy_applicability":
         valid = (isinstance(value, dict) and set(value) == {"products"}
                  and isinstance(value["products"], str) and value["products"] in {"single", "multiple"})
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
@@ -245,7 +224,13 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item)
-    if kind == "account_disclosure_fields":
+    if kind == "call_variables":
+        try:
+            check_call_variables(value)
+            valid = True
+        except CallVariablesError:
+            valid = False
+    elif kind == "account_disclosure_fields":
         valid = (isinstance(value, list) and all(text(item) for item in value)
                  and len(set(value)) == len(value) and not set(value) & {"customer_id", "product_id"})
     elif kind in {"record_notes", "resolve_all_products"}:

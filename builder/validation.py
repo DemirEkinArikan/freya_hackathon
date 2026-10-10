@@ -307,8 +307,18 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
     return name, handler
 
 
-def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None) -> list[str]:
+def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
+                      *, guard_context: Mapping[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
+    if guard_context is not None:
+        from .guards import validate_guarded_workflow
+        if not isinstance(guard_context, Mapping):
+            errors.append("guard_context must be controller-owned compilation inputs")
+        else:
+            try:
+                errors.extend(validate_guarded_workflow(workflow, openapi=dict(openapi), **dict(guard_context)))
+            except (TypeError, ValueError):
+                errors.append("guard_context has unsupported or missing compilation inputs")
     if not isinstance(workflow, dict):
         return ["workflow must be an object"]
     _nulls(workflow, "workflow", errors)
@@ -438,6 +448,23 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                     errors.append(ep + ": unknown extraction type")
                 if type(variable.get("min_confidence")) not in {int, float} or not 0 <= variable["min_confidence"] <= 1:
                     errors.append(ep + ": min_confidence must be explicit and within 0..1")
+                if "enum" in variable:
+                    errors.append(ep + ": extraction uses documented enum_values, not enum")
+                if "enum_values" in variable:
+                    values = variable["enum_values"]
+                    if not isinstance(values, list) or not values:
+                        errors.append(ep + ": enum_values must be a nonempty array")
+                    elif variable.get("type") in {"string", "date", "datetime", "name", "phone_number"} and any(not isinstance(v, str) for v in values):
+                        errors.append(ep + ": textual extraction enums require string values")
+                if "max_retries" in variable and (type(variable["max_retries"]) is not int or variable["max_retries"] < 0):
+                    errors.append(ep + ": max_retries must be a nonnegative integer")
+                if "validation_pattern" in variable:
+                    try:
+                        if not isinstance(variable["validation_pattern"], str):
+                            raise TypeError
+                        re.compile(variable["validation_pattern"])
+                    except (TypeError, re.error):
+                        errors.append(ep + ": validation_pattern must be a valid regex string")
                 custom = variable.get("extraction_prompt")
                 if custom and (not isinstance(custom, str) or any("{{" + key + "}}" not in custom for key in ("extractor.speech", "extractor.conversation.last-10", "extractor.type_preamble", "extractor.variables_list"))):
                     errors.append(ep + ": custom extraction prompt omits required input placeholders")
@@ -480,15 +507,17 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     return sorted(set(errors))
 
 
-def require_valid_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None) -> None:
-    errors = validate_workflow(workflow, openapi, policy)
+def require_valid_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
+                           *, guard_context: Mapping[str, Any] | None = None) -> None:
+    errors = validate_workflow(workflow, openapi, policy, guard_context=guard_context)
     if errors:
         raise ValueError("Invalid workflow:\n" + "\n".join(errors))
 
 
-def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
+                    *, guard_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Explicitly separates local facts from unproven conversation semantics."""
-    errors = validate_workflow(workflow, openapi, policy)
+    errors = validate_workflow(workflow, openapi, policy, guard_context=guard_context)
     unverified: set[str] = set()
     def inspect(item: Any) -> None:
         if isinstance(item, dict):
@@ -514,6 +543,7 @@ def assess_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[s
     inspect(workflow)
     unverified -= {"json", "re", "datetime"}
     return {"structural_errors": errors, "structurally_valid": not errors,
+            "action_guard_compilation_verified": guard_context is not None and not errors,
             "behavioral_compliance_proven": False,
             "unverified_code_modules": sorted(unverified),
             "requires_host_tests": [

@@ -710,16 +710,14 @@ def guard_close(state, proposed, profile, maps):
             if state['callbacks']:
                 scope = 'unreached' if unreached else 'incomplete'
                 choices = profile.get('identity_close_choices', dict()).get(scope)
-                # Older frozen profiles may declare callback success directly
-                # in their fixed phase row. Its explicit semantic reason is
-                # checked against recorded callback evidence below as before.
+                # A fixed phase row is already one source-declared disposition;
+                # no callback reason is invented when that row omits one. Its
+                # supplied reason still passes the evidence/vocabulary checks.
                 if choices is None:
-                    matching = [table[scope]] if table[scope].get('reason') == 'callback' else list()
+                    matching = [table[scope]]
                 else:
                     matching = [choice for choice in choices if choice['requires'] == 'recorded_callback']
                 if len(matching) != 1:
-                    if choices is None and table[scope].get('reason') == 'no_callback':
-                        raise ValueError('no_callback closing cannot hide a recorded callback')
                     raise ValueError('recorded callback lacks one declared closing choice for the actual identity phase')
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
             else:

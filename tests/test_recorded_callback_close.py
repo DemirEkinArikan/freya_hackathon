@@ -115,14 +115,40 @@ class RecordedCallbackCloseTests(unittest.TestCase):
         _, route, body, _ = self.close({"outcome": "Z_REACH", "reason": "Q_UNBOOKED"})
         self.assertEqual((route, body["cause_wire"]), ("allow", "Q_UNBOOKED"))
 
-    def test_missing_or_ambiguous_callback_choice_blocks_free_fallback(self):
+    def test_missing_or_ambiguous_callback_in_explicit_choices_blocks_free_fallback(self):
         self.record_callback()
         original = copy.deepcopy(self.profile["identity_close_choices"]["unreached"])
-        for choices in (None, original[1:], original + [dict(original[0], reason="unclear")]):
+        for choices in ([], original[1:], original + [dict(original[0], reason="unclear")]):
             with self.subTest(choices=choices):
-                self.profile["identity_close_choices"] = {} if choices is None else {"unreached": choices}
+                self.profile["identity_close_choices"] = {"unreached": choices}
                 with self.assertRaisesRegex(ValueError, "one declared closing choice"):
                     self.close({"outcome": "Z_REACH", "reason": "Q_UNKNOWN"})
+
+    def test_fixed_reasonless_source_row_encodes_without_invented_callback_reason(self):
+        self.record_callback()
+        del self.profile["identity_close_choices"]
+        self.profile["identity_close"]["unreached"] = {"outcome": "not_reached"}
+        self.profile["close_reasons"]["not_reached"] = []
+        before = copy.deepcopy((self.state, self.profile, self.catalog, self.maps))
+        new_state, route, body, _ = self.close({"outcome": "forged", "reason": "Q_BOOKED"})
+        self.assertEqual(route, "allow")
+        self.assertEqual(body, {"member_wire": "invented-member", "result_wire": "Z_REACH"})
+        self.assertEqual(new_state["close"], {"outcome": "not_reached"})
+        self.assertTrue(new_state["close_attempted"])
+        self.assertEqual((self.state, self.profile, self.catalog, self.maps), before)
+
+    def test_fixed_noncallback_reason_remains_the_exact_source_declared_disposition(self):
+        self.record_callback()
+        del self.profile["identity_close_choices"]
+        _, route, body, _ = self.close()
+        self.assertEqual((route, body["result_wire"], body["cause_wire"]), ("allow", "Z_REACH", "Q_UNKNOWN"))
+
+    def test_fixed_no_callback_reason_still_cannot_contradict_recorded_evidence(self):
+        self.record_callback()
+        del self.profile["identity_close_choices"]
+        self.profile["identity_close"]["unreached"] = {"outcome": "not_reached", "reason": "no_callback"}
+        with self.assertRaisesRegex(ValueError, "cannot hide a recorded callback"):
+            self.close()
 
     def test_fixed_explicit_callback_row_remains_a_supported_source_declaration(self):
         self.record_callback()
@@ -142,8 +168,16 @@ class RecordedCallbackCloseTests(unittest.TestCase):
         for updates in ({"verified_fields": ["member_factor"]}, {"wrong_answers": 1}):
             with self.subTest(updates=updates):
                 self.state = dict(copy.deepcopy(original), **updates)
-                with self.assertRaisesRegex(ValueError, "actual identity phase"):
-                    self.close({"outcome": "Z_REACH", "reason": "Q_BOOKED"})
+                _, route, body, _ = self.close({"outcome": "Z_REACH", "reason": "Q_BOOKED"})
+                self.assertEqual((route, body["result_wire"], body["cause_wire"]), ("allow", "Z_ID", "Q_STOP"))
+
+    def test_partial_identity_explicit_choices_need_their_own_callback_evidence_choice(self):
+        self.record_callback()
+        self.state["verified_fields"] = ["member_factor"]
+        self.profile["identity_close_choices"]["incomplete"] = [
+            {"outcome": "not_verified", "reason": "declined", "requires": "none"}]
+        with self.assertRaisesRegex(ValueError, "actual identity phase"):
+            self.close({"outcome": "Z_REACH", "reason": "Q_BOOKED"})
 
     def test_partial_identity_uses_its_own_explicit_callback_choice(self):
         self.record_callback()

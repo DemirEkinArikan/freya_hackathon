@@ -4,7 +4,7 @@ import unittest
 from builder.safety import digest
 
 from builder.policy import (
-    PolicyError, assert_action_allowed, business_deadline, choose_close,
+    PolicyError, assert_action_allowed, business_deadline, choose_close, compile_execution_policy,
     confirm_commitments, identity_record, money_to_cents, named_weekday,
     product_by_id, product_deadline, product_floor_cents, record_close_result,
     record_commitment_result, record_note_result, record_transfer_result, rule_value,
@@ -21,7 +21,7 @@ PROFILE = {
     "floor_fields": {"card": "minimum", "loan": "instalment"},
     "callback_window": {"start": "09:15", "end": "16:45", "allow_today": True, "next_business_days": 1},
     "note_reasons": ["refused", "paid", "service_error", "hardship"],
-    "transfer_reasons": {"specialist": "human"},
+    "transfer_reasons": {"general": "human"}, "promise_failure_limit": 2,
     "close_reasons": {"promise": [], "paid": [], "transferred": ["human"], "no_promise": ["refused", "hardship", "service_error"]},
 }
 PRODUCTS = [
@@ -104,7 +104,7 @@ class PolicyTests(unittest.TestCase):
     def test_transfer_staging_and_last_close(self):
         state = stage_note({}, PRODUCTS, "stable-2", "refused", PROFILE)
         state["recorded_promises"] = {"stable-7": {"amount_cents": 5000, "date": "2031-03-18"}}
-        state = stage_transfer(state, "specialist", PROFILE)
+        state = stage_transfer(state, "general", PROFILE)
         self.assertEqual(state["pending_notes"], {})
         self.assertEqual(set(state["recorded_promises"]), {"stable-7"})
         state = record_transfer_result(state, {"ok": True})
@@ -122,7 +122,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_failed_writes_never_establish_successful_outcomes(self):
         state = stage_commitment({}, PRODUCTS, "stable-7", "50.00", "2031-03-18", "2031-03-14T12:00", PROFILE)
-        state = record_commitment_result(confirm_commitments(state), "stable-7", {"ok": False})
+        state = record_commitment_result(confirm_commitments(state), "stable-7", {"ok": False}, PROFILE)
         self.assertNotIn("recorded_promises", state)
         state["close_proposal"] = {"outcome": "promise"}
         with self.assertRaises(PolicyError):
@@ -134,7 +134,96 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn("recorded_notes", failed_note)
         recorded_note = record_note_result(note, "stable-7", {"ok": True})
         with self.assertRaises(PolicyError):
-            stage_transfer(recorded_note, "specialist", PROFILE)
+            stage_transfer(recorded_note, "general", PROFILE)
+
+    def test_execution_profile_selects_typed_active_rules_and_detaches_inputs(self):
+        policy = {"rules": [
+            {"id": "r1", "kind": "identity_wrong_limit", "value": 4},
+            {"id": "r2", "kind": "identity_wrong_limit", "value": 3, "overrides": ["r1"]},
+            {"id": "r3", "kind": "identity_fields", "value": ["birthday", "pin_tail"]},
+            {"id": "r4", "kind": "new_banking_goal", "value": "Uninterpreted extension prose"},
+        ]}
+        frozen = compile_execution_policy(policy, required_kinds=["identity_fields", "identity_wrong_limit"])
+        self.assertEqual(frozen["profile"], {"identity_fields": ["birthday", "pin_tail"], "identity_wrong_limit": 3})
+        policy["rules"][2]["value"].append("other")
+        self.assertEqual(frozen["profile"]["identity_fields"], ["birthday", "pin_tail"])
+        self.assertEqual(frozen["sha256"], digest({k: v for k, v in frozen.items() if k != "sha256"}))
+        with self.assertRaises(PolicyError):
+            compile_execution_policy(policy, required_kinds=["new_banking_goal"])
+
+    def test_execution_profile_rejects_missing_prose_or_mismatched_band_constraints(self):
+        for policy, required in (({}, ["identity_fields"]),
+                                 ({"identity_wrong_limit": "three wrong answers"}, []),
+                                 ({"band_ranges": PROFILE["band_ranges"], "deadline_days": {"first": 4}}, []),
+                                 ({"band_ranges": PROFILE["band_ranges"], "persuasion_limits": {"first": 1, "other": 2}}, [])):
+            with self.subTest(required=required), self.assertRaises(PolicyError):
+                compile_execution_policy(policy, required_kinds=required)
+
+    def test_legacy_write_recorder_requires_policy_after_failure_or_unknown_result(self):
+        state = confirm_commitments(stage_commitment({}, PRODUCTS, "stable-7", "50.00", "2031-03-18", "2031-03-14T12:00", PROFILE))
+        for result in ({"ok": False}, {"error": "transport_timeout"}):
+            with self.subTest(result=result), self.assertRaises(PolicyError):
+                record_commitment_result(state, "stable-7", result)
+        rejected = record_commitment_result(state, "stable-7", {"ok": False}, PROFILE)
+        with self.assertRaises(PolicyError):
+            record_commitment_result(rejected, "stable-7", {"ok": True})
+
+    def test_holiday_today_callback_allowed_but_future_holiday_rejected(self):
+        self.assertEqual(validate_callback("2031-03-17", "12:01", "2031-03-17T12:00", PROFILE), [])
+        self.assertEqual(validate_callback("2031-03-18", "09:15", "2031-03-17T12:00", PROFILE), [])
+        self.assertTrue(validate_callback("2031-03-17", "12:01", "2031-03-16T12:00", PROFILE))
+
+    def test_rejected_unknown_and_malformed_close_are_terminal_without_claiming_persistence(self):
+        state = confirm_commitments(stage_commitment({}, PRODUCTS, "stable-7", "50.00", "2031-03-18", "2031-03-14T12:00", PROFILE))
+        state = record_commitment_result(state, "stable-7", {"ok": True}, PROFILE)
+        close = choose_close(state, PRODUCTS, PROFILE)
+        for result, status in (({"ok": False}, "rejected"), ({"error": "timeout"}, "unknown_persistence"),
+                               ({"ok": None}, "unknown_persistence"), ({"data": []}, "unknown_persistence")):
+            with self.subTest(status=status, result_keys=sorted(result)):
+                finished = record_close_result(state, close, result, PROFILE)
+                self.assertTrue(finished["close_attempted"])
+                self.assertEqual(finished["close_status"], status)
+                self.assertFalse(finished.get("closed", False))
+                self.assertNotIn("close", finished)
+                for action in ("get_account", "close_call", "verify_identity", "schedule_callback"):
+                    with self.assertRaises(PolicyError):
+                        assert_action_allowed(finished, action)
+                with self.assertRaises(PolicyError):
+                    record_close_result(finished, close, {"ok": True}, PROFILE)
+                with self.assertRaises(PolicyError):
+                    choose_close(finished, PRODUCTS, PROFILE)
+                with self.assertRaises(PolicyError):
+                    stage_commitment(finished, PRODUCTS, "stable-2", "70.00", "2031-03-18", "2031-03-14T12:00", PROFILE)
+
+    def test_known_code_categories_do_not_interpret_other_bank_goal_mappings(self):
+        codes = {"goals": {"new_service_job": "opaque_job_selector"}, "outcomes": {"paid": "paid"}}
+        profile = compile_execution_policy({"wire_codes": codes})
+        self.assertEqual(profile["profile"]["wire_codes"], codes)
+        self.assertNotIn("new_service_job", profile["profile"])
+
+    def test_guard_extension_inputs_require_explicit_typed_values_without_prose_interpretation(self):
+        values = {"nonpersistent_failures": {"write_operation": [{"http_status": 422, "error": "validation_rejection"}]},
+                  "confirmation_actions": ["create_promise"], "confirmation_scope": "batch",
+                  "product_order": {"field": "days_late", "direction": "descending", "tie_breaker": "account_order"},
+                  "close_precedence": ["transferred", "promise", "paid", "no_promise"],
+                  "identity_close": {"failed": {"outcome": "not_verified", "reason": "failed"},
+                                     "incomplete": {"outcome": "not_verified", "reason": "declined"},
+                                     "unreached": {"outcome": "not_reached", "reason": "unclear"}},
+                  "promise_failure_disposition": {"reason": "service_error", "clear_pending": True}}
+        frozen = compile_execution_policy(values, required_kinds=list(values))
+        self.assertEqual(frozen["profile"], values)
+        values["nonpersistent_failures"]["write_operation"][0]["error"] = "different"
+        self.assertEqual(frozen["profile"]["nonpersistent_failures"]["write_operation"][0]["error"], "validation_rejection")
+        invalid = (("nonpersistent_failures", {"write_operation": [{"http_status": True}]}),
+                   ("nonpersistent_failures", {"write_operation": [{"http_status": 422, "predicate": "definitely not persisted"}]}),
+                   ("confirmation_actions", ["create_promise", "create_promise"]),
+                   ("product_order", "descending days_late"),
+                   ("close_precedence", "transfer before promise"),
+                   ("identity_close", {"failed": {"outcome": "not_verified"}}),
+                   ("promise_failure_disposition", {"reason": "service_error", "clear_pending": "true"}))
+        for kind, value in invalid:
+            with self.subTest(kind=kind), self.assertRaises(PolicyError):
+                compile_execution_policy({kind: value})
 
     def test_structured_policy_values_are_checked(self):
         source = {"id": "s1", "file": "source.md"}

@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -146,6 +147,43 @@ explicit execution authorization and one shared simulation lease.
 """
 
 
+def ownership_window(manifest):
+    window = manifest.get("ownership_window")
+    if window is None:
+        return None
+    if not isinstance(window, dict):
+        raise RuntimeError("Ownership window must be an object")
+    actors = set(manifest["collaborators"].values())
+    if (not isinstance(window.get("owner"), str) or not isinstance(window.get("next_owner"), str)
+            or window.get("owner") not in actors or window.get("next_owner") not in actors
+            or window["owner"] == window["next_owner"] or window.get("scope") != "all_open_tasks"
+            or window.get("authorized_by") != "user"):
+        raise RuntimeError("Ownership window lacks registered owners and explicit user authorization")
+    try:
+        if not isinstance(window.get("starts_at"), str) or not isinstance(window.get("handoff_at"), str):
+            raise ValueError("timestamps must be strings")
+        start, end = timestamp(window["starts_at"]), timestamp(window["handoff_at"])
+    except (KeyError, ValueError, TypeError):
+        raise RuntimeError("Ownership window timestamps are invalid") from None
+    if start.tzinfo is None or end.tzinfo is None or start >= end:
+        raise RuntimeError("Ownership window requires ordered timezone-aware timestamps")
+    return window, start, end
+
+
+def ownership_banner(manifest):
+    planned = ownership_window(manifest)
+    if not planned:
+        return ""
+    window, start, end = planned
+    zone = ZoneInfo("Europe/Istanbul")
+    return ("## User-authorized ownership window\n\n"
+            f"@{window['owner']} owns all open tasks from {start.astimezone(zone):%d %B %Y %H:%M} "
+            f"until {end.astimezone(zone):%H:%M} Istanbul. @{window['next_owner']} continues afterwards. "
+            "At the handoff, claim each task from its latest pushed checkpoint; the planned takeover "
+            "does not require a further 30-minute stale wait. Ownership changes occur on explicit claims, "
+            "not on an automatic timer. Preserve branches, dependency gates and verification evidence.\n\n")
+
+
 def parent_body(manifest, found):
     rows = []
     for task in manifest["tasks"]:
@@ -153,7 +191,9 @@ def parent_body(manifest, found):
         done = issue and issue.get("state") == "closed"
         link = f"[{task['id']}]({issue['html_url']})" if issue else task["id"]
         deps = ", ".join(task["depends_on"]) or "—"
-        rows.append(f"- [{'x' if done else ' '}] {link} — {task['title']} — @{task['assignee']} — depends: {deps}")
+        owners = ", ".join("@" + person["login"] for person in issue.get("assignees", [])) if issue else ""
+        owners = owners or "@" + task["assignee"]
+        rows.append(f"- [{'x' if done else ' '}] {link} — {task['title']} — {owners} — depends: {deps}")
     return f"""{MARKER}
 ## Objective
 
@@ -167,7 +207,7 @@ staging and persistent published slots. The independent hackathon implementation
 reuses at most reviewed generic utilities; no Launchway compiler, private
 prompts, integrations, customer material or sibling dependencies are submitted.
 
-## Ordered shared queue
+{ownership_banner(manifest)}## Ordered shared queue
 
 {chr(10).join(rows)}
 
@@ -380,6 +420,16 @@ def claim(gh, manifest, task, issue, found, args, actor):
         raise RuntimeError("Dependencies are not completed")
     active = "state:in-progress" in labels(issue)
     owner = next((x["login"] for x in issue.get("assignees", [])), None)
+    planned = ownership_window(manifest)
+    planned_takeover = False
+    if planned:
+        window, start, end = planned
+        now = utcnow()
+        if start <= now < end and actor != window["owner"]:
+            raise RuntimeError("The user-authorized solo work window is still active")
+        if now >= end and actor != window["next_owner"]:
+            raise RuntimeError("The planned handoff has started; the next owner must claim")
+        planned_takeover = (now >= end and actor == window["next_owner"] and owner == window["owner"])
     if active and owner != actor:
         if not args.takeover or actor != manifest["collaborators"]["Naci"] or owner != manifest["collaborators"]["Demir"]:
             raise RuntimeError("Active ownership requires the authorized Naci takeover protocol")
@@ -390,7 +440,7 @@ def claim(gh, manifest, task, issue, found, args, actor):
             commits = gh.api("GET", gh.repo("commits") + f"?sha={quote(last['branch'], safe='')}&per_page=1")
             if commits:
                 recent = max(recent, timestamp(commits[0]["commit"]["committer"]["date"]))
-        if not last.get("offline") and utcnow() - recent < timedelta(minutes=manifest["takeover_stale_minutes"]):
+        if not planned_takeover and not last.get("offline") and utcnow() - recent < timedelta(minutes=manifest["takeover_stale_minutes"]):
             raise RuntimeError("Owner or branch is still active; leave a handoff instead of racing")
     sha = require_pushed_commit(gh, args.commit)
     updated = gh.api("PATCH", gh.repo(f"issues/{issue['number']}"),

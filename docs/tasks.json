@@ -348,5 +348,14 @@
       "phase": "final",
       "branch": "task/t18-hidden-builds-and-submission-package"
     }
-  ]
+  ],
+  "ownership_window": {
+    "starts_at": "2026-10-10T16:36:47+03:00",
+    "handoff_at": "2026-10-10T17:36:47+03:00",
+    "owner": "DemirEkinArikan",
+    "next_owner": "burhan-launchway",
+    "scope": "all_open_tasks",
+    "authorized_by": "user",
+    "handoff": "Naci may claim from the latest pushed checkpoint after the handoff time without the normal 30-minute stale wait. Preserve task branches and acceptance gates."
+  }
 }

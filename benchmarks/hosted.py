@@ -63,14 +63,57 @@ def load_cases(path, split="all", brief=None):
     if manifest.get("kind") != "hosted":
         raise ValueError("hosted evaluator refuses offline/synthetic policy fixtures")
     rows = [r for r in manifest["cases"] if (split == "all" or r["split"] == split) and (not brief or r["brief"] == brief)]
+    validate_rows(rows)
+    return manifest, rows
+
+
+def validate_rows(rows):
+    """Apply seed/mapping checks at both file and direct evaluator boundaries."""
+    if not isinstance(rows, (list, tuple)) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("case selection must contain fixture objects")
+    if not rows:
+        raise ValueError("case selection is empty")
+    if any(not isinstance(r.get("fixture_id"), str) or not r["fixture_id"].strip() for r in rows):
+        raise ValueError("fixture IDs must be nonempty strings")
     identifiers = [r["fixture_id"] for r in rows]
     if len(identifiers) != len(set(identifiers)):
         raise ValueError("duplicate fixture IDs would overwrite persona/session mappings")
     known = {c["id"] for c in json.loads((KIT / "public-test-set.json").read_text())}
-    if any(r["bank_case_id"] not in known for r in rows):
+    if any(not isinstance(r.get("bank_case_id"), str) or r["bank_case_id"] not in known for r in rows):
         raise ValueError("only documented public bank seeds are allowed")
-    if not rows: raise ValueError("case selection is empty")
-    return manifest, rows
+    if any(r.get("brief") not in ("A", "B") for r in rows):
+        raise ValueError("hosted fixtures must select official brief A or B")
+
+
+def index_runs(iteration, persona_ids, seen_call_ids=None):
+    """Do not silently overwrite duplicate runs or accept incomplete pagination."""
+    if not isinstance(iteration, dict):
+        raise ValueError("iteration must be an object")
+    runs = iteration.get("runs")
+    if not isinstance(runs, list):
+        raise ValueError("iteration runs are absent")
+    total = iteration.get("runsTotal")
+    if total is not None and (type(total) is not int or total != len(runs)):
+        raise ValueError("iteration did not return every run")
+    indexed, call_ids = {}, set()
+    for run in runs:
+        if not isinstance(run, dict):
+            raise ValueError("iteration runs must be objects")
+        persona = run.get("personaId")
+        if not isinstance(persona, str) or persona not in persona_ids or persona in indexed:
+            raise ValueError("iteration persona IDs are unexpected or duplicated")
+        call_id = run.get("callId")
+        if call_id is not None:
+            if (not isinstance(call_id, str) or not call_id.strip() or call_id in call_ids
+                    or (seen_call_ids is not None and call_id in seen_call_ids)):
+                raise ValueError("iteration call IDs are invalid or reused")
+            call_ids.add(call_id)
+        indexed[persona] = run
+    if set(indexed) != set(persona_ids):
+        raise ValueError("iteration is missing requested personas")
+    if seen_call_ids is not None:
+        seen_call_ids.update(call_ids)
+    return indexed
 
 
 def persona_for(row):
@@ -112,6 +155,9 @@ class HostedBackend:
     def create_personas(self, personas): return self.client.create_personas(personas)
     def simulate(self, agent_id, name, variables, concurrency=5):
         return self.client.run_simulation(agent_id, name, variables, concurrency=concurrency)
+    @property
+    def simulation_handoff(self):
+        return getattr(self.client, "simulation_handoff", None)
     def iteration(self, simulation): return self.client.get_iteration(simulation["simulation_id"], simulation["iteration_id"])
     def call(self, call_id): return self.client.get_call(call_id)
 
@@ -131,9 +177,9 @@ class HostedBackend:
 
 
 def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None):
-    if not isinstance(reps, int) or reps < 1: raise ValueError("reps must be positive")
-    if not 1 <= concurrency <= 5: raise ValueError("concurrency must be between 1 and the kit default 5")
-    if len({r["fixture_id"] for r in rows}) != len(rows): raise ValueError("duplicate fixture IDs would overwrite sessions")
+    if type(reps) is not int or reps < 1: raise ValueError("reps must be positive integers")
+    if type(concurrency) is not int or not 1 <= concurrency <= 5: raise ValueError("concurrency must be between 1 and the kit default 5")
+    validate_rows(rows)
     if any("case" not in r for r in rows): raise ValueError("held-out slots are reserved; freeze and generate before execution")
     if len({r["brief"] for r in rows}) > 1:
         raise ValueError("one agent must be evaluated on one brief; select --brief A or B")
@@ -143,25 +189,53 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
         pin_before = backend.validate_deployment(deployment)
     personas = backend.create_personas([persona_for(r) for r in rows])
     if isinstance(personas, dict): personas = personas["personas"]
-    if len(personas) != len(rows) or len({p["id"] for p in personas}) != len(rows):
+    if (not isinstance(personas, list) or len(personas) != len(rows)
+            or any(not isinstance(p, dict) or not isinstance(p.get("id"), str) or not p["id"].strip() for p in personas)
+            or len({p["id"] for p in personas}) != len(rows)):
         raise ValueError("persona IDs are missing or duplicated")
     persona_ids = {r["fixture_id"]: p["id"] for r, p in zip(rows, personas)}
-    all_rows, seen_sessions = [], set()
+    all_rows, seen_sessions, seen_session_ids, simulations = [], set(), set(), []
+    seen_simulations, seen_iterations, seen_call_ids = set(), set(), set()
     for repetition in range(reps):
+        simulation_requested = False
         try:
             variables = {}
             customer_ids = {}
             for row in rows:
                 session = backend.practice_session(row["bank_case_id"])
                 customer = session["customer_id"]
+                if not isinstance(customer, str) or not customer.strip():
+                    raise ValueError("bank customer ID must be a nonempty string")
                 if customer in seen_sessions: raise ValueError("bank reused a session; ledger isolation is unproven")
                 seen_sessions.add(customer)
+                if "session_id" in session:
+                    session_id = session["session_id"]
+                    if not isinstance(session_id, str) or not session_id.strip() or session_id in seen_session_ids:
+                        raise ValueError("bank session ID is invalid or reused")
+                    seen_session_ids.add(session_id)
                 customer_ids[row["fixture_id"]] = customer
                 variables[persona_ids[row["fixture_id"]]] = deepcopy(session)
+            simulation_requested = True
             simulation = backend.simulate(agent_id, f"bank benchmark repetition {repetition + 1}", variables, concurrency)
+            if not isinstance(simulation, dict):
+                raise ValueError("simulation must be an object")
+            simulations.append({"repetition": repetition + 1, **{key: simulation.get(key) for key in ("simulation_id", "iteration_id", "status")}})
             if simulation.get("status") != "completed": raise RuntimeError("simulation did not complete")
-            runs = {r["personaId"]: r for r in backend.iteration(simulation)["runs"]}
+            for key, seen in (("simulation_id", seen_simulations), ("iteration_id", seen_iterations)):
+                identifier = simulation.get(key)
+                if not isinstance(identifier, str) or not identifier.strip() or identifier in seen:
+                    raise ValueError("simulation/iteration IDs are missing or reused across repetitions")
+                seen.add(identifier)
+            runs = index_runs(backend.iteration(simulation), set(persona_ids.values()), seen_call_ids)
         except Exception as exc:
+            if simulation_requested and not any(s["repetition"] == repetition + 1 for s in simulations):
+                handoff = getattr(backend, "simulation_handoff", None)
+                if not isinstance(handoff, dict):
+                    handoff = getattr(exc, "lease", None)
+                if isinstance(handoff, dict):
+                    identifiers = {key: handoff.get(key) if isinstance(handoff.get(key), str) else None
+                                   for key in ("simulation_id", "iteration_id", "status")}
+                    simulations.append({"repetition": repetition + 1, "interrupted": True, **identifiers})
             all_rows.extend({"fixture_id": row["fixture_id"], "repetition": repetition + 1, "pass": False,
                              "failures": [{"category": "infrastructure", "message": type(exc).__name__ + ": " + str(exc)}]} for row in rows)
             break
@@ -184,6 +258,8 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
                     transcript = backend.call(judged["callId"])
                     if not isinstance(transcript, dict) or not isinstance(transcript.get("messages"), list) or not transcript["messages"]:
                         verdict["failures"].append({"category": "infrastructure", "message": "call transcript messages are absent"})
+                    if deployment and isinstance(transcript, dict) and transcript.get("agentVersionNumber") not in (None, deployment["version_number"]):
+                        verdict["failures"].append({"category": "infrastructure", "message": "call transcript used a different agent version"})
                 else:
                     verdict["failures"].append({"category": "infrastructure", "message": "judge callId is absent"})
                 # Pure ledger checks cannot establish spoken honesty. The platform
@@ -216,11 +292,12 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
     result = {"passed": sum(r["pass"] for r in final), "total": len(rows), "reps": reps,
             "status": "infrastructure_failure" if any(f["category"] in ("infrastructure", "evidence") for f in failures) else "completed",
             "failures": failures, "final": final, "rows": all_rows,
+            "simulations": simulations,
             "deployment_pin": {"before": pin_before, "after": pin_after, "verified": bool(pin_before and pin_after == pin_before),
-                               "per_call_version": "checked when platform supplies agentVersionNumber"},
+                               "per_call_version": "judge and transcript checked when platform supplies agentVersionNumber"},
             "claim": "Known public seeds and official policies; wording robustness, not policy/schema generalization."}
     from builder.safety import sanitize
-    return sanitize(result, secrets=list(seen_sessions) + [os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])
+    return sanitize(result, secrets=list(seen_sessions | seen_session_ids) + [getattr(backend, "team_key", ""), os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])
 
 
 def run_builder_tests(client, deployment, cases_path, output_dir, deadline):

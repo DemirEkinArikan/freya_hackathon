@@ -1,0 +1,43 @@
+Restricted plan format for the controller-owned Freya compiler:
+Root: initial_node, nodes (object keyed by name), optional system_prompt.
+Every node has matching name and node_type. Public names begin with a letter or
+underscore and contain letters/digits/underscores; bg_* is reserved.
+
+conversation fields: name,node_type,task_message,on_enter,
+on_enter_first_entry_only,extraction_schema,transitions,max_node_turns,
+max_turn_transition. No other fields. on_enter is {type:llm}, {type:tts,text:...}
+or {type:silent}. Transitions may target public plan nodes only.
+Extraction entries: name,type,description,min_confidence, optional enum_values,
+validation_pattern,max_retries,extraction_prompt. Types are string,integer,float,
+boolean,date,datetime,name,phone_number. Write only public proposed-input variables.
+Custom extraction_prompt must include the kit's extractor.speech,
+extractor.conversation.last-10,extractor.type_preamble,extractor.variables_list
+placeholders. Use documented template substitution for read-only dialogue values.
+
+Transitions: {target_node,description,condition}. Intent conditions use
+{operator:matches_intent,description:...}; fallback {operator:always}.
+Variable comparisons use outer {logic:or,conditions:[...]}; nested and/or groups
+are permitted. Operators: equals,not_equals,greater_than,less_than,contains,
+is_set,is_not_set. Avoid duplicate routes to the same target with incompatible
+conditions. Every conversation fallback and failure route targets a public node.
+
+Action placeholder:
+{name,node_type:"guard_action",action,inputs:{semantic_field:public_variable},
+success_node,blocked_node,failure_node}. All three route targets are required.
+Inputs are variable names, not literals, API schemas, code or protected state.
+Supported roles and input keys:
+verify_identity: field,answer
+get_account: none
+stage_promise: product_id,amount,date
+commit_promises: none; optional product_id when confirming separately
+stage_note: product_id,reason
+finalize_notes: none
+stage_transfer: queue
+commit_transfer: none
+schedule_callback: date,time
+close_call: none; optional outcome,reason for language-derived identity disposition
+
+A guarded close_call is required; authored end_call nodes are forbidden.
+The compiler owns protected bg_state/bg_route values and all internal nodes. A
+compiler success route means observed API success or completed local staging as
+appropriate. Blocked/failure routes do not establish that any bank write occurred.

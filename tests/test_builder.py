@@ -13,6 +13,25 @@ from builder.toolbindings import BindingError, derive_tools, resolve_refs
 from builder.safety import digest
 
 
+PROFILE = {
+    "close_reasons": {"no_promise": ["refused"], "not_verified": ["failed"], "not_reached": ["unclear"]},
+    "record_notes": False, "resolve_all_products": False,
+    "product_order": {"mode": "account_order"}, "close_precedence": ["no_promise"],
+    "identity_close": {"failed": {"outcome": "not_verified", "reason": "failed"},
+                       "incomplete": {"outcome": "not_verified", "reason": "failed"},
+                       "unreached": {"outcome": "not_reached", "reason": "unclear"}},
+}
+BRIEF_TEXT = "Use the permitted banking contact flow. Explicit synthetic closing policy: " + json.dumps(PROFILE, sort_keys=True)
+
+
+def plan():
+    return {"initial_node": "start", "nodes": {
+        "start": {"name": "start", "node_type": "conversation", "task_message": "Ask how to help with the supplied banking goal.",
+                  "transitions": [{"target_node": "done", "description": "finished", "condition": {"operator": "matches_intent", "description": "The customer has finished"}}]},
+        "done": {"name": "done", "node_type": "guard_action", "action": "close_call", "inputs": {},
+                 "success_node": "start", "blocked_node": "start", "failure_node": "start"}}}
+
+
 def fixture():
     workflow = {"initial_node": "start", "nodes": {
         "start": {"name": "start", "node_type": "conversation", "task_message": "Ask how to help with the supplied banking goal.",
@@ -20,15 +39,24 @@ def fixture():
         "done": {"name": "done", "node_type": "end_call", "on_enter": {"type": "silent"}, "disable_inactivity_monitor": True,
                  "transitions": [], "terminal": {"type": "function", "function": {"name": "finished", "handler": "__function__:end_call",
                         "parameters": {"type": "object", "properties": {"message_mode": {"type": "string", "default": "none"}}}}}}}}
-    policy = {"version": 1, "goal": "Banking contact", "allowed_actions": ["close_call"], "sources": [{"id": "brief-1", "file": "brief.md", "sha256": digest("Use the permitted banking contact flow.")}],
-              "rules": [{"id": "r1", "kind": "purpose", "value": "Banking contact", "source": {"id": "brief-1", "quote": "Use the permitted banking contact flow."}}],
+    policy = {"version": 1, "goal": "Banking contact", "allowed_actions": ["close_call"], "sources": [{"id": "brief-1", "file": "brief.md", "sha256": digest(BRIEF_TEXT)}],
+              "rules": [{"id": "r1", "kind": "purpose", "value": "Banking contact", "source": {"id": "brief-1", "quote": BRIEF_TEXT}}],
               "unsupported_constraints": []}
+    policy["rules"].extend({"id": kind, "kind": kind, "value": copy.deepcopy(value),
+                            "source": {"id": "brief-1", "quote": BRIEF_TEXT}}
+                           for kind, value in PROFILE.items())
     return {"policy": policy, "workflow": workflow}
 
 
 def contract():
     return {"openapi": "3.0.3", "servers": [{"url": "https://freya-bank-mock.freyavoice.workers.dev/v1"}], "paths": {"/close_call": {"post": {
-        "requestBody": {"content": {"application/json": {"schema": {"type": "object", "properties": {"outcome": {"type": "string", "enum": ["contacted", "unavailable"]}}, "required": ["outcome"]}}}}, "responses": {}}}}}
+        "operationId": "close_call",
+        "requestBody": {"content": {"application/json": {"schema": {"type": "object", "properties": {
+            "customer_id": {"type": "string"},
+            "outcome": {"type": "string", "enum": ["no_promise", "not_verified", "not_reached"]},
+            "reason": {"type": "string", "enum": ["refused", "failed", "unclear"]}}, "required": ["customer_id", "outcome", "reason"]}}}},
+        "responses": {"200": {"content": {"application/json": {"schema": {"type": "object", "properties": {
+            "ok": {"type": "boolean"}, "error": {"type": "string"}}}}}}}}}}}
 
 
 class FakeClient:
@@ -63,7 +91,7 @@ class BuilderTests(unittest.TestCase):
         (PROJECT / ".test-tmp").mkdir(exist_ok=True)
         self.tmp = tempfile.TemporaryDirectory(dir=PROJECT / ".test-tmp")
         self.directory = Path(self.tmp.name)
-        (self.directory / "brief.md").write_text("Use the permitted banking contact flow.")
+        (self.directory / "brief.md").write_text(BRIEF_TEXT)
         (self.directory / "api.json").write_text(json.dumps(contract()))
         (self.directory / "fixture.json").write_text(json.dumps(fixture()))
 
@@ -73,6 +101,16 @@ class BuilderTests(unittest.TestCase):
     def args(self, *extra):
         return parser().parse_args(["--brief", str(self.directory / "brief.md"), "--tool-api", str(self.directory / "api.json"),
                                   "--output-dir", str(self.directory / "out"), *extra])
+
+    def generator(self):
+        generator = unittest.mock.Mock()
+        def workflow(prompt, *, contract_sha256):
+            proposed = plan()
+            # Preserve the invalid-initial-node regression through plan transport.
+            proposed["initial_node"] = generator.generate.return_value["workflow"]["initial_node"]
+            return {"plan": proposed, "contract_sha256": contract_sha256}
+        generator.generate_plan.side_effect = workflow
+        return generator
 
     def test_offline_fixture_never_constructs_client_or_calls_model(self):
         result = execute(self.args("--offline", "--workflow-file", str(self.directory / "fixture.json")),
@@ -85,19 +123,20 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(compiled["permitted_operations"][0]["name"], "close_call")
 
     def test_deadline_prevents_generation_when_export_reserve_is_unavailable(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(DeadlineExceeded):
             execute(self.args(), generator=generator, deadline=Deadline(299), client_factory=lambda **kw: self.fail("platform touched"))
         generator.generate.assert_not_called()
 
     def test_invalid_candidate_gets_only_two_repairs(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         broken = fixture()
         broken["workflow"]["initial_node"] = "missing"
         generator.generate.return_value = broken
         with self.assertRaises(ValueError):
             execute(self.args(), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
-        self.assertEqual(generator.generate.call_count, 3)
+        self.assertEqual(generator.generate.call_count, 1)
+        self.assertEqual(generator.generate_plan.call_count, 3)
 
     def test_schema_enum_adapts_through_local_refs(self):
         api = contract()
@@ -117,7 +156,7 @@ class BuilderTests(unittest.TestCase):
         synthetic = contract()
         synthetic["servers"][0]["url"] = "https://synthetic-bank.invalid/v1"
         (self.directory / "api.json").write_text(json.dumps(synthetic))
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(BindingError):
             execute(self.args(), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
         generator.generate.assert_not_called()
@@ -157,17 +196,17 @@ class BuilderTests(unittest.TestCase):
         approved.mkdir(parents=True)
         brief = approved / "bank-policy.md"
         api = approved / "tool-api.json"
-        brief.write_text("Use the permitted banking contact flow.")
+        brief.write_text(BRIEF_TEXT)
         api.write_text(json.dumps(contract()))
         args = self.args("--test-cases", str(PROJECT / "build-the-builder" / "public-test-set.json"))
         args.brief, args.tool_api = [brief], api
         sources, openapi = _load_inputs(args)
-        self.assertEqual(sources[0]["text"], "Use the permitted banking contact flow.")
+        self.assertEqual(sources[0]["text"], BRIEF_TEXT)
         self.assertEqual(openapi["openapi"], "3.0.3")
         self.assertNotIn("test_cases", make_prompt(sources, openapi))
 
     def test_protected_generator_path_fails_before_model_or_client(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         args = self.args("--generate-only")
         args.brief = [PROJECT / "build-the-builder" / "public-test-set.json"]
         with self.assertRaisesRegex(ValueError, "Protected evaluator"):
@@ -175,7 +214,7 @@ class BuilderTests(unittest.TestCase):
         generator.generate.assert_not_called()
 
     def test_live_controller_exports_platform_snapshot_without_implicit_tests(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         result = execute(self.args(), generator=generator, client_factory=FakeClient,
                          test_runner=lambda *args: self.fail("implicit hosted test"))
@@ -188,7 +227,7 @@ class BuilderTests(unittest.TestCase):
         synthetic = contract()
         synthetic["servers"][0]["url"] = "https://synthetic-bank.invalid/v1"
         (self.directory / "api.json").write_text(json.dumps(synthetic))
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         result = execute(self.args("--generate-only"), generator=generator,
                          client_factory=lambda **kw: self.fail("Freya client initialized"))
@@ -201,7 +240,7 @@ class BuilderTests(unittest.TestCase):
     def test_uncited_overlay_cannot_be_accepted_or_deployed(self):
         overlay = self.directory / 'amendment.md'
         overlay.write_text('The following amendment replaces the contact procedure.')
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         args = self.args('--brief', str(overlay), '--generate-only')
         with self.assertRaises(ValueError):
@@ -212,7 +251,7 @@ class BuilderTests(unittest.TestCase):
     def test_policy_bypass_cannot_be_accepted_or_deployed(self):
         candidate = fixture()
         candidate['policy']['identity_wrong_limit'] = 1000
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = candidate
         with self.assertRaises(ValueError):
             execute(self.args('--generate-only'), generator=generator,
@@ -220,7 +259,7 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(generator.generate.call_count, 3)
 
     def test_extraction_only_emits_contract_without_creating_a_workflow(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         # Even a model-provided graph in the unused transport field cannot run.
         generator.generate.return_value = fixture()
         with patch.dict('os.environ', {'FREYA_API_KEY': ''}):
@@ -241,7 +280,7 @@ class BuilderTests(unittest.TestCase):
     def test_extraction_repairs_policy_errors_with_bounded_attempts(self):
         invalid = fixture()
         invalid['policy']['sources'][0]['sha256'] = '0' * 64
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.side_effect = [invalid, fixture()]
         result = execute(self.args('--extract-policy-only'), generator=generator,
                          client_factory=lambda **kw: self.fail('Freya initialized'))
@@ -258,14 +297,14 @@ class BuilderTests(unittest.TestCase):
                       ['--adopt-workflow', 'w'], ['--workflow-file', str(self.directory / 'fixture.json')],
                       ['--generate-only']):
             with self.subTest(flags=flags):
-                generator = unittest.mock.Mock()
+                generator = self.generator()
                 with self.assertRaises(ValueError):
                     execute(self.args('--extract-policy-only', *flags), generator=generator,
                             client_factory=lambda **kw: self.fail('Freya initialized'))
                 generator.generate.assert_not_called()
 
     def test_missing_live_credentials_fail_before_model_generation(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with patch.dict("os.environ", {"FREYA_API_KEY": ""}), self.assertRaisesRegex(PlatformError, "before live workflow generation"):
             execute(self.args(), generator=generator)
         generator.generate.assert_not_called()
@@ -296,7 +335,7 @@ class BuilderTests(unittest.TestCase):
         ]
         for result in results:
             with self.subTest(result=result):
-                generator = unittest.mock.Mock()
+                generator = self.generator()
                 generator.generate.return_value = fixture()
                 client = FakeClient()
                 runner = unittest.mock.Mock(return_value=result)
@@ -304,6 +343,7 @@ class BuilderTests(unittest.TestCase):
                     execute(self.args("--test-cases", str(self.directory / "fixture.json")), generator=generator,
                             client_factory=lambda **kw: client, test_runner=runner)
                 self.assertEqual(generator.generate.call_count, 1)
+                self.assertEqual(generator.generate_plan.call_count, 1)
                 self.assertEqual(runner.call_count, 1)
                 self.assertEqual(client.saves, 1)
                 self.assertEqual(client.exports, 0)
@@ -314,8 +354,8 @@ class BuilderTests(unittest.TestCase):
                 self.assertTrue(any(event.get("event") == "tests" and event.get("result") == result for event in events))
 
     def test_behavioral_repair_has_actionable_diagnostic_without_evaluator_details(self):
-        generator = unittest.mock.Mock()
-        generator.generate.side_effect = [fixture(), fixture()]
+        generator = self.generator()
+        generator.generate.return_value = fixture()
         private_reason = "CASE_PRIVATE customer SecretName expected 123456 on 2028-12-31"
         runner = unittest.mock.Mock(side_effect=[
             {"status": "completed", "passed": 0, "total": 1, "failures": [
@@ -324,7 +364,7 @@ class BuilderTests(unittest.TestCase):
             {"status": "completed", "passed": 1, "total": 1, "failures": []}])
         result = execute(self.args("--test-cases", str(self.directory / "fixture.json")), generator=generator,
                          client_factory=FakeClient, test_runner=runner)
-        repair_prompt = generator.generate.call_args_list[1].args[0]
+        repair_prompt = generator.generate_plan.call_args_list[1].args[0]
         self.assertIn("Ask identity factors in the order required by the supplied brief.", repair_prompt)
         self.assertNotIn(private_reason, repair_prompt)
         self.assertNotIn("CASE_PRIVATE", repair_prompt)
@@ -337,8 +377,8 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(result["repairs"], 1)
 
     def test_explicit_adoption_is_done_once_across_behavioral_repair(self):
-        generator = unittest.mock.Mock()
-        generator.generate.side_effect = [fixture(), fixture()]
+        generator = self.generator()
+        generator.generate.return_value = fixture()
         client = FakeClient()
         runner = unittest.mock.Mock(side_effect=[
             {"status": "completed", "passed": 0, "total": 1,
@@ -349,7 +389,7 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(client.adoptions, [("brief", "w")])
 
     def test_generate_only_refuses_hosted_cases_before_model(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(ValueError):
             execute(self.args("--generate-only", "--test-cases", str(self.directory / "fixture.json")), generator=generator)
         generator.generate.assert_not_called()

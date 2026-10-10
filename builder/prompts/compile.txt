@@ -57,6 +57,29 @@ defines that concept. They are interface names, not predetermined banking rules:
 - require_confirmation: boolean indicating whether explicit write confirmation is required.
 - promise_failure_limit: positive integer limit on contract-confirmed failed promise attempts.
 - tool_aliases: map from a semantic action name to the supplied API operation name.
+
+- persuasion_limits: map from the supplied policy bands to nonnegative offer limits.
+- wire_codes: category maps (outcomes,reasons,notes,queues) from semantic meanings
+  to exact opaque API values, only when the supplied documents define the meanings.
+- action_fields/result_fields: operation-to-semantic-field maps for renamed API fields.
+- product_fields: semantic product fields mapped to returned account field names.
+- record_notes/resolve_all_products: explicit booleans for note writes and whether
+  every returned product must be resolved before final close.
+- confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array
+  of commit_promises/commit_transfer/schedule_callback roles, possibly empty.
+- product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.
+- close_precedence: ordered semantic outcome array derived from the final selection rule.
+- identity_close: failed/incomplete/unreached records with outcome and optional reason.
+- transfer_prerequisites: exact queue-to-none/identity/account prerequisite map.
+- promise_readback: {product_fields:[...],value_labels?:{field:{value:spoken_label}}},
+  using only human-readable returned fields, excluding customer/internal product IDs.
+- promise_failure_disposition: {reason,clear_pending:boolean} when the brief specifies it.
+- nonpersistent_failures: operation-to-array of {http_status,error?} guarantees.
+  Populate only from an explicit supplied API nonpersistence guarantee; absence of
+  a guarantee is not permission to retry. Preserve uncertain persistence as unknown.
+These typed interfaces must encode supplied requirements; do not create defaults
+merely to satisfy a compiler. Missing/ambiguous semantics remain unsupported.
+
 Do not populate inapplicable concepts, invent a limit, or force every banking goal
 into payment collection. Add descriptive extension kinds for other constraints or
 shapes (including an unbounded interval) and generate their appropriate workflow

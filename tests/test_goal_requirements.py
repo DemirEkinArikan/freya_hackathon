@@ -44,6 +44,11 @@ def witness(policy, sources):
 
 def synthetic(actions, *, narrow=True):
     policy, sources, api = packet(list(actions), local=True, narrow=narrow)
+    # These cases explicitly supply fixed identity dispositions; optional
+    # rules must not disappear just because the capability catalogue narrows.
+    if not any(item["kind"] == "identity_close" for item in policy["rules"]):
+        full_policy, _, _ = packet(list(actions), local=True)
+        add_rule(policy, "identity_close", rule(full_policy, "identity_close")["value"])
     remove(policy, {"close_precedence"})
     witness(policy, sources)
     return policy, sources, api

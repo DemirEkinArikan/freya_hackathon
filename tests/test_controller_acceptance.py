@@ -33,7 +33,7 @@ class ControllerAcceptanceTests(unittest.TestCase):
     def test_missing_dependency_is_repaired_before_plan_and_freeze(self):
         generator = self.generator()
         incomplete = fixture()
-        incomplete["policy"]["rules"] = [r for r in incomplete["policy"]["rules"] if r["kind"] != "identity_close"]
+        incomplete["policy"]["rules"] = [r for r in incomplete["policy"]["rules"] if r["kind"] != "record_notes"]
         generator.generate.side_effect = [incomplete, fixture()]
         result = execute(self.helper.args("--generate-only"), generator=generator,
                          client_factory=lambda **kw: self.fail("platform started"))
@@ -50,15 +50,15 @@ class ControllerAcceptanceTests(unittest.TestCase):
         self.assertEqual(events[frozen]["execution_requirements_sha256"], descriptor["sha256"])
         saved = json.loads((self.run_directory() / "policy.rejected-1.json").read_text())
         self.assertEqual(saved["policy"], incomplete["policy"])
-        self.assertTrue(any("identity_close" in error for error in saved["validation_errors"]))
+        self.assertTrue(any("record_notes" in error for error in saved["validation_errors"]))
 
     def test_resumed_missing_dependency_stops_before_freeze_and_plan(self):
         incomplete = fixture()["policy"]
-        incomplete["rules"] = [r for r in incomplete["rules"] if r["kind"] != "identity_close"]
+        incomplete["rules"] = [r for r in incomplete["rules"] if r["kind"] != "record_notes"]
         path = self.directory / "incomplete-policy.json"
         path.write_text(json.dumps(incomplete))
         generator = self.generator()
-        with self.assertRaisesRegex(ValueError, "identity_close"):
+        with self.assertRaisesRegex(ValueError, "record_notes"):
             execute(self.helper.args("--policy-file", str(path)), generator=generator,
                     client_factory=lambda **kw: self.fail("platform started"))
         generator.generate.assert_not_called()

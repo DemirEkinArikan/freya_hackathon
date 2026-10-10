@@ -169,7 +169,7 @@ class AttemptEvidenceTests(unittest.TestCase):
 
     def test_missing_execution_rules_retain_rejected_policies_without_plan_generation(self):
         extracted = fixture()
-        extracted["policy"]["rules"] = [r for r in extracted["policy"]["rules"] if r["kind"] != "identity_close"]
+        extracted["policy"]["rules"] = [r for r in extracted["policy"]["rules"] if r["kind"] != "record_notes"]
         generator = self.proposal_generator([plan()])
         generator.generate.return_value = extracted
         with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs"):
@@ -184,7 +184,7 @@ class AttemptEvidenceTests(unittest.TestCase):
         for path in rejected_paths:
             rejected = read(path)
             self.assertEqual(rejected["policy"], extracted["policy"])
-            self.assertTrue(any("identity_close" in error for error in rejected["validation_errors"]))
+            self.assertTrue(any("record_notes" in error for error in rejected["validation_errors"]))
         for name in ("attempts", "policy.json", "policy.contract.json", "execution-requirements.json", "plan.json", "workflow.json"):
             self.assertFalse((run / name).exists(), name)
         manifest = read(run / "manifest.json")

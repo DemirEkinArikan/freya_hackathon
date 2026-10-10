@@ -73,6 +73,72 @@ class ScoringTests(unittest.TestCase):
         result = score_ledger(expected, {})
         self.assertEqual(result["failures"][0]["category"], "infrastructure")
 
+    def test_missing_identity_arguments_cannot_pass_local_ledger(self):
+        expected, ledger = good_ledger()
+        del ledger["calls"][0]["args"]
+        result = score_ledger(expected, ledger)
+        self.assertFalse(result["pass"])
+        self.assertIn("identity arguments absent from ledger", result["missing_evidence"])
+
+    def test_missing_close_success_is_incomplete_evidence(self):
+        expected, ledger = good_ledger()
+        ledger["calls"][-1]["result"] = {}
+        result = score_ledger(expected, ledger)
+        self.assertFalse(result["pass"])
+        self.assertIn("tool action success/failure absent: close_call", result["missing_evidence"])
+
+    def test_failed_final_close_cannot_pass_matching_records(self):
+        expected, ledger = good_ledger()
+        ledger["calls"][-1]["result"] = {"ok": False}
+        self.assertFalse(score_ledger(expected, ledger)["pass"])
+
+    def test_matching_promise_record_requires_matching_successful_write(self):
+        expected, ledger = good_ledger()
+        for mutation in ("failed", "different_terms", "absent"):
+            candidate = deepcopy(ledger)
+            if mutation == "failed": candidate["calls"][3]["result"] = {"ok": False}
+            if mutation == "different_terms": candidate["calls"][3]["args"]["amount"] = "145.11"
+            if mutation == "absent": candidate["calls"].pop(3)
+            with self.subTest(mutation=mutation):
+                result = score_ledger(expected, candidate)
+                self.assertFalse(result["pass"])
+                self.assertTrue(any("successful tool writes" in f["message"] for f in result["failures"]))
+
+    def test_even_failed_retry_after_success_is_prohibited(self):
+        expected, ledger = good_ledger()
+        retry = deepcopy(ledger["calls"][3])
+        retry["result"] = {"ok": False}
+        ledger["calls"].insert(-1, retry)
+        result = score_ledger(expected, ledger)
+        self.assertFalse(result["pass"])
+        self.assertTrue(any("attempted after a successful" in f["message"] for f in result["failures"]))
+
+    def test_partial_failure_preserves_successful_promise(self):
+        expected, ledger = good_ledger()
+        failure = {"tool": "create_promise", "args": {"product_id": "p2", "amount": "200.00", "date": "2026-11-23"}, "result": {"ok": False}}
+        ledger["calls"].insert(-1, failure)
+        self.assertTrue(score_ledger(expected, ledger)["pass"])
+
+    def test_malformed_call_data_returns_failure(self):
+        expected, ledger = good_ledger()
+        for record in (None, [], {"tool": "get_account", "result": []},
+                       {"tool": "verify_identity", "args": {"field": []}, "result": {"verified": True}},
+                       {"tool": "create_promise", "args": {"product_id": {}}, "result": {"ok": True}}):
+            candidate = deepcopy(ledger)
+            candidate["calls"].insert(-1, record)
+            with self.subTest(record=record):
+                self.assertFalse(score_ledger(expected, candidate)["pass"])
+
+    def test_claim_evidence_requires_bounded_integer_positions(self):
+        expected, ledger = good_ledger()
+        for after in (None, "3", True, -1, 500):
+            with self.subTest(after=after):
+                result = score_ledger(expected, ledger, evidence={"claims": [{"kind": "promise_recorded", "product_id": "p1", "after_call_index": after}]})
+                self.assertFalse(result["pass"])
+        for malformed in ([], {}, {"claims": [None]}):
+            with self.subTest(evidence=malformed):
+                self.assertFalse(score_ledger(expected, ledger, evidence=malformed)["pass"])
+
     def test_opaque_outcome_codes_preserve_third_party_privacy_invariant(self):
         expected = {"outcome": "X06", "reason": "X11", "promises": [], "notes": [], "callbacks": [], "transfers": []}
         calls = [{"tool": "verify_identity", "args": {"question_code": "postcode"}, "result": {"verified": True}},

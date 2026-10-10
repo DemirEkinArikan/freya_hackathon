@@ -33,7 +33,7 @@ unique seed/style/compound combinations remain unchanged as an inventory.
 
 The full inventory still has 78 ordinary seed/style variants and 42 compounds.
 The remaining 60 holdout rows are reservations without authored case data; a
-candidate freeze remains mandatory before they are materialized. This allocation
+candidate freeze remains mandatory before they are materialized. This
 allocation is for unfrozen manifests only. Fixture aliases and reservation
 membership changed to cover all planned families in development; no reserved
 case, caller script or oracle was authored. Existing evaluated/frozen fixtures must never

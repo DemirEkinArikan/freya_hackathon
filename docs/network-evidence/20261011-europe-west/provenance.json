@@ -1,0 +1,27 @@
+{
+  "runtime_source_commit": "35403042d95519e78e5edcf842d7323abcf4d95d",
+  "runtime_owner": "DemirEkinArikan",
+  "runtime_name": "reimagined-waddle-r96v96q5wrw2p9w7",
+  "runtime_region": "Europe West",
+  "runtime_machine": "2-core",
+  "runtime_python": "3.14.2",
+  "builder_runtime_acceptance": false,
+  "tls_command": "T11_CA_FILE=/etc/ssl/certs/ca-certificates.crt sh tools/t11-connectivity.sh 2>&1 | tee /tmp/t11-tls.txt",
+  "probe_command": "python3 tools/t11_bank_probe.py --execute --verified-tls-log /tmp/t11-tls.txt --state /tmp/t11-session-attempt.json",
+  "original_evidence_commit": "36b7853f7a4b75901c08f11594baac1afdcabe8b",
+  "original_tls_sha256": "8aba53ac948653eda990d7056ded2c131658809a17a148ee0a35a3ddb3314811",
+  "original_probe_state_sha256": "a77922abbc6df91aa223cae6ea40125c865032f753656ab96f40d03f93b05404",
+  "tool_sources_sha256": {
+    "tools/t11-connectivity.sh": "1d5902d156a56a17f519c0be13a8d1269a026ec4dc3560f5815c9d99f59a64fc",
+    "tools/t11_bank_probe.py": "1f5cc8cc86959ac55c75a25d4222108f4715f2dc01188845c4114c2b7632c44a",
+    "benchmarks/hosted.py": "b69efd0385105eb6476839da35b5d47adbc0397580b4bf703616eab7ec8aa562"
+  },
+  "credentials_transferred": false,
+  "model_calls": 0,
+  "simulations_started": 0,
+  "bank_action_writes": 0,
+  "billing_settings_changed": false,
+  "runtime_cleanup": "stopped_then_deleted",
+  "cleanup_inventory_count": 0,
+  "cleanup_observed_at_utc": "2026-10-10T22:09:23.636613+00:00"
+}

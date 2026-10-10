@@ -153,7 +153,7 @@ def persona_for(row):
         case["style"] = style
     persona = module.persona_for(case, {"identity": case["identity"]})
     if style == "asks_back":
-        persona["prompt"] += "\nOVERRIDE FOR THIS FIXTURE: both questions back happen only after the two security answers have been given and accepted. Never replace a security answer with a question."
+        persona["prompt"] += "\nOVERRIDE FOR THIS FIXTURE: additional HOW YOU TALK questions happen only after the two security answers have been given and accepted. Omit those additional questions if verification never succeeds. Preserve questions and wrong-answer sequences from WHAT HAPPENS IN THIS CALL. Never replace a security answer with an additional style question."
     persona["name"] = row["fixture_id"] + " " + case["title"]
     return persona
 

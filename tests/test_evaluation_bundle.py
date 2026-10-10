@@ -256,6 +256,22 @@ class BundleTests(unittest.TestCase):
             mutate(inputs[4]["conditions"])
             self.assertFalse(assemble_bundle(*inputs)["ready"])
 
+    def test_complete_verified_connect_route_binds_to_record_and_comparison_parity(self):
+        from benchmarks.bank_transport import BankConnectTransport
+        from benchmarks.hosted import BANK
+        inputs = recorded_inputs()
+        for record in inputs[4:]:
+            record["conditions"]["bank_transport"] = BankConnectTransport(BANK, "192.0.2.11").configuration()
+        selected = assemble_bundle(*inputs)
+        self.assertTrue(selected["ready"], selected)
+        self.assertEqual(selected["bundle"]["conditions"]["bank_transport"]["connect_address"], "192.0.2.11")
+        other = recorded_inputs("baseline")
+        for record in other[4:]:
+            record["conditions"]["bank_transport"] = BankConnectTransport(BANK, "192.0.2.12").configuration()
+        result = assemble_bundle(*other)
+        self.assertTrue(result["ready"], result)
+        self.assertFalse(compare(result["bundle"], selected["bundle"])["comparable"])
+
     def test_cli_writes_once_and_never_overwrites_prior_selection(self):
         (ROOT / "artifacts").mkdir(exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as temp:

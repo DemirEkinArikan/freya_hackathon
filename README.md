@@ -95,14 +95,21 @@ python3.11 tools/cowork.py status
 python3.11 tools/cowork.py claim T04 --branch task/t04-policy-contract --commit <pushed-sha>
 python3.11 tools/cowork.py checkpoint T04 --branch <branch> --commit <pushed-sha> \
   --done 'completed work' --remaining 'next steps' --offline
-python3.11 tools/cowork.py complete T04 --commit <pushed-sha> --checks 'command and result'
+python3.11 tools/cowork.py complete T04 --commit <pushed-sha> \
+  --pr <merged-pr-number-or-url> --checks 'command and result'
 ```
 
 Either person can claim Ready tasks. Naci can add `--takeover` to reclaim Demir's
 in-progress task after an announced absence or 30 minutes without an update;
 the command checks recent branch activity. Checkpoint and push every 15 minutes.
-Claims require pushed commits, completion unblocks dependencies, and returning
-workers check ownership before resuming. Preserve another worker's branch.
+Claims require pushed commits. When a task's deliverable and checks are complete,
+push the work, open a PR targeting `main`, and merge it directly without a separate
+review step. Then run `complete --pr` with the merged PR number or its HTTPS URL.
+The command verifies that the PR's base and head belong to this repository, it
+was merged into `main`, and its head matches the pushed completion commit before
+posting evidence or closing the task. It does not merge PRs. Completion unblocks
+dependencies; returning workers check ownership before resuming. Preserve another
+worker's branch.
 
 Record workflow/agent/version and running simulation IDs in the task handoff.
 A stale local lease is not evidence the remote simulation has ended: check

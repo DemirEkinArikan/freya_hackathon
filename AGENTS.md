@@ -38,4 +38,9 @@ lock. Checkpoint at least every 15 minutes and push the working branch.
 Naci can take over Demir's task after an announced absence or 30 minutes without
 an update, after checking branch activity and recording the starting commit.
 Check the latest issue claim before resuming. Never force-push another worker's
-branch. Completion needs verification evidence and a pushed commit.
+branch. When a task's deliverable and checks are complete, push the commit, open
+a PR targeting `main`, and merge it directly without a separate review step.
+Completion needs verification evidence and that merged same-repository PR;
+`tools/cowork.py complete --pr <number-or-url>` verifies the PR's head matches
+the pushed completion commit before commenting or closing the issue. The
+completion command verifies an existing merge; it does not merge PRs itself.

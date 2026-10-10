@@ -2,40 +2,63 @@
 
 ## Closure audit — 11 October 2026
 
-The live board now has eight closed tasks and ten open tasks, plus the parent.
-T11 is closed with actual published-version, fresh-session, bank-receipt and
-runner compatibility evidence. T12 is also closed: its authored scenario
-deliverable was complete and its T11 dependency is now complete.
-T09's validator deliverable is complete and waits only for T07/T08. T13's
-scoring/capture deliverable is complete with PR88 and waits only for T09.
-Neither issue gains a successful-agent or extra repetition gate.
+The actual board has **nine closed tasks and nine open tasks, plus parent #1**.
+T05 is now closed with [verified original-scope controller acceptance](https://github.com/DemirEkinArikan/freya_hackathon/issues/6#issuecomment-6103215647).
+T11's actual adapter acceptance and T12's authored scenario completion retain
+their closure records. T09's validator deliverable and T13's scoring/capture
+deliverable are complete and wait only for their declared dependencies.
+Neither gains a successful-agent or extra repetition requirement.
 
-Four actual runner calls completed with distinct customer fingerprints and
-matching published versions; all four strict banking verdicts are FAIL. They
-used a separate harmless greeting graph. Bank connectivity and pristine
-retrieval are demonstrated; older TLS failures are historical observations.
-There is still no accepted generated banking policy/workflow. The latest fresh
-public-A attempt was deliberately stopped before freeze/deployment/export or
-simulation after source-compatibility review; generic fixes are in progress.
+A fresh ordered public A+B run, `20261010T224748051958Z`, from source
+`2d09c31d2f2d25a0e01466e707f560127634cad3` finished `generated_validated` in
+**1,204.697 seconds**, with **595.303 seconds** remaining and the 300-second
+export reserve. Original input/source/audit/provenance/trace and selected
+artifact bindings, exact guarded recompilation and local validation were
+independently checked. Real isolated Codex stdin generation used
+`gpt-6.1-sol` / high reasoning; the required controller module passed 23 tests.
+This completes T05's original three bullets. It claims no accepted live export
+or hosted banking pass and does not prove changed-policy/schema adaptation.
 
-T05 still needs a fresh complete audited policy/workflow build within 30 minutes;
-a valid generate-only result can establish its generation acceptance. T07 needs
-actual input-derived generation evidence. T08 awaits that T07 integration,
-without a standalone hosted/three-repeat gate. T14 needs an actual bounded
-repair, republish/read-back and selected export. T15–T18 have substantive
-comparison, fresh holdout, final rehearsal/freeze and hidden-submission work.
-See [the per-issue closure audit](ISSUE-CLOSURE-AUDIT.md) for preparation PRs,
-exact remaining deliverables and dependencies.
+The separate public-A source601 run generated a local policy/plan and published
+it, then failed stored comparison after about 625.756 seconds. Its original
+artifacts remain failed. Independent semantic review found a type-specific
+card suffix incorrectly required on loans; confirmation remains enforced.
+PR96 merged the reviewed observed-serializer and protected-callback source
+corrections, without retroactively accepting the old run. PR98 has now merged
+the independently reviewed conditional-field correction, with 1,132 tests and
+nine focused checks at its checked head; fresh generated adoption is unproved.
+The mixed-phase local-paid permission gate also needs its generic correction.
+T07 then needs actual fresh generation on approved changed goals/policies and
+schemas. T08 awaits that integration; no standalone hosted/three-repeat gate
+is added to T08.
 
-The combined source through PR86/88 passed 1,062 Python 3.11 tests at checked
-head `f3073ff174c6525674af4983c384271a0a9f7616`. The PR88 merge's production,
-tests and kit bytes match that checked source. This documentation update adds
-no model or live call and does not relabel source checks as banking success.
+Four actual runner calls used distinct customer fingerprints and matching
+published versions; **all four banking verdicts are FAIL** on the separate
+harmless greeting graph. Bank connectivity and pristine retrieval are proven;
+older TLS failures are historical. PR95's recorder/bundler is merged, retaining
+original artifacts, calendars, actual transport/call budgets and failed or
+partial results. Null/null unclosed receipts cannot become passing rows.
+T14 still needs an actual bounded repair, republish/read-back and selected
+export. T15 needs real comparable development runs. T16 needs fresh holdouts
+post-freeze; T17 needs the real builder rehearsal/freeze; T18 needs both hidden
+inputs/builds and submission. Hidden inputs have not arrived.
+See [the per-issue closure audit](ISSUE-CLOSURE-AUDIT.md) for precise work and
+dependencies.
+
+Combined checked source `8f458f8` passed **1,195 Python 3.11 tests in
+150.655 seconds**, kit16/source243 and diff checks. It includes PR95/96
+integration plus the source-input label work merged as PR97. That result is
+attributed to `8f458f8`, not the later PR98 conditional-field merge. PR95
+and PR96 retain their separate checks and source-archive evidence. This
+documentation-only update performs kit/source/diff checks and makes no model
+or platform call.
 Overall winning-readiness, critical repetitions and submission gates remain.
 
-Earlier checkpoint text below is historical. Its old counts, no-execution
-statements and TLS failures are superseded by this current audit; authorized
-staging and simulation use remains in effect.
+Earlier checkpoint text below is historical and remains unchanged. Its old
+counts, failed/no-generation/no-execution statements and TLS observations are
+superseded by this current audit. Authorized staging/simulations remain in
+effect. Anyone may work any issue; dependencies govern closure rather than
+person-based permission to begin.
 
 The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Anyone may work on any issue at any time. Issue assignments and names are informational; no named worker, timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Dependencies govern completion rather than starting independent work. Closed tasks retain their historical records.
 

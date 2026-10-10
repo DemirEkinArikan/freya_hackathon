@@ -1,5 +1,6 @@
 """Generate evaluator fixtures locally; never creates a Freya agent or simulation."""
 import argparse
+from collections import Counter
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 import json
@@ -489,24 +490,65 @@ COMPOUNDS = [
 ]
 
 
+def hosted_variants(seeds):
+    """Stratify development wording before reserving the remaining variants.
+
+    Each development split includes every style and every public seed. Within
+    each ordinary style, both briefs receive a slot before balancing seed use.
+    This allocation is evaluator metadata, never a candidate input.
+    """
+    styles = ("plain", "pieces", "corrects", "talkative", "asks_back", "in_words")
+    all_variants = [(seed, style, None) for style in styles for seed in seeds]
+    all_variants += [(seed, "compound", index) for seed in seeds
+                     if seed["id"] in ("PUB-10", "PUB-12", "PUB-13")
+                     for index in range(len(COMPOUNDS))]
+    chosen, development = set(), []
+    allocations = (
+        ("train", (7, 5, 5, 5, 5, 5), (("PUB-10", 0), ("PUB-12", 6), ("PUB-13", 7), ("PUB-10", 13))),
+        ("validation", (4, 3, 3, 3, 3, 4), (("PUB-12", 3), ("PUB-13", 8), ("PUB-10", 10), ("PUB-12", 11))),
+    )
+    by_id = {seed["id"]: seed for seed in seeds}
+    for split, counts, compounds in allocations:
+        usage = Counter()
+        for style, count in zip(styles, counts):
+            for position in range(count):
+                available = [seed for seed in seeds if (seed["id"], style, None) not in chosen]
+                brief = ("A", "B")[position] if position < 2 else None
+                if brief:
+                    available = [seed for seed in available if seed["brief"] == brief]
+                seed = min(available, key=lambda item: (usage[item["id"]], item["id"]))
+                chosen.add((seed["id"], style, None))
+                usage[seed["id"]] += 1
+                development.append((split, seed, style, None))
+        for seed_id, index in compounds:
+            chosen.add((seed_id, "compound", index))
+            development.append((split, by_id[seed_id], "compound", index))
+    remaining = [("holdout", seed, style, index) for seed, style, index in all_variants
+                 if (seed["id"], style, index) not in chosen]
+    return development + remaining
+
+
 def hosted_manifest():
+    from builder.safety import digest
     seeds = json.loads((KIT / "public-test-set.json").read_text())
-    variants = [(seed, style, None) for style in ("plain", "pieces", "corrects", "talkative", "asks_back", "in_words") for seed in seeds]
-    variants += [(seed, "compound", extra) for seed in seeds if seed["id"] in ("PUB-10", "PUB-12", "PUB-13") for extra in COMPOUNDS]
+    variants = hosted_variants(seeds)
     cases = []
-    for i, (seed, style, extra) in enumerate(variants):
-        split = "train" if i < 36 else "validation" if i < 60 else "holdout"
+    for i, (split, seed, style, compound_index) in enumerate(variants):
         row = {"fixture_id": f"HOST-{i + 1:03d}", "bank_case_id": seed["id"], "split": split,
                "brief": seed["brief"], "style": style, "status": "reserved_until_candidate_freeze" if split == "holdout" else "materialized",
-               "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+               "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
                "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization."}
         if split != "holdout":
             row["case"] = deepcopy(seed)
             row["case"]["id"] = row["fixture_id"]
             row["case"]["script"] += "\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer."
-            if extra: row["case"]["script"] += "\n" + extra
+            if compound_index is not None:
+                row["case"]["script"] += "\n" + COMPOUNDS[compound_index]
+                row["outcome_constraints"] = {"preserve_seed_outcomes": True,
+                                               "seed_expected_sha256": digest(seed["expected"])}
+                row["compound_index"] = compound_index
         else:
-            row["reservation"] = {"seed": seed["id"], "style": style, "compound_index": COMPOUNDS.index(extra) if extra else None}
+            row["reservation"] = {"seed": seed["id"], "style": style, "compound_index": compound_index}
         cases.append(row)
     return {"version": 1, "kind": "hosted", "count": 120, "split_counts": {"train": 36, "validation": 24, "holdout": 60}, "cases": cases}
 

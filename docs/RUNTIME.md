@@ -205,3 +205,17 @@ all nonempty reported tool lists and actual tool events still fail isolation.
 Unrecognized names and raw model response data remain excluded. This additive
 change is verified with local mocks only, with no additional live probe.
 The tool-free runtime remains unproved and substantive generation remains gated.
+
+## Earlier parallel probe archive
+
+The parallel thread also recorded two synthetic-only failures before the later
+source-controls and GPT-5.5 probes above. Added feature/namespace disables under
+CLI 0.162.0-alpha.2 still reported four tools, five omitted skills and an unknown
+diagnostic. The existing app-bundled CLI 0.158.0-alpha.2.1 returned no complete
+structured audit response, exited unsuccessfully and reported six omitted
+skills. Neither run exposed a random canary or emitted a tool action.
+
+[Reviewed historical metadata](runtime-evidence/demir-20261010-followup.json)
+preserves those results and the exact experimental controls. They do not replace
+the production configuration or newer evidence. No new probe was run while
+archiving this metadata, and neither result authorizes banking generation.

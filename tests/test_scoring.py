@@ -10,7 +10,7 @@ def good_ledger():
              {"tool": "verify_identity", "args": {"field": "phone_last4"}, "result": {"verified": True}},
              {"tool": "get_account", "args": {}, "result": {"ok": True}},
              {"tool": "create_promise", "args": expected["promises"][0], "result": {"ok": True}},
-             {"tool": "close_call", "args": {}, "result": {"ok": True}}]
+             {"tool": "close_call", "args": {"outcome": expected["outcome"], "reason": expected["reason"]}, "result": {"ok": True}}]
     return expected, {**deepcopy(expected), "calls": deepcopy(calls)}
 
 

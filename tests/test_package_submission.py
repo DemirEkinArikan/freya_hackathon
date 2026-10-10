@@ -41,8 +41,15 @@ class PackageTests(unittest.TestCase):
         wf = {"workflow_id": "w", "agent_id": "a", "workflow": {"initial_node": "finish", "nodes": {}}}
         for name in ("hidden-1", "hidden-2"):
             (self.root / (name + ".json")).write_text(json.dumps(wf))
-            events = [{"event": "start", "mode": mode}, {"event": "deployment", "workflow_id": "w", "agent_id": "a"},
-                      {"event": "end", "status": status, "export_sha256": digest(wf)}]
+            # Packaging checks the required organizer trace evidence. The old
+            # untimed three-event fixture did not represent an eligible run.
+            events = [{"event": "start", "mode": mode, "time": "2026-10-10T12:00:00Z"},
+                      {"event": "model_call", "model": "synthetic-test-model", "purpose": "Synthetic offline trace fixture",
+                       "prompt_characters": 100,
+                       "time": "2026-10-10T12:00:01Z"},
+                      {"event": "deployment", "workflow_id": "w", "agent_id": "a", "version_id": "v1", "version_number": 1,
+                       "published": True, "time": "2026-10-10T12:00:02Z"},
+                      {"event": "end", "status": status, "export_sha256": digest(wf), "time": "2026-10-10T12:00:03Z"}]
             (self.root / (name + ".jsonl")).write_text("\n".join(json.dumps(e) for e in events))
         return {"team": "synthetic", "repo": "https://github.com/test/example", "commit": "a" * 40,
                 "run_command": "python3.11 builder/build.py --brief {brief_path} --tool-api {tool_api_path}",

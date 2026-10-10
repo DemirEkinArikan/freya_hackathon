@@ -13,7 +13,7 @@ from benchmarks.export_inputs import export_profile
 from benchmarks.generate import fixed_profiles, hosted_manifest, offline_manifest
 from benchmarks.hosted import HostedBackend, NoRedirect, check_holdout_config, evaluate, main as hosted_main
 from benchmarks.paths import output_path
-from benchmarks.offline import check_case, check_manifest, compare_contract
+from benchmarks.offline import check_case, check_manifest, compare_contract, expected_policy_ir
 
 
 class FakeBackend:
@@ -69,31 +69,27 @@ class BenchmarkTests(unittest.TestCase):
 
     def test_materialized_oracles_match_policy_helpers_and_known_calendar_results(self):
         manifest = offline_manifest()
+        profiles = {p["profile_id"]: p for p in manifest["profiles"]}
         for case in manifest["cases"]:
             if case["status"] == "materialized":
                 with self.subTest(case=case["fixture_id"]):
-                    self.assertTrue(check_case(case)["pass"])
+                    self.assertTrue(check_case(case, profiles[case["profile_id"]])["pass"])
         known = {"train-1": "2026-12-04", "train-2": "2027-01-06", "validation-1": "2027-01-13", "validation-2": "2027-04-08"}
         for name, deadline in known.items():
             case = next(c for c in manifest["cases"] if c.get("profile_id") == name and c["number"] not in (11, 13, 14, 17, 18, 20, 21, 22, 24, 25, 38, 40, 58))
             self.assertEqual(case["helper_expected"]["deadlines"]["p1"], deadline)
 
     def test_contract_change_is_detected(self):
-        expected = fixed_profiles()[0]["contract_expected"]
-        candidate = deepcopy(expected)
+        profile = fixed_profiles()[0]
+        candidate = expected_policy_ir(profile["contract_expected"])
         next(r for r in candidate["rules"] if r["kind"] == "identity_wrong_limit")["value"] = 99
-        self.assertEqual(compare_contract(candidate, expected), ["identity_wrong_limit"])
+        self.assertEqual(compare_contract(candidate, profile), ["identity_wrong_limit"])
 
     def test_compiler_string_contract_and_explicit_override_are_supported(self):
-        expected = fixed_profiles()[0]["contract_expected"]
-        candidate = deepcopy(expected)
-        replacement = next(r for r in candidate["rules"] if r["kind"] == "identity_wrong_limit")
-        original = deepcopy(replacement)
-        original["id"] = "superseded-limit"
-        original["value"] = 99
-        replacement["overrides"] = [original["id"]]
-        candidate["rules"].append(original)
-        self.assertEqual(compare_contract({"policy_json": json.dumps(candidate)}, expected), [])
+        profile = fixed_profiles()[1]
+        candidate = expected_policy_ir(profile["contract_expected"])
+        candidate["rules"].reverse()
+        self.assertEqual(compare_contract({"policy_json": json.dumps(candidate)}, profile), [])
 
     def test_wire_codes_floor_aliases_and_goals_are_independent_of_public_policy(self):
         manifest = offline_manifest()
@@ -106,10 +102,12 @@ class BenchmarkTests(unittest.TestCase):
         self.assertNotIn(" = {", "\n".join(raw["contract_expected"]["source_documents"].values()))
 
     def test_corrupt_rule_quote_is_rejected_against_actual_source(self):
-        row = next(c for c in offline_manifest()["cases"] if c["status"] == "materialized")
+        manifest = offline_manifest()
+        row = next(c for c in manifest["cases"] if c["status"] == "materialized")
         row = deepcopy(row)
         row["contract_expected"]["rules"][0]["source"]["quote"] = "Not a sentence in this policy."
-        self.assertFalse(check_case(row)["pass"])
+        profile = next(p for p in manifest["profiles"] if p["profile_id"] == row["profile_id"])
+        self.assertFalse(check_case(row, profile)["pass"])
 
     def test_hosted_counts_and_alias_mapping(self):
         manifest = hosted_manifest()

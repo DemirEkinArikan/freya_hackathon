@@ -1,0 +1,58 @@
+{
+  "initial_node": "start",
+  "global_nodes": {},
+  "system_prompt": "You are a synthetic platform readiness assistant. Speak English. No bank operation or tool call is allowed. Never ask for personal, account, credential or payment information.",
+  "nodes": {
+    "start": {
+      "name": "start",
+      "node_type": "conversation",
+      "task_message": "This is a harmless platform readiness test. No tool call is allowed. Acknowledge the caller briefly.",
+      "on_enter": {
+        "type": "tts",
+        "text": "Platform smoke beta. Please say ready."
+      },
+      "max_node_turns": 1,
+      "max_turn_transition": "finish",
+      "tools": [],
+      "extraction_schema": [],
+      "transitions": [
+        {
+          "target_node": "finish",
+          "description": "After any caller response end the smoke test.",
+          "condition": {
+            "operator": "always"
+          }
+        }
+      ]
+    },
+    "finish": {
+      "name": "finish",
+      "node_type": "end_call",
+      "on_enter": {
+        "type": "silent"
+      },
+      "disable_inactivity_monitor": true,
+      "transitions": [],
+      "terminal": {
+        "type": "function",
+        "function": {
+          "name": "platform_smoke_end",
+          "handler": "__function__:end_call",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "message_mode": {
+                "type": "string",
+                "default": "custom"
+              },
+              "spoken_message": {
+                "type": "string",
+                "default": "Platform smoke complete. Goodbye."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

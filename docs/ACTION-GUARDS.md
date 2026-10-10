@@ -240,3 +240,6 @@ fabricating a bank close. Policy may require a safe uncertain-call close that
 this conservative v1 cannot establish; it must remain an explicit failure.
 
 No Freya, model or external calls are part of compilation or local guard tests.
+
+An explicit empty account_disclosure_fields list grants no narration fields,
+just like an absent declaration. Internal proposal references remain separate.

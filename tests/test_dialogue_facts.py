@@ -116,6 +116,13 @@ class DialogueFactTests(unittest.TestCase):
         for identifier in (CUSTOMER, PRODUCTS[0]["product_id"], PRODUCTS[1]["product_id"], "DO_NOT_PROJECT_API_EXTRAS"):
             self.assertNotIn(identifier, json.dumps(readable))
 
+    def test_explicit_empty_narration_permissions_expose_no_account_fields(self):
+        _, facts, _ = self.account([])
+        self.assertEqual(facts["account"]["narration_status"], "blocked_until_policy_declares_fields")
+        self.assertEqual(facts["account"]["products"], [])
+        self.assertNotIn(CUSTOMER, json.dumps(facts))
+        self.assertEqual(validate_guarded_workflow(compile_guarded_workflow(**self.context)["workflow"], **self.context), [])
+
     def test_declared_account_fields_are_exact_allowlist_not_raw_api_passthrough(self):
         _, facts, _ = self.account(["type", "past_due"])
         self.assertEqual(facts["account"]["narration_status"], "approved_fields_only")
@@ -150,7 +157,7 @@ class DialogueFactTests(unittest.TestCase):
         self.assertEqual(facts["account"]["narration_status"], "blocked_until_policy_declares_fields")
 
     def test_missing_unknown_nested_and_identifier_disclosure_fields_fail_compilation(self):
-        for fields in ([], ["type", "type"], "type", [None], ["missing"], ["product_id"], ["customer_id"]):
+        for fields in (["type", "type"], "type", [None], ["missing"], ["product_id"], ["customer_id"]):
             with self.subTest(fields=fields):
                 context = fixture()
                 context["contract"]["active_rules"]["account_disclosure_fields"] = {"value": fields}

@@ -156,7 +156,10 @@ def natural_rule_quote(kind, value):
     if kind in ("action_fields", "result_fields"):
         category = "request" if kind == "action_fields" else "result"
         return "Development-v2 API " + category + " bindings. Read the exact wire fields; do not infer success from customer speech.\n| Operation | Semantic field | API wire field |\n|---|---|---|\n" + "\n".join(f"| {role} | {semantic} | {field} |" for role, mapping in value.items() for semantic, field in mapping.items())
-    return str(value) + "."
+    # Preserve the supplied rule's scope as well as its unchanged value. The
+    # value alone can omit the subject (for example, "no persuasion" belongs
+    # to hardship handling, rather than to every account conversation).
+    return kind.replace("_", " ") + ": " + str(value) + "."
 
 
 def render_policy_sources(name, now, label, values, raw):

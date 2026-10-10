@@ -34,6 +34,9 @@ class Deadline:
     def remaining(self) -> float:
         return max(0.0, self.limit - self.clock())
 
+    def elapsed(self) -> float:
+        return max(0.0, self.clock() - self.start)
+
     def require(self, seconds: float = 0, reserve: float = 0) -> None:
         if self.remaining() <= seconds + reserve:
             raise DeadlineExceeded("The builder time budget is exhausted")
@@ -91,6 +94,28 @@ GENERATION_SCHEMA = {"type": "object", "additionalProperties": False,
                      "required": ["policy_json", "workflow_json"],
                      "properties": {"policy_json": {"type": "string", "description": "Serialized provenance policy JSON object"},
                                     "workflow_json": {"type": "string", "description": "Serialized complete Freya workflow JSON object"}}}
+
+
+def plan_generation_schema(contract_sha256: str) -> dict:
+    if not isinstance(contract_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", contract_sha256):
+        raise GenerationError("Plan generation requires a validated policy contract fingerprint")
+    return {"type": "object", "additionalProperties": False,
+            "required": ["plan_json", "contract_sha256"],
+            "properties": {"plan_json": {"type": "string", "description": "Serialized restricted dialogue/action plan JSON object"},
+                           "contract_sha256": {"type": "string", "enum": [contract_sha256]}}}
+
+
+def _strict_json(text: str) -> Any:
+    def unique(pairs):
+        value = {}
+        for key, child in pairs:
+            if key in value:
+                raise ValueError("Duplicate JSON property")
+            value[key] = child
+        return value
+    def invalid(_):
+        raise ValueError("Nonfinite JSON value")
+    return json.loads(text, object_pairs_hook=unique, parse_constant=invalid)
 
 
 REQUIRED_FLAGS = ("--ignore-user-config", "--ignore-rules", "--ephemeral", "--output-schema", "--strict-config")
@@ -305,12 +330,23 @@ class CodexGenerator:
             raise GenerationError("Codex generation isolation audit failed; no banking brief was sent; see sanitized trace")
         self._isolation_checked = True
 
-    def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract") -> dict:
+    def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *, max_seconds: float = 900) -> dict:
+        return self._generate(prompt, purpose, max_seconds=max_seconds)
+
+    def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
+        return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
+                              max_seconds=max_seconds, plan_contract_sha256=contract_sha256)
+
+    def _generate(self, prompt: str, purpose: str, *, max_seconds: float,
+                  plan_contract_sha256: str | None = None) -> dict:
+        schema_value = plan_generation_schema(plan_contract_sha256) if plan_contract_sha256 else GENERATION_SCHEMA
+        if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
+            raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
         self.check_capabilities()
         self.check_isolation()
         self.deadline.require(seconds=1, reserve=300)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        allocated = self.deadline.timeout(900, reserve=300)
+        allocated = self.deadline.timeout(max_seconds, reserve=300)
         started = time.monotonic()
         self.trace.emit("model_call", model=self.model or "codex-default; actual emitted model recorded when available",
                         purpose=purpose, reasoning_effort=self.reasoning_effort,
@@ -319,7 +355,7 @@ class CodexGenerator:
         with tempfile.TemporaryDirectory(prefix="generation-", dir=self.output_dir) as dirname:
             directory = Path(dirname)
             schema = directory / "response.schema.json"
-            schema.write_text(json.dumps(GENERATION_SCHEMA), encoding="utf-8")
+            schema.write_text(json.dumps(schema_value), encoding="utf-8")
             try:
                 result = self.run(self.argv(directory, schema), input=prompt, text=True, capture_output=True,
                                   timeout=allocated, env=generation_environment(), cwd=directory, on_progress=self._progress)
@@ -367,11 +403,20 @@ class CodexGenerator:
             if text.startswith("```"):
                 text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             try:
-                value = json.loads(text)
+                value = _strict_json(text)
+                if plan_contract_sha256:
+                    if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
+                        continue
+                    if value["contract_sha256"] != plan_contract_sha256 or not isinstance(value["plan_json"], str):
+                        raise GenerationError("Plan output does not match the frozen policy contract")
+                    plan = _strict_json(value["plan_json"])
+                    if isinstance(plan, dict):
+                        return {"plan": plan, "contract_sha256": plan_contract_sha256}
+                    continue
                 if isinstance(value, dict) and isinstance(value.get("policy_json"), str) and isinstance(value.get("workflow_json"), str):
-                    value = {"policy": json.loads(value["policy_json"]), "workflow": json.loads(value["workflow_json"])}
+                    value = {"policy": _strict_json(value["policy_json"]), "workflow": _strict_json(value["workflow_json"])}
                 if isinstance(value, dict) and isinstance(value.get("policy"), dict) and isinstance(value.get("workflow"), dict):
                     return value
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 pass
-        raise GenerationError("Codex returned no policy/workflow object matching the generation contract")
+        raise GenerationError("Codex returned no object matching the generation stage contract")

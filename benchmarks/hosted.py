@@ -188,12 +188,16 @@ class HostedBackend:
 
     def validate_deployment(self, deployment):
         from builder.safety import digest
+        expected_number = deployment.get("version_number")
+        if type(expected_number) is not int or expected_number < 1:
+            raise ValueError("pinned version number must be a positive integer")
         stored = self.client.get_workflow(deployment["workflow_id"])
         if stored.get("agentId") != deployment["agent_id"] or digest(stored.get("workflow")) != digest(deployment["workflow"]):
             raise ValueError("agent or stored graph changed from pinned deployment")
         versions = self.client.request("GET", f"/api/v2/versions/workflow/{deployment['workflow_id']}", params={"workspaceId": self.client.workspace_id()})["versions"]
         selected = next((v for v in versions if v.get("id") == deployment["version_id"]), None)
-        if not selected or selected.get("versionNumber") != deployment["version_number"] or selected.get("isPublished") is not True:
+        if (not selected or type(selected.get("versionNumber")) is not int
+                or selected["versionNumber"] != expected_number or selected.get("isPublished") is not True):
             raise ValueError("pinned version is no longer published")
         return {"workflow_id": deployment["workflow_id"], "agent_id": deployment["agent_id"],
                 "version_id": deployment["version_id"], "version_number": deployment["version_number"],

@@ -4,6 +4,7 @@ import json
 import unittest
 
 from builder.contract import PolicyContractError, compile_policy_contract
+from builder.build import make_policy_prompt
 from builder.guards import GuardCompileError, compile_guarded_workflow, validate_guarded_workflow
 from builder.policy import PolicyError, compile_execution_policy, execution_rule_guidance
 from builder.safety import digest
@@ -107,6 +108,16 @@ class GoalScopedResolutionTests(unittest.TestCase):
         for phrase in ("selector", "by_value", "read-only", "quarantine", "never allowed outcomes"):
             self.assertIn(phrase, guidance)
         self.assertEqual(validate_guarded_workflow(compile_guarded_workflow(**context)["workflow"], **context), [])
+
+    def test_fresh_policy_prompt_agrees_with_typed_selector_interface(self):
+        context = authored(scoped())
+        prompt = make_policy_prompt([], context["openapi"])
+        header, data = prompt.split("\n\nAUTHORIZED INPUTS:\n", 1)
+        interface = json.loads(data)["execution_interface"]["rule_shapes"]["resolve_all_products"]
+        self.assertEqual(interface, execution_rule_guidance()["resolve_all_products"])
+        self.assertIn('selector:"source_declared_input_name"', header)
+        self.assertIn('by_value:{"supplied_input_code":boolean}', header)
+        self.assertNotIn("record_notes/resolve_all_products: explicit booleans", header)
 
     def test_boolean_legacy_true_blocks_partial_and_false_keeps_legal_partial_close(self):
         for required in (True, False):
@@ -239,6 +250,12 @@ class GoalScopedResolutionTests(unittest.TestCase):
         call = CompiledCall(authored(scoped()), {SELECTOR: ALL})
         call.account()
         call.promise()
+        call.variables.update(product="asset-two", amount="82.10", day="2031-05-06")
+        call.code("stage")
+        call.code("commit")
+        call.variables["bg_consent"] = "yes"
+        call.code("bg_commit_accept")
+        self.assertTrue(call.state["inflight"])
         original = deepcopy(call.variables)
         for values in ({}, {SELECTOR: "UNKNOWN"}, {SELECTOR: False}, {SELECTOR: ALL, "forged": PARTIAL}, []):
             for node in ("stage", "close", "bg_commit_accept", "bg_commit_result"):
@@ -250,6 +267,7 @@ class GoalScopedResolutionTests(unittest.TestCase):
                     call.code(node)
                     self.assertEqual(call.target(node), "bg_quarantine")
                     self.assertEqual(call.state["recorded_promises"], state["recorded_promises"])
+                    self.assertEqual(call.state["inflight"], state["inflight"])
                     self.assertFalse(call.variables["bg_body"])
 
     def test_generated_code_retains_sandbox_and_no_template_boundaries(self):

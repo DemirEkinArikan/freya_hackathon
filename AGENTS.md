@@ -32,6 +32,16 @@ case success alone is not evidence of generalization.
 
 ## Coworking
 
+The user's revised plan gives Demir all open tasks from 16:36 to 17:36 Istanbul
+on 10 October, then Naci continues. Exact timezone-aware bounds are recorded in
+`docs/tasks.json` under `ownership_window`. This overrides the original split
+of default leads for that work window. At handoff, Naci checks branch activity
+and claims from the latest pushed checkpoint without an extra stale-time wait.
+Keep dependency and acceptance gates; prepare code independently where useful.
+Record completed work, checks, remaining blockers, branch/commit and any
+deployment/simulation lease before the handoff. There is no timed automatic
+reassignment; the next worker claims explicitly.
+
 Use the linked GitHub task issues as the source of active ownership. Either
 collaborator can claim a ready task. Default assignment is responsibility, not a
 lock. Checkpoint at least every 15 minutes and push the working branch.

@@ -1,6 +1,6 @@
 # Shared implementation checkpoint — 10 October 2026
 
-The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Naci owns T02, T03, T05, T06, T08, T09, T11, T13, T15 and T17. Demir owns the other eight; the parent is assigned to both. The account that created an issue remains its author independently of its assignee.
+The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. The revised user plan gives Demir all open tasks until **17:36 Istanbul on 10 October**, then Naci continues from the latest pushed checkpoints. Exact window bounds and the next owner are recorded in `docs/tasks.json`. Original manifest assignees are default leads; live issue assignees show current ownership. Closed tasks retain their historical owners. The account that created an issue remains its author independently of its assignee.
 
 The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
 

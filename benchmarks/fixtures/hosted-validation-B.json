@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "hosted",
-  "count": 9,
+  "count": 10,
   "split_counts": {
     "train": 36,
     "validation": 24,
@@ -54,7 +54,7 @@
             "instalment_amount": 46.0
           }
         ],
-        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -87,7 +87,7 @@
       }
     },
     {
-      "fixture_id": "HOST-042",
+      "fixture_id": "HOST-041",
       "bank_case_id": "PUB-11",
       "split": "validation",
       "brief": "B",
@@ -96,7 +96,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-042",
+        "id": "HOST-041",
         "brief": "B",
         "family": "Multi-product",
         "level": "medium",
@@ -132,7 +132,7 @@
             "instalment_amount": 25.0
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay all three this Friday. Confirms once.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay all three this Friday. Confirms once.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -165,7 +165,7 @@
       }
     },
     {
-      "fixture_id": "HOST-045",
+      "fixture_id": "HOST-044",
       "bank_case_id": "PUB-11",
       "split": "validation",
       "brief": "B",
@@ -174,7 +174,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-045",
+        "id": "HOST-044",
         "brief": "B",
         "family": "Multi-product",
         "level": "medium",
@@ -210,7 +210,7 @@
             "instalment_amount": 25.0
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay all three this Friday. Confirms once.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay all three this Friday. Confirms once.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -243,7 +243,7 @@
       }
     },
     {
-      "fixture_id": "HOST-048",
+      "fixture_id": "HOST-047",
       "bank_case_id": "PUB-13",
       "split": "validation",
       "brief": "B",
@@ -252,7 +252,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-048",
+        "id": "HOST-047",
         "brief": "B",
         "family": "Multi-product",
         "level": "hard",
@@ -282,7 +282,7 @@
             "instalment_amount": 300.0
           }
         ],
-        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -310,8 +310,8 @@
       }
     },
     {
-      "fixture_id": "HOST-051",
-      "bank_case_id": "PUB-11",
+      "fixture_id": "HOST-050",
+      "bank_case_id": "PUB-13",
       "split": "validation",
       "brief": "B",
       "style": "asks_back",
@@ -319,61 +319,50 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-051",
+        "id": "HOST-050",
         "brief": "B",
         "family": "Multi-product",
-        "level": "medium",
-        "title": "Three products, one date for all",
+        "level": "hard",
+        "title": "One date for both, but the deadlines differ",
         "variables": {
-          "first_name": "Sofia",
-          "last_name": "Almeida",
+          "first_name": "Elena",
+          "last_name": "Rossi",
           "title": "Ms",
           "now": "2026-10-14T11:00"
         },
         "identity": {
-          "date_of_birth": "1987-06-03",
-          "phone_last4": "2288"
+          "date_of_birth": "1991-01-08",
+          "phone_last4": "6604"
         },
         "products": [
           {
             "type": "credit_card",
-            "card_last4": "2288",
-            "past_due": 220.0,
-            "days_late": 9,
-            "minimum_payment": 66.0
+            "card_last4": "6604",
+            "past_due": 300.0,
+            "days_late": 4,
+            "minimum_payment": 90.0
           },
           {
             "type": "personal_loan",
-            "past_due": 640.0,
-            "days_late": 9,
-            "instalment_amount": 213.0
-          },
-          {
-            "type": "car_loan",
-            "past_due": 75.0,
-            "days_late": 3,
-            "instalment_amount": 25.0
+            "past_due": 900.0,
+            "days_late": 20,
+            "instalment_amount": 300.0
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay all three this Friday. Confirms once.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
           "promises": [
             {
               "product_id": "p1",
-              "amount": 220.0,
-              "date": "2026-10-16"
+              "amount": 300.0,
+              "date": "2026-10-30"
             },
             {
               "product_id": "p2",
-              "amount": 640.0,
-              "date": "2026-10-16"
-            },
-            {
-              "product_id": "p3",
-              "amount": 75.0,
-              "date": "2026-10-16"
+              "amount": 900.0,
+              "date": "2026-10-23"
             }
           ],
           "notes": [],
@@ -381,14 +370,14 @@
           "transfers": []
         },
         "checks": [
-          "all three products stated before any ask",
-          "one read-back and one confirmation for all three",
-          "one create_promise per product"
+          "credit card recorded on 30 October (early band, inside its deadline)",
+          "loan recorded on its own deadline, 23 October",
+          "the read-back names both dates"
         ]
       }
     },
     {
-      "fixture_id": "HOST-054",
+      "fixture_id": "HOST-053",
       "bank_case_id": "PUB-12",
       "split": "validation",
       "brief": "B",
@@ -397,7 +386,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-054",
+        "id": "HOST-053",
         "brief": "B",
         "family": "Multi-product",
         "level": "hard",
@@ -433,7 +422,7 @@
             "instalment_amount": 46.0
           }
         ],
-        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -466,7 +455,7 @@
       }
     },
     {
-      "fixture_id": "HOST-057",
+      "fixture_id": "HOST-055",
       "bank_case_id": "PUB-12",
       "split": "validation",
       "brief": "B",
@@ -475,7 +464,7 @@
       "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-057",
+        "id": "HOST-055",
         "brief": "B",
         "family": "Multi-product",
         "level": "hard",
@@ -511,7 +500,7 @@
             "instalment_amount": 46.0
           }
         ],
-        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nCorrect the stated amount within the same sentence, ending at the scripted amount.",
+        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nAfter the caller states the genuine account amount, correct your stated amount within the same sentence, ending at that account amount and retaining the scripted decisions.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -547,6 +536,78 @@
         "seed_expected_sha256": "e583f5a721b38522e0d3183e6c521915bceafddc5992d564cc74f98313321267"
       },
       "compound_index": 3
+    },
+    {
+      "fixture_id": "HOST-056",
+      "bank_case_id": "PUB-13",
+      "split": "validation",
+      "brief": "B",
+      "style": "compound",
+      "status": "materialized",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
+      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
+      "case": {
+        "id": "HOST-056",
+        "brief": "B",
+        "family": "Multi-product",
+        "level": "hard",
+        "title": "One date for both, but the deadlines differ",
+        "variables": {
+          "first_name": "Elena",
+          "last_name": "Rossi",
+          "title": "Ms",
+          "now": "2026-10-14T11:00"
+        },
+        "identity": {
+          "date_of_birth": "1991-01-08",
+          "phone_last4": "6604"
+        },
+        "products": [
+          {
+            "type": "credit_card",
+            "card_last4": "6604",
+            "past_due": 300.0,
+            "days_late": 4,
+            "minimum_payment": 90.0
+          },
+          {
+            "type": "personal_loan",
+            "past_due": 900.0,
+            "days_late": 20,
+            "instalment_amount": 300.0
+          }
+        ],
+        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nAsk whether the caller is an AI after verification, then follow the decisions above.",
+        "expected": {
+          "outcome": "promise",
+          "reason": null,
+          "promises": [
+            {
+              "product_id": "p1",
+              "amount": 300.0,
+              "date": "2026-10-30"
+            },
+            {
+              "product_id": "p2",
+              "amount": 900.0,
+              "date": "2026-10-23"
+            }
+          ],
+          "notes": [],
+          "callbacks": [],
+          "transfers": []
+        },
+        "checks": [
+          "credit card recorded on 30 October (early band, inside its deadline)",
+          "loan recorded on its own deadline, 23 October",
+          "the read-back names both dates"
+        ]
+      },
+      "outcome_constraints": {
+        "preserve_seed_outcomes": true,
+        "seed_expected_sha256": "e8c36659d83624a295ad48177c39b8c24685a6bacd16aa890d6e5743a9b5d9d3"
+      },
+      "compound_index": 4
     },
     {
       "fixture_id": "HOST-058",
@@ -588,7 +649,7 @@
             "instalment_amount": 300.0
           }
         ],
-        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nMention another person's birthday; do not replace your own security answers.",
+        "script": "Verified. Cannot pay today. Wants to pay both on 30 October. Accepts when told the loan has an earlier latest date.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nMention another person's birthday; do not replace your own security answers.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -666,7 +727,7 @@
             "instalment_amount": 46.0
           }
         ],
-        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nAfter successful recording ask about changing the date, accept app instructions, and keep the existing promise.",
+        "script": "Gives the date of birth correctly. Gives last four digits 4401 first, then 4410. Will pay the credit card tomorrow. Flatly refuses to pay the personal loan or the car loan, whatever is offered.\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above.\nAfter successful recording ask about changing the date, accept app instructions, and keep the existing promise.",
         "expected": {
           "outcome": "promise",
           "reason": null,

@@ -62,6 +62,21 @@ class GuardCompileError(ValueError):
         super().__init__("Guard compilation failed: " + "; ".join(self.errors))
 
 
+def execution_action_catalogue() -> dict[str, dict[str, Any]]:
+    """Return detached interface metadata; this does not authorize an action.
+
+    Staging uses the same semantic operation role as its eventual write. A
+    caller still has to check the frozen API permissions and local-note mode.
+    """
+    operation_roles = {**_OPERATIONS, "stage_promise": "create_promise",
+                       "stage_note": "add_note", "stage_transfer": "transfer_to_agent"}
+    return {action: {"operation_role": operation_roles[action],
+                     "input_fields": sorted(_INPUTS[action]),
+                     "optional_input_fields": sorted(_OPTIONAL_INPUTS.get(action, set())),
+                     "required_kinds": sorted(_REQUIRED[action])}
+            for action in sorted(_INPUTS)}
+
+
 def required_execution_kinds(plan: Mapping[str, Any]) -> list[str]:
     """Tell the controller which typed kinds are needed; supply no defaults."""
     try:

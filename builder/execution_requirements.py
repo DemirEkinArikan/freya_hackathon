@@ -68,7 +68,16 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
     if "close_call" not in actions:
         raise ExecutionRequirementsError([
             "the current sealed phone compiler requires selected close_call coverage; a goal without that interface is unsupported, not supplied a default disposition"])
-    required = sorted({kind for action in actions for kind in catalogue[action]["required_kinds"]})
+    required = {kind for action in actions for kind in catalogue[action]["required_kinds"]}
+    if active.get("policy_applicability", {}).get("value") == {"products": "single"}:
+        # Match the execution compiler's sourced cardinality waiver. Explicit
+        # active dimensions remain required and are still shape-checked below.
+        required -= {"product_order", "resolve_all_products"} - set(active)
+    if "commit_promises" in actions and "promise_failure_disposition" in active:
+        # Exhaustion consumes a local disposition even without note actions or
+        # bank-note permission. An absent disposition remains conservative.
+        required.add("note_reasons")
+    required = sorted(required)
     missing = sorted(set(required) - set(active))
     errors = ["missing typed execution rule: " + kind + "; expected " + guidance[kind]
               for kind in missing]
@@ -104,6 +113,18 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
         raise ExecutionRequirementsError(errors)
     try:
         bindings = compile_action_bindings(policy, openapi)
+        if "commit_promises" in actions and "promise_failure_disposition" in active:
+            # Use the same notes-then-reasons decoding as the sealed kernel,
+            # through controller-validated mappings, without inventing codes.
+            def disposition_meaning(value: str) -> str:
+                for category in ("notes", "reasons"):
+                    value = bindings["categories"].get(category, {}).get("wire_to_semantic", {}).get(value, value)
+                return value
+            reason = active["promise_failure_disposition"]["value"]["reason"]
+            notes = active["note_reasons"]["value"]
+            if disposition_meaning(reason) not in {disposition_meaning(value) for value in notes}:
+                raise ExecutionRequirementsError([
+                    "promise_failure_disposition reason must belong to note_reasons after frozen wire-code decoding"])
         execution = compile_execution_policy(policy, bindings, required_kinds=required)
         probe = compile_guarded_workflow(_inspection_plan(actions, catalogue), contract, openapi, execution, bindings)
     except GuardCompileError as exc:

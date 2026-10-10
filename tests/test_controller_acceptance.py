@@ -30,6 +30,81 @@ class ControllerAcceptanceTests(unittest.TestCase):
     def events(self):
         return [json.loads(line) for line in (self.run_directory() / "trace.jsonl").read_text().splitlines()]
 
+    def test_missing_dependency_is_repaired_before_plan_and_freeze(self):
+        generator = self.generator()
+        incomplete = fixture()
+        incomplete["policy"]["rules"] = [r for r in incomplete["policy"]["rules"] if r["kind"] != "identity_close"]
+        generator.generate.side_effect = [incomplete, fixture()]
+        result = execute(self.helper.args("--generate-only"), generator=generator,
+                         client_factory=lambda **kw: self.fail("platform started"))
+        self.assertEqual(result["policy_repairs"], 1)
+        self.assertEqual(generator.generate_plan.call_count, 1)
+        events = self.events()
+        rejected = next(i for i, event in enumerate(events) if event["event"] == "policy_validation" and event["passed"] is False)
+        checked = next(i for i, event in enumerate(events) if event["event"] == "policy_execution_requirements")
+        frozen = next(i for i, event in enumerate(events) if event["event"] == "policy_frozen")
+        self.assertLess(rejected, checked)
+        self.assertLess(checked, frozen)
+        descriptor = json.loads((self.run_directory() / "execution-requirements.json").read_text())
+        self.assertEqual(result["execution_requirements_sha256"], descriptor["sha256"])
+        self.assertEqual(events[frozen]["execution_requirements_sha256"], descriptor["sha256"])
+        saved = json.loads((self.run_directory() / "policy.rejected-1.json").read_text())
+        self.assertEqual(saved["policy"], incomplete["policy"])
+        self.assertTrue(any("identity_close" in error for error in saved["validation_errors"]))
+
+    def test_resumed_missing_dependency_stops_before_freeze_and_plan(self):
+        incomplete = fixture()["policy"]
+        incomplete["rules"] = [r for r in incomplete["rules"] if r["kind"] != "identity_close"]
+        path = self.directory / "incomplete-policy.json"
+        path.write_text(json.dumps(incomplete))
+        generator = self.generator()
+        with self.assertRaisesRegex(ValueError, "identity_close"):
+            execute(self.helper.args("--policy-file", str(path)), generator=generator,
+                    client_factory=lambda **kw: self.fail("platform started"))
+        generator.generate.assert_not_called()
+        generator.generate_plan.assert_not_called()
+        self.assertFalse(any(event["event"] == "policy_frozen" for event in self.events()))
+
+    def test_frozen_descriptor_is_identical_through_bounded_plan_repair(self):
+        generator = self.generator()
+        broken = plan(); broken["initial_node"] = "missing"
+        contexts = []
+        def generated(prompt, **kwargs):
+            contexts.append(json.loads(prompt.split("AUTHORIZED INPUTS:\n", 1)[1]))
+            return {"plan": broken if len(contexts) == 1 else plan(), "contract_sha256": kwargs["contract_sha256"]}
+        generator.generate_plan.side_effect = generated
+        result = execute(self.helper.args("--generate-only"), generator=generator,
+                         client_factory=lambda **kw: self.fail("platform started"))
+        self.assertEqual(result["workflow_repairs"], 1)
+        self.assertEqual(generator.generate.call_count, 1)
+        original = json.loads((self.run_directory() / "execution-requirements.json").read_text())
+        self.assertEqual([context["execution_requirements"] for context in contexts], [original, original])
+        self.assertEqual(original["policy_sha256"], digest(fixture()["policy"]))
+        self.assertNotIn("sources", contexts[1]["repair"])
+        self.assertNotIn("execution_requirements", contexts[1]["repair"])
+
+    def test_plan_cannot_add_or_omit_frozen_selected_capabilities(self):
+        for alteration in ("add", "omit"):
+            with self.subTest(alteration=alteration):
+                proposed = plan()
+                extracted = fixture()
+                if alteration == "omit":
+                    next(r for r in extracted["policy"]["rules"] if r["kind"] == "execution_actions")["value"] = ["close_call", "stage_note"]
+                    extracted["policy"]["rules"].append({"id": "note_reasons", "kind": "note_reasons", "value": ["refused"],
+                        "source": copy.deepcopy(extracted["policy"]["rules"][0]["source"])})
+                else:
+                    proposed["nodes"]["identity"] = {"name": "identity", "node_type": "guard_action", "action": "verify_identity",
+                        "inputs": {"field": "proposed_field", "answer": "proposed_answer"},
+                        "success_node": "start", "blocked_node": "start", "failure_node": "start"}
+                generator = self.generator()
+                generator.generate.return_value = extracted
+                generator.generate_plan.side_effect = lambda *a, **kw: {"plan": proposed, "contract_sha256": kw["contract_sha256"]}
+                with self.assertRaisesRegex(ValueError, "execution_actions"):
+                    execute(self.helper.args(), generator=generator,
+                            client_factory=lambda **kw: self.fail("platform started"))
+                self.assertEqual(generator.generate.call_count, 1)
+                self.assertEqual(generator.generate_plan.call_count, 3)
+
     def test_real_generator_audit_failure_blocks_brief_and_client(self):
         process = Mock(side_effect=AssertionError("substantive model process started"))
         generator = CodexGenerator(self.directory, Trace(self.directory / "runtime-trace.jsonl"), Deadline(), run=process)
@@ -57,7 +132,8 @@ class ControllerAcceptanceTests(unittest.TestCase):
         self.assertEqual([s["sha256"] for s in sources], [digest(second.read_text()), digest(first.read_text())])
         payload = json.loads(make_policy_prompt(sources, api).split("AUTHORIZED INPUTS:\n", 1)[1])
         self.assertEqual(payload["sources"], sources)
-        self.assertEqual(set(payload), {"sources", "openapi"})
+        self.assertEqual(set(payload), {"sources", "openapi", "execution_interface"})
+        self.assertIn("close_call", payload["execution_interface"]["actions"])
 
     def test_resume_revalidates_inputs_before_any_plan_or_platform_call(self):
         policy = fixture()["policy"]

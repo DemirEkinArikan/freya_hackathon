@@ -167,19 +167,32 @@ class AttemptEvidenceTests(unittest.TestCase):
         self.assertEqual(read(attempt / "attempt.json")["status"], "failed")
         self.assertEqual(generator.generate_plan.call_count, 1)
 
-    def test_missing_frozen_rules_retains_proposal_without_plan_repair(self):
+    def test_missing_execution_rules_retain_rejected_policies_without_plan_generation(self):
         extracted = fixture()
         extracted["policy"]["rules"] = [r for r in extracted["policy"]["rules"] if r["kind"] != "identity_close"]
         generator = self.proposal_generator([plan()])
         generator.generate.return_value = extracted
-        with self.assertRaisesRegex(ValueError, "no plan repair was attempted"):
-            execute(self.args("--generate-only"), generator=generator,
+        with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs"):
+            execute(self.args(), generator=generator,
                     client_factory=lambda **kw: self.fail("Freya touched"))
-        attempt = self.run_directory() / "attempts" / "plan-001"
-        self.assertEqual(read(attempt / "plan.json"), plan())
-        self.assertEqual(read(attempt / "attempt.json")["failure_kind"], "frozen_policy_contract")
-        self.assertTrue((attempt / "action-bindings.json").exists())
-        self.assertEqual(generator.generate_plan.call_count, 1)
+        run = self.run_directory()
+        self.assertEqual(generator.generate.call_count, MAX_REPAIRS + 1)
+        generator.generate_plan.assert_not_called()
+        rejected_paths = sorted(run.glob("policy.rejected-*.json"))
+        self.assertEqual([path.name for path in rejected_paths],
+                         [f"policy.rejected-{n}.json" for n in range(1, MAX_REPAIRS + 2)])
+        for path in rejected_paths:
+            rejected = read(path)
+            self.assertEqual(rejected["policy"], extracted["policy"])
+            self.assertTrue(any("identity_close" in error for error in rejected["validation_errors"]))
+        for name in ("attempts", "policy.json", "policy.contract.json", "execution-requirements.json", "plan.json", "workflow.json"):
+            self.assertFalse((run / name).exists(), name)
+        manifest = read(run / "manifest.json")
+        self.assertEqual(manifest["status"], "failed")
+        self.assertIsNone(manifest["last_attempt"])
+        self.assertNotIn("selected_attempt", manifest)
+        events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
+        self.assertFalse(any(event["event"] == "policy_frozen" for event in events))
 
     def test_bounded_validation_preserves_all_three_rejected_attempts(self):
         broken = plan()

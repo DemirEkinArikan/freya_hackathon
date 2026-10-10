@@ -41,3 +41,8 @@ through a guard does not establish that the conversation complied with the polic
 Keep the plan compact with shared per-product dialogue and input-derived branches.
 The reference defines transport format only, never bank-specific requirements.
 Repairs may change the plan using sanitized diagnostics, never the frozen contract.
+
+Preserve the frozen execution_requirements descriptor. The plan must contain each
+selected execution_actions capability and may not add a capability. Include the
+applicable branches without requiring every caller to take every branch. Repairs
+may repair plan structure, never change selected capabilities or source policy.

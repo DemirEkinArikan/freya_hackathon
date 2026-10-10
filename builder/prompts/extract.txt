@@ -13,3 +13,20 @@ Retain all operative constraints, including those outside the standard semantic
 kinds. Resolve only explicit amendments; conflicting requirements without a
 supported replacement belong in unsupported_constraints, never a guessed rule.
 Keep JSON compact. Copy source identifiers, filenames and hashes exactly.
+
+The supplied execution_interface is controller format metadata, not bank policy.
+Select all sealed action roles needed to implement the supplied goal in a
+source-backed execution_actions rule (a nonempty unique array). Use only listed
+roles, include close_call, and supply their typed dependencies from approved
+sources/API. API availability alone does not require every operation. Local
+dispositions may use stage_note/finalize_notes when bank note writes are forbidden
+and the sourced record_notes rule is false; that never grants add_note permission.
+Use policy_applicability {"products":"single"} only if the sources expressly
+limit calls to one product; otherwise preserve supported ordering/resolution
+semantics. Validate any explicit ordering/resolution even in single-product scope.
+Do not fabricate nonpersistent failure guarantees or failure dispositions.
+Bind every supplied guarantee to the actual permitted operation and its API
+annotation, not a shared status from another operation. Quarantine uncertain
+persistence. When a sourced promise_failure_disposition is supported, also supply
+its sourced reason vocabulary. Interface shapes do not authorize invented values.
+Unsupported or contradictory requirements remain explicit failures.

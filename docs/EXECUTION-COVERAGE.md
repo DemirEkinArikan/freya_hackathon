@@ -82,8 +82,12 @@ Generic extraction instruction:
 - The present phone compiler requires every plan to contain a guarded
   `close_call`. Its current closing interface includes product ordering,
   all-product resolution and fixed identity closing scopes. This gate reports
-  those actual requirements early. It does not infer singleton ordering or
-  invent closing records for a goal whose sources do not support them.
+  those actual requirements early. An active, source-backed
+  `policy_applicability: {products: "single"}` waives only absent product ordering
+  and all-product resolution kinds, matching the sealed compiler. Explicit
+  active values remain required and checked; the coverage descriptor never
+  inserts an ordering or resolution rule. Absent, superseded or multiple-product
+  scope does not receive this waiver.
 - Other selected subsets do not acquire promise money/band/floor rules merely
   because a promise API exists. Identity plus closing and callback plus closing
   are tested independently of promise dependencies.
@@ -94,6 +98,13 @@ Generic extraction instruction:
 - Nonpersistent failure guarantees must obey the same actual permitted-operation
   scope as the current guard compiler. An unused guarantee naming a forbidden
   operation fails early; it never enables that operation.
+- A selected `commit_promises` with an active `promise_failure_disposition`
+  requires `note_reasons`, including local-only mode without note actions. The
+  disposition reason must belong to that vocabulary after the same validated
+  notes-then-reasons wire decoding used by the sealed kernel. Unknown values
+  fail before freeze without echoing supplied codes. Neither nonpersistence
+  guarantees nor failure dispositions are supplied by default: their absence
+  remains conservative and does not authorize retries or invent recovery.
 - Source quotes, a selected-role list and successful local compilation do not
   prove that the extracted policy captures every business requirement. They
   also do not interpret prose into executable values. Conditional conflict

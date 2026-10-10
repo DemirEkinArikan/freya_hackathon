@@ -5,7 +5,7 @@ import subprocess
 import unittest
 from unittest.mock import Mock
 
-from builder.build import execute, make_workflow_prompt, PROJECT
+from builder.build import execute, make_workflow_prompt, PROJECT, MAX_REPAIRS
 from builder.contract import compile_policy_contract
 from builder.runtime import CodexGenerator, Deadline, DeadlineExceeded, DISABLED_FEATURES, GenerationError, Trace
 import test_builder
@@ -42,21 +42,31 @@ class FrozenPipelineTests(unittest.TestCase):
         generator.generate.assert_not_called()
         generator.generate_plan.assert_not_called()
 
-    def test_missing_frozen_execution_rules_do_not_trigger_plan_repairs(self):
+    def test_missing_execution_rules_exhaust_extraction_repairs_before_freeze(self):
         extracted = fixture()
         extracted["policy"]["rules"] = [rule for rule in extracted["policy"]["rules"]
                                          if rule["kind"] not in {"product_order", "identity_close"}]
         generator = self.generator()
         generator.generate.return_value = extracted
-        with self.assertRaisesRegex(ValueError, "no plan repair was attempted"):
-            execute(self.args("--generate-only"), generator=generator,
+        with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs"):
+            execute(self.args(), generator=generator,
                     client_factory=lambda **kw: self.fail("Freya touched"))
-        self.assertEqual(generator.generate.call_count, 1)
-        self.assertEqual(generator.generate_plan.call_count, 1)
+        self.assertEqual(generator.generate.call_count, MAX_REPAIRS + 1)
+        generator.generate_plan.assert_not_called()
         run = next((self.directory / "out").iterdir())
-        self.assertEqual(json.loads((run / "manifest.json").read_text())["failure_kind"], "frozen_policy_contract")
-        self.assertTrue((run / "policy.contract.json").exists())
-        self.assertFalse((run / "workflow.json").exists())
+        self.assertEqual(json.loads((run / "manifest.json").read_text())["status"], "failed")
+        for attempt in range(1, MAX_REPAIRS + 2):
+            rejected = json.loads((run / f"policy.rejected-{attempt}.json").read_text())
+            self.assertEqual(rejected["policy"], extracted["policy"])
+            for kind in ("product_order", "identity_close"):
+                self.assertTrue(any(kind in error for error in rejected["validation_errors"]))
+        for name in ("policy.json", "policy.contract.json", "execution-requirements.json", "plan.json", "workflow.json", "attempts"):
+            self.assertFalse((run / name).exists(), name)
+        events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
+        self.assertFalse(any(event["event"] == "policy_frozen" for event in events))
+        self.assertEqual([event["passed"] for event in events if event["event"] == "policy_validation"],
+                         [False] * (MAX_REPAIRS + 1))
+        self.assertEqual(events[-1]["status"], "failed")
 
     def test_export_finishing_after_global_deadline_cannot_report_success(self):
         now = [0.0]

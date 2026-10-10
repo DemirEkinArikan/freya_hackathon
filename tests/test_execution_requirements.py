@@ -6,7 +6,7 @@ from unittest.mock import patch
 from builder.execution_requirements import (ExecutionRequirementsError,
     compile_execution_requirements, validate_plan_execution)
 from builder.guards import execution_action_catalogue
-from builder.policy import execution_rule_guidance
+from builder.policy import compile_execution_policy, execution_rule_guidance
 from builder.safety import digest
 from test_guards import fixture
 
@@ -55,6 +55,11 @@ def rule(policy, kind):
     return next(item for item in policy["rules"] if item["kind"] == kind)
 
 
+def add_rule(policy, kind, value):
+    policy["rules"].append({"id": kind, "kind": kind, "value": copy.deepcopy(value),
+                            "source": copy.deepcopy(policy["rules"][0]["source"])})
+
+
 class ExecutionRequirementsTests(unittest.TestCase):
     def test_complete_selected_scope_is_hash_bound_and_detached(self):
         policy, sources, api = packet()
@@ -71,9 +76,9 @@ class ExecutionRequirementsTests(unittest.TestCase):
         self.assertEqual((policy, sources, api), before)
         self.assertTrue(compile_execution_requirements(policy, sources, api)["actions"])
 
-    def test_all_five_missing_dependencies_reported_before_guard_compile(self):
+    def test_missing_mandatory_dependencies_reported_before_guard_compile(self):
         policy, sources, api = packet()
-        missing = {"note_reasons", "product_order", "promise_failure_disposition", "resolve_all_products", "transfer_prerequisites"}
+        missing = {"note_reasons", "product_order", "resolve_all_products", "transfer_prerequisites"}
         policy["rules"] = [item for item in policy["rules"] if item["kind"] not in missing]
         with patch("builder.execution_requirements.compile_guarded_workflow") as compiler:
             with self.assertRaises(ExecutionRequirementsError) as raised:
@@ -120,6 +125,113 @@ class ExecutionRequirementsTests(unittest.TestCase):
         self.assertIn("callback_window", descriptor["required_kinds"])
         self.assertNotIn("deadline_days", descriptor["required_kinds"])
         self.assertNotIn("floor_fields", descriptor["required_kinds"])
+
+    def test_singleton_coverage_waives_only_absent_product_dimensions(self):
+        policy, sources, api = packet(local=True)
+        policy["rules"] = [item for item in policy["rules"]
+                           if item["kind"] not in {"product_order", "resolve_all_products"}]
+        add_rule(policy, "policy_applicability", {"products": "single"})
+        before = copy.deepcopy((policy, sources, api))
+        descriptor = compile_execution_requirements(policy, sources, api)
+        self.assertEqual(validate_plan_execution(plan(descriptor["actions"]), descriptor, policy, sources, api), [])
+        for kind in ("product_order", "resolve_all_products"):
+            self.assertNotIn(kind, descriptor["required_kinds"])
+            self.assertNotIn(kind, compile_execution_policy(policy)["profile"])
+        self.assertEqual((policy, sources, api), before)
+
+    def test_singleton_coverage_preserves_explicit_dimensions_and_rejects_bad_shapes(self):
+        policy, sources, api = packet(local=True)
+        add_rule(policy, "policy_applicability", {"products": "single"})
+        rule(policy, "resolve_all_products")["value"] = False
+        descriptor = compile_execution_requirements(policy, sources, api)
+        for kind in ("product_order", "resolve_all_products"):
+            self.assertIn(kind, descriptor["required_kinds"])
+        profile = compile_execution_policy(policy)["profile"]
+        self.assertIs(profile["resolve_all_products"], False)
+        self.assertEqual(profile["product_order"], rule(policy, "product_order")["value"])
+        rule(policy, "product_order")["value"] = "private-order-prose"
+        with self.assertRaises(ExecutionRequirementsError) as raised:
+            compile_execution_requirements(policy, sources, api)
+        self.assertIn("product_order", str(raised.exception))
+        self.assertNotIn("private-order-prose", str(raised.exception))
+
+    def test_singleton_waiver_requires_active_sourced_scope(self):
+        for scope in (None, "multiple", "single"):
+            policy, sources, api = packet(["close_call"], narrow=True)
+            policy["rules"] = [item for item in policy["rules"]
+                               if item["kind"] not in {"product_order", "resolve_all_products"}]
+            if scope is not None:
+                add_rule(policy, "policy_applicability", {"products": scope})
+            if scope == "single":
+                rule(policy, "policy_applicability")["source"]["quote"] = "not an approved scope witness"
+            with self.subTest(scope=scope), self.assertRaises(ExecutionRequirementsError):
+                compile_execution_requirements(policy, sources, api)
+        policy, sources, api = packet(["close_call"], narrow=True)
+        policy["rules"] = [item for item in policy["rules"]
+                           if item["kind"] not in {"product_order", "resolve_all_products"}]
+        add_rule(policy, "policy_applicability", {"products": "single"})
+        add_rule(policy, "scope-overlay", {"products": "multiple"})
+        overlay = rule(policy, "scope-overlay")
+        overlay["kind"] = "policy_applicability"
+        overlay["overrides"] = ["policy_applicability"]
+        with self.assertRaises(ExecutionRequirementsError) as raised:
+            compile_execution_requirements(policy, sources, api)
+        self.assertEqual(set(raised.exception.missing_kinds), {"product_order", "resolve_all_products"})
+
+    def test_absent_guarantee_and_disposition_require_no_note_vocabulary_or_defaults(self):
+        policy, sources, api = packet(["commit_promises", "close_call"], local=True, narrow=True)
+        descriptor = compile_execution_requirements(policy, sources, api)
+        profile = compile_execution_policy(policy)["profile"]
+        for kind in ("nonpersistent_failures", "promise_failure_disposition", "note_reasons"):
+            self.assertNotIn(kind, descriptor["required_kinds"])
+            self.assertNotIn(kind, profile)
+        self.assertNotIn("add_note", policy["allowed_actions"])
+
+    def test_promise_disposition_requires_note_vocabulary_without_note_actions(self):
+        policy, sources, api = packet(["commit_promises", "close_call"], local=True, narrow=True)
+        policy["rules"] = [item for item in policy["rules"]
+                           if item["kind"] not in {"product_order", "resolve_all_products"}]
+        add_rule(policy, "policy_applicability", {"products": "single"})
+        add_rule(policy, "promise_failure_disposition", {"reason": "service_error", "clear_pending": True})
+        with patch("builder.execution_requirements.compile_guarded_workflow") as compiler:
+            with self.assertRaises(ExecutionRequirementsError) as raised:
+                compile_execution_requirements(policy, sources, api)
+            compiler.assert_not_called()
+        self.assertEqual(raised.exception.missing_kinds, ("note_reasons",))
+        add_rule(policy, "note_reasons", ["service_error"])
+        descriptor = compile_execution_requirements(policy, sources, api)
+        self.assertIn("note_reasons", descriptor["required_kinds"])
+        self.assertNotIn("nonpersistent_failures", compile_execution_policy(policy)["profile"])
+        self.assertEqual(descriptor["actions"], ["close_call", "commit_promises"])
+        self.assertNotIn("add_note", policy["allowed_actions"])
+
+    def test_disposition_reason_uses_frozen_note_and_reason_wire_meanings(self):
+        policy, sources, api = packet(["commit_promises", "close_call"], local=True, narrow=True)
+        add_rule(policy, "note_reasons", ["NOTE_TECH"])
+        rule(policy, "wire_codes")["value"]["notes"] = {"service_error": "NOTE_TECH"}
+        rule(policy, "wire_codes")["value"]["reasons"]["service_error"] = "CLOSE_TECH"
+        reasons = rule(policy, "close_reasons")["value"]["no_promise"]
+        reasons[reasons.index("service_error")] = "CLOSE_TECH"
+        enum = api["paths"]["/close_call"]["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]["enum"]
+        enum[enum.index("service_error")] = "CLOSE_TECH"
+        add_rule(policy, "promise_failure_disposition", {"reason": "NOTE_TECH", "clear_pending": True})
+        for reason in ("NOTE_TECH", "CLOSE_TECH", "service_error"):
+            with self.subTest(reason=reason):
+                rule(policy, "promise_failure_disposition")["value"]["reason"] = reason
+                descriptor = compile_execution_requirements(policy, sources, api)
+                self.assertIn("note_reasons", descriptor["required_kinds"])
+        for reason in ("refused", "private-unmapped-disposition"):
+            rule(policy, "promise_failure_disposition")["value"]["reason"] = reason
+            with self.subTest(reason=reason), self.assertRaises(ExecutionRequirementsError) as raised:
+                compile_execution_requirements(policy, sources, api)
+            self.assertIn("frozen wire-code decoding", str(raised.exception))
+            self.assertNotIn(reason, str(raised.exception))
+
+    def test_disposition_dependency_is_scoped_to_selected_promise_commit(self):
+        policy, sources, api = packet(["close_call"], local=True, narrow=True)
+        add_rule(policy, "promise_failure_disposition", {"reason": "service_error", "clear_pending": True})
+        descriptor = compile_execution_requirements(policy, sources, api)
+        self.assertNotIn("note_reasons", descriptor["required_kinds"])
 
     def test_local_dispositions_do_not_authorize_bank_notes(self):
         policy, sources, api = packet(local=True)
@@ -202,7 +314,7 @@ class ExecutionRequirementsTests(unittest.TestCase):
         policy, sources, api = packet()
         descriptor = compile_execution_requirements(policy, sources, api)
         tampered = copy.deepcopy(descriptor)
-        tampered["required_kinds"].remove("promise_failure_disposition")
+        tampered["required_kinds"].remove("promise_readback")
         tampered["sha256"] = digest({key: value for key, value in tampered.items() if key != "sha256"})
         self.assertTrue(validate_plan_execution(plan(descriptor["actions"]), tampered, policy, sources, api))
         api["paths"]["/create_promise"]["post"]["description"] = "Changed supplied API annotation"

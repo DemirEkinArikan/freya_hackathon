@@ -32,19 +32,19 @@ case success alone is not evidence of generalization.
 
 ## Coworking
 
-The user's latest instruction gives Demir the work while Naci is unavailable.
-There is no required second computer, collaborator identity verification,
-account-ownership attestation, person-specific takeover or timed handoff.
-The earlier 17:36 Naci transition is superseded. Names and issue assignments
-are coordination metadata; GitHub permissions govern writes. Keep task
-dependencies and technical acceptance checks; prepare code independently where useful.
+Anyone may work on any issue at any time. There is no required named worker,
+second computer, collaborator identity verification, account-ownership
+attestation, person-specific takeover or timed handoff. Names and issue
+assignments are informational metadata; GitHub permissions govern writes.
+Dependencies govern completion, and do not prevent starting work or recording
+checkpoints. Keep technical acceptance checks.
 Record completed work, checks, remaining blockers, branch/commit and any
 deployment/simulation lease in each checkpoint. Returning collaborators can
 continue from the latest pushed checkpoint without a person or timer gate.
 
-Use the linked GitHub task issues as the source of active ownership. Either
-authorized repository user can claim a ready task. Default assignment is
-responsibility, not a lock. Checkpoint at least every 15 minutes and push the
+Use the linked GitHub task issues to coordinate branches and progress. Any
+authorized repository user can claim an open task. Default assignment is
+informational. Checkpoint at least every 15 minutes and push the
 working branch. Record the previous branch and starting commit when continuing
 another checkpoint. Check the latest issue claim and branch activity to avoid
 concurrent edits. Never force-push another worker's

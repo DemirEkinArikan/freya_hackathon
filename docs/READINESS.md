@@ -1,8 +1,8 @@
 # Shared implementation checkpoint — 10 October 2026
 
-The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Demir currently continues alone; Naci is unavailable. The latest user instruction supersedes the earlier 17:36 handoff: no timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Issue assignments describe coordination and do not grant permissions. Closed tasks retain their historical records.
+The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Anyone may work on any issue at any time. Issue assignments and names are informational; no named worker, timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Dependencies govern completion rather than starting independent work. Closed tasks retain their historical records.
 
-The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
+The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue checkpoints coordinate branches and progress; source availability does not complete acceptance gates.
 
 At the 17:18 Istanbul checkpoint, **4 of 18 tasks are complete**: T01, T04,
 T06 and T10. The other 14 are open. PR35 integrated guarded generation; PR36

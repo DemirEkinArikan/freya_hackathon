@@ -25,6 +25,7 @@ from .action_bindings import compile_action_bindings
 from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 from .stored_workflow import assert_equivalent_stored_workflow
+from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -204,6 +205,24 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _complete_run(run_dir: Path, manifest: dict, trace: Trace, source_record: dict,
+                  secrets: tuple[str, ...], deadline: Deadline, **end_fields: Any) -> dict:
+    verify_source_unchanged(PROJECT, source_record)
+    deadline.require()
+    if "elapsed_seconds" in manifest:
+        manifest["elapsed_seconds"] = round(deadline.elapsed(), 3)
+    if "remaining_seconds" in end_fields:
+        end_fields["remaining_seconds"] = deadline.remaining()
+    manifest = sanitize({**manifest, "builder_source_sha256": source_record["builder_source_sha256"],
+                         "builder_source_record_sha256": digest(source_record)}, secrets=secrets)
+    _write_json(run_dir / "manifest.json", manifest)
+    trace.emit("end", **end_fields)
+    events = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text(encoding="utf-8").splitlines()]
+    _write_json(run_dir / "build-provenance.json", bind_run_provenance(source_record, manifest, events))
+    deadline.require()
+    return manifest
+
+
 def _attempt_snapshot(directory: Path, name: str, value: Any, secrets: tuple[str, ...]) -> None:
     """Keep evaluator/deployment evidence out of model repair context."""
     _write_json(directory / name, sanitize(value, secrets=secrets))
@@ -343,6 +362,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     attempt_record = None
     attempt_open = False
     attempt_number = 0
+    source_record = None
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -363,6 +383,16 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             assert_live_contract(openapi)
         source_manifest = [{k: v for k, v in source.items() if k != "text"} for source in sources]
         trace.emit("inputs", sources=source_manifest, tool_api_sha256=digest(openapi))
+        source_record = capture_source_provenance(PROJECT, {
+            "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
+            "codex_executable": args.codex, "deadline_seconds": deadline.limit - deadline.start,
+            "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
+            "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
+        })
+        _write_json(run_dir / "builder-source.json", source_record)
+        trace.emit("builder_source_snapshot", builder_source_sha256=source_record["builder_source_sha256"],
+                   builder_source_record_sha256=digest(source_record),
+                   resolved_config=source_record["resolved_config"])
         if mode in {"offline-fixture", "validate-only"}:
             candidate = _candidate(args.workflow_file, args.policy_file)
             errors = candidate_errors(candidate, sources, openapi, require_policy=False)
@@ -376,9 +406,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                         "policy_contract_sha256": contract_sha256,
                         "action_guard_compilation_verified": False,
                         "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT))}
-            _write_json(run_dir / "manifest.json", manifest)
-            trace.emit("end", status="validated", hosted_behavior_verified=False)
-            return manifest
+            return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
+                                 status="validated", hosted_behavior_verified=False)
 
         generator = generator or CodexGenerator(run_dir, trace, deadline, executable=args.codex, model=args.model,
                                                 reasoning_effort=args.reasoning_effort)
@@ -411,9 +440,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                         "policy_provenance_checked": True, "workflow_created": False, "hosted_behavior_verified": False,
                         "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                         "run_directory": str(run_dir.relative_to(PROJECT))}
-            _write_json(run_dir / "manifest.json", manifest)
-            trace.emit("end", status="policy_extracted", remaining_seconds=deadline.remaining())
-            return manifest
+            return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
+                                 status="policy_extracted", remaining_seconds=deadline.remaining())
         client = None
         repair = None
         tests = None
@@ -501,7 +529,6 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             if mode == "generate-only":
                 deadline.require()
                 _attempt_status(attempt_dir, attempt_record, secret_values, status="generated_validated", phase="complete")
-                attempt_open = False
                 manifest = {"mode": mode, "status": "generated_validated", "sources": source_manifest,
                             "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
                             "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
@@ -513,9 +540,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                             "run_directory": str(run_dir.relative_to(PROJECT))}
-                _write_json(run_dir / "manifest.json", manifest)
-                trace.emit("end", status="generated_validated", remaining_seconds=deadline.remaining())
-                return manifest
+                return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
+                                     status="generated_validated", remaining_seconds=deadline.remaining())
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             if client is None:
                 client = client_factory(deadline=deadline, reserve=EXPORT_RESERVE, lease_path=output_dir / ".simulation.lock")
@@ -588,7 +614,6 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         deadline.require()
         _attempt_status(attempt_dir, attempt_record, secret_values, status="exported", phase="complete",
                         export_sha256=digest(exported))
-        attempt_open = False
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
@@ -601,9 +626,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "run_directory": str(run_dir.relative_to(PROJECT))}
-        _write_json(run_dir / "manifest.json", sanitize(manifest, secrets=secret_values))
-        trace.emit("end", status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
-        return manifest
+        return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
+                             status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
     except Exception as exc:
         if attempt_open and attempt_dir is not None and attempt_record is not None:
             _attempt_status(attempt_dir, attempt_record, secret_values, status="failed", error=str(exc),
@@ -613,6 +637,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                          "failure_kind": "test_infrastructure" if isinstance(exc, HostedTestInfrastructureError)
                                                          else "frozen_policy_contract" if isinstance(exc, FrozenPolicyContractError) else "builder",
                                                          "hosted_behavior_verified": False,
+                                                         "builder_source_sha256": source_record["builder_source_sha256"] if source_record else None,
+                                                         "builder_source_record_sha256": digest(source_record) if source_record else None,
                                                          "last_attempt": attempt_number or None,
                                                          "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
                                                          "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))

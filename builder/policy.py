@@ -32,6 +32,13 @@ class PolicyError(ValueError):
     pass
 
 
+class MissingExecutionRules(PolicyError):
+    """Required policy inputs are absent; changing dialogue cannot supply them."""
+    def __init__(self, kinds):
+        self.missing_kinds = tuple(sorted(set(kinds)))
+        super().__init__("required execution rule is missing: " + ", ".join(self.missing_kinds))
+
+
 _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "business_weekdays",
                   "band_ranges", "deadline_days", "floor_fields", "callback_window",
                   "note_reasons", "close_reasons", "transfer_reasons", "require_confirmation",
@@ -559,17 +566,20 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
     if not isinstance(required_kinds, (list, tuple)) or any(not isinstance(kind, str) or kind not in kinds for kind in required_kinds):
         raise PolicyError("requested execution rule kind is unsupported")
     profile = {}
+    missing = []
     absent = object()
     for kind in sorted(kinds):
         value = rule_value(policy, kind, absent)
         if value is absent:
             if kind in required_kinds:
-                raise PolicyError("required execution rule is missing: " + kind)
+                missing.append(kind)
             continue
         errors = _execution_errors(kind, value)
         if errors:
             raise PolicyError("; ".join(errors))
         profile[kind] = copy.deepcopy(value)
+    if missing:
+        raise MissingExecutionRules(missing)
     if "band_ranges" in profile:
         bands = {band["name"] for band in profile["band_ranges"]}
         for kind in ("deadline_days", "persuasion_limits"):

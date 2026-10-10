@@ -41,6 +41,22 @@ class FrozenPipelineTests(unittest.TestCase):
         generator.generate.assert_not_called()
         generator.generate_plan.assert_not_called()
 
+    def test_missing_frozen_execution_rules_do_not_trigger_plan_repairs(self):
+        extracted = fixture()
+        extracted["policy"]["rules"] = [rule for rule in extracted["policy"]["rules"]
+                                         if rule["kind"] not in {"product_order", "identity_close"}]
+        generator = self.generator()
+        generator.generate.return_value = extracted
+        with self.assertRaisesRegex(ValueError, "no plan repair was attempted"):
+            execute(self.args("--generate-only"), generator=generator,
+                    client_factory=lambda **kw: self.fail("Freya touched"))
+        self.assertEqual(generator.generate.call_count, 1)
+        self.assertEqual(generator.generate_plan.call_count, 1)
+        run = next((self.directory / "out").iterdir())
+        self.assertEqual(json.loads((run / "manifest.json").read_text())["failure_kind"], "frozen_policy_contract")
+        self.assertTrue((run / "policy.contract.json").exists())
+        self.assertFalse((run / "workflow.json").exists())
+
     def test_contract_is_extracted_once_across_workflow_repairs(self):
         generator = self.generator()
         generator.generate.return_value = fixture()

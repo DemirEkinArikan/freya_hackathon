@@ -145,8 +145,17 @@ class IndependentPolicyBindingsTests(unittest.TestCase):
     def test_absent_api_enum_is_not_inferred_from_code_labels(self):
         api = deepcopy(self.api)
         request_schema(api, "close_call")["properties"]["outcome"].pop("enum")
-        with self.assertRaises(ValueError):
-            binding_api.compile_action_bindings(self.policy, api)
+        descriptor = binding_api.compile_action_bindings(self.policy, api)
+        category = descriptor["categories"]["outcomes"]
+        self.assertEqual(category["api_enum"], [])
+        self.assertIs(category["api_enum_constrained"], False)
+        self.assertEqual(category["semantic_to_wire"], self.bindings["categories"]["outcomes"]["semantic_to_wire"])
+        self.assertNotIn("enum", request_schema(api, "close_call")["properties"]["outcome"])
+        self.assertEqual(binding_api.checked_action_bindings(self.policy, descriptor), descriptor)
+        for invalid in ([], None, "arbitrary", ["duplicate", "duplicate"]):
+            request_schema(api, "close_call")["properties"]["outcome"]["enum"] = invalid
+            with self.assertRaises(ValueError):
+                binding_api.compile_action_bindings(self.policy, api)
 
     def test_renamed_api_field_uses_supplied_semantic_metadata(self):
         api = deepcopy(self.api)

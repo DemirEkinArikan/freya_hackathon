@@ -49,6 +49,62 @@ An action placeholder has this shape:
 Inputs map semantic field names to public variable names, never literal values.
 Customer identity and the clock come only from engine call variables.
 
+## Read-only dialogue facts
+
+Every compiler-authored code step clears and replaces the protected `bg_facts`
+JSON string. Dialogue instructions may read `{{bg_facts}}`; authored extraction
+cannot write it. Direct authored template references to raw `bg_state`, request
+bodies, protected result variables, customer identifiers and canonical or aliased
+automatic operation-result variables fail compilation. Reading supplied `now`
+remains allowed. Authored `on_enter` speech cannot template `bg_facts`, because
+the view includes explicitly internal product references. Engine confirmation
+readback continues to use its separate human wording.
+
+The same raw-value denylist applies to nested authored `condition.variable`
+reads; conditions may read `bg_facts`, `now` and ordinary public variables.
+Conversation nodes may supply a string `routing_prompt` with `{{bg_facts}}` so
+the router sees these facts explicitly. The kit makes `task_message` invisible
+to the routing model; task instructions alone are insufficient routing context.
+
+The allowlist view contains route/call status, identity progress and the next
+supplied factor, monotone remaining answers, staged/recorded product statuses,
+recorded-action counts, callback date/time, transfer and close status. An identity
+hint/check belongs only to the immediate verified API result and is cleared at
+the next guard step. A successful write appears only after actual result evidence;
+staging or waiting for consent never claims it was recorded. Unknown persistence
+removes identity/account displays and internal action references while retaining
+only true recorded-action counts and a safe failure status. Parse/execution
+exceptions replace the view with `unavailable`, clearing prior facts. A projection
+failure after valid action reconciliation quarantines the reconciled state and
+retains its true recorded counts, while removing displays and new request bodies.
+API extras are never copied.
+
+`internal_action_references.products` contains stable product IDs solely for
+proposing actions. Its `position` follows the policy processing order and
+`returned_position` identifies the original account-array position. Never speak
+these references. When the protected profile/account supplies them, each internal
+reference also contains the normalized product type, unique policy band,
+integer-cent floor and past-due cap, bounded business-day deadline, exact
+staged/recorded/local-finalized resolution and remaining write-failure budget.
+Missing or unsupported data marks proposal constraints `unavailable`; inflight,
+recorded, exhausted or sealed products mark them `blocked`. These are routing
+and proposal facts, not additional disclosure permission. No persuasion count is
+asserted because this kernel has no protected persuasion counter.
+Account narration is blocked until an optional active typed
+`account_disclosure_fields` rule lists unique, exact returned product-schema
+fields. Only those scalar fields are then projected in `account.products`, by
+position, without identifiers or undeclared API fields. The compiler rejects
+customer/product identifier aliases and missing or structured schema fields.
+Runtime missing, malformed or nonfinite selected values clear the view; selected
+text containing actual customer/product IDs is not projected.
+
+This field list supplies an unconditional per-run disclosure allowance. It cannot
+express conditional, per-product or purpose-specific permissions; retain those
+constraints as unsupported until a suitable typed guard exists. The structural
+template checks do not prove that an LLM follows every speech instruction or
+never mentions data from another context. Hosted dialogue/privacy checks and
+semantic source review remain required.
+
 | Action | Required inputs | Optional inputs |
 | --- | --- | --- |
 | `verify_identity` | `field`, `answer` | |
@@ -79,7 +135,7 @@ Both native and JSON-string product arrays are accepted; unsupported flattened
 arrays or malformed evidence fail closed.
 
 Notes remain local dispositions until every product is resolved. Finalization
-seals that phase against subsequent promises, callbacks or transfers. With
+seals that phase against subsequent promises and callbacks. With
 `record_notes: false` it writes no notes. With `true` it commits staged notes and
 records success only from API evidence. Transfer staging discards pending
 dispositions/promises, retains successful earlier promises, and permits only
@@ -106,15 +162,98 @@ callbacks, reasons, confirmation and failure limits. Additional guard kinds are:
 | `product_order` | `{mode: "account_order"}` or `{field, direction: "ascending"/"descending", tie_breaker: "account_order"}` |
 | `close_precedence` | ordered array of semantic outcome names |
 | `identity_close` | `{failed: {outcome, reason?}, incomplete: {...}, unreached: {...}}` |
+| `identity_close_choices` | Optional nonempty subset of `unreached`/`incomplete`, each a nonempty array of `{outcome, reason?, requires: "none"/"recorded_callback"/"no_recorded_callback"}` |
 | `nonpersistent_failures` | `{operation: [{http_status: integer, error?: string}]}` |
 | `promise_failure_disposition` | `{reason: string, clear_pending: boolean}` |
 | `transfer_prerequisites` | `{queue: "none"/"identity"/"account"}` |
 | `promise_readback` | `{product_fields: [string], value_labels?: {field: {wire_value: spoken_label}}}`; internal/customer IDs excluded |
+| `account_disclosure_fields` | Optional unique list of exact scalar account-product schema fields; absent blocks account narration |
 
 `action_fields`, `result_fields` and `product_fields` active rule dictionaries
 can explicitly bind renamed API fields. Canonical names are accepted only when
 they exist exactly in the supplied schema; ambiguous/missing fields fail.
 Opaque wire vocabularies use T06's API-validated detached category bindings.
+
+API string fields may be unconstrained. Each API-backed category explicitly
+records `api_enum_constrained`: `true` requires a nonempty unique declared
+string enum; `false` requires `api_enum: []` and an actual schema with no enum
+keyword. An explicitly empty, null or malformed enum is invalid, not equivalent
+to absence. The policy vocabulary remains explicit and injective in either
+case. The compiler never fabricates API enum values from policy codes, and the
+guard checks the descriptor flag/list against the exact frozen field schema.
+The generated body retains the source schema, including an absent enum.
+
+Freshly compile bindings from approved source inputs after this descriptor
+change. Older cached API-backed descriptors without the boolean constraint flag
+are rejected; previously recorded run evidence must not be rewritten.
+
+When `record_notes` is explicitly boolean `false`, the notes category is instead
+`{binding_kind: "local_disposition", semantic_to_wire, wire_to_semantic}`. Its
+injective meanings come from the exact frozen policy; it has no bank operation,
+field or API-enum assertion. The parent descriptor still records the policy and
+OpenAPI hashes, and all actual bank-action categories retain their API checks.
+The checked binding reader rejects extra API claims or changed local meanings.
+Missing/true `record_notes` keeps actual note API validation mandatory.
+
+This permits local refusal/paid dispositions when `add_note` is not a permitted
+operation. Finalization emits no bank note, and closing maps those dispositions
+to the separate approved closing vocabulary. A later policy-permitted human
+handoff may discard finalized local-only dispositions and retains any successful
+promises. Once actual bank-note recording has begun, its phase remains sealed
+against transfer; this local-only exception cannot undo or conceal bank notes.
+
+### Renamed operation IDs
+
+`tool_aliases` maps canonical semantic roles (`verify_identity`, `get_account`,
+`create_promise`, `add_note`, `schedule_callback`, `transfer_to_agent`,
+`close_call`) to exact actual operation IDs in this run's permitted API. Each
+role must resolve uniquely; duplicate targets and collisions with unchanged
+canonical operation IDs are rejected. A renamed operation without its explicit
+frozen alias fails rather than being guessed from URL, field names or prose.
+
+`action_fields` and `result_fields` remain keyed by canonical role. The compiler
+keeps the actual API operation ID, URL, request/result schemas and security
+configuration intact. Binding categories point to those actual IDs and exact
+bound fields. Protected counters/state use stable semantic roles, so operation
+renaming never changes identity order or per-product budgets.
+
+`nonpersistent_failures` uses actual permitted API operation IDs, not guessed
+canonical names. The compiler resolves guarantees through the same frozen
+injective alias map before rendering kernel code. A guarantee attached to a
+nonexistent or nonpermitted operation fails compilation. The account catalogue
+also retains a detached exact `product_schema` for later approved dialogue-fact
+projection; that schema does not itself authorize disclosure.
+
+### Identity closing choices
+
+Each identity closing choice must retain its scope's fixed `identity_close`
+outcome and use a permitted reason. Reasons must be unique after wire decoding;
+a reason is mandatory when that outcome's policy reason list is nonempty.
+`failed` is never a configurable choice scope: protected counter exhaustion
+always selects the fixed failed record before inspecting untrusted proposals.
+Recorded transfers, promises and product dispositions retain their existing
+precedence over these language-derived identity endings.
+
+For a scope with choices, pass public proposed `outcome` and `reason` variables
+to the `close_call` placeholder. They must identify exactly one eligible declared
+choice; missing, invalid or ambiguous proposals block the action. A scope omitted
+from the optional choice map retains its already explicit fixed record. Neither
+source order nor a model's label supplies an implicit choice fallback.
+`recorded_callback` needs an actual successful callback in protected state;
+`no_recorded_callback` requires none. A decoded callback-success reason always
+requires recorded callback evidence, even for a legacy fixed record. Callback
+choices cannot downgrade this requirement to `none`. Evidence modes and wire
+values come from active source-backed policy; no public bank values are added by
+the compiler. Symmetrically, a decoded `no_callback` choice must require
+`no_recorded_callback`, and any such closing (including a fixed legacy record)
+is blocked when a callback was actually recorded.
+
+These checks establish choice/evidence eligibility. They cannot prove that a
+wrong number, death, refusal, second invalid slot or unclear answer actually
+occurred in speech. Those classifications and dialogue counters need separate
+conversation checks. Callback service failure has no invented ending: uncertain
+or failed writes remain quarantined unless the supplied policy and supported
+guards explicitly provide another safe path.
 
 `nonpersistent_failures` must describe a supplied API guarantee, with provenance
 reviewed alongside API documentation. It is not a model-set runtime permission
@@ -144,8 +283,8 @@ of its behavior. They also tamper with executable code, bodies, mappings,
 routing and protected writers to verify exact recompilation rejects changes.
 These establish compiler/state invariants only.
 
-The controller must integrate this plan transport and retain the frozen context
-through repair/publication. T06's profile selector must include all needed guard
+The default controller integrates this plan transport and retains frozen context
+through repair/publication. Its profile selector includes the declared guard
 kinds; descriptive rules remain unsupported. Persuasion counts, hardship intent,
 private-information disclosure, account narration, relative-date speech and
 identity-unreached interpretation still need controlled dialogue logic and
@@ -161,3 +300,6 @@ fabricating a bank close. Policy may require a safe uncertain-call close that
 this conservative v1 cannot establish; it must remain an explicit failure.
 
 No Freya, model or external calls are part of compilation or local guard tests.
+
+An explicit empty account_disclosure_fields list grants no narration fields,
+just like an absent declaration. Internal proposal references remain separate.

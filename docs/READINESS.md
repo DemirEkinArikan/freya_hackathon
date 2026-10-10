@@ -15,10 +15,11 @@ complete the outstanding runtime, staging, conversation or submission gates.
 | Evidence | Current result |
 |---|---|
 | Organizer kit | 16 original files pinned and verified as v3 |
-| Local unit/contract checks | Controller, platform mocks, policy helpers, validator, benchmark lifecycle, scorer, ownership and packaging covered |
+| Local unit/contract checks | Frozen policy, guarded plan compilation, policy helpers, renamed tool/schema bindings, model-event completion, platform mocks, benchmark lifecycle, scorer, ownership and packaging covered; latest exact counts accompany the handoff |
 | Development fixtures | All 36 training and 24 validation contracts/helpers pass strict source/API compilation and independent value checks; four equivalent clean/raw pairs pass; no generated candidate or dialogue evaluation |
 | Hosted inventory | 120 slots × 3 repetitions planned; both development splits cover all 13 public seeds and seven wording families; 60 concrete variants independently checked against official seed facts/oracles and 60 unauthored holdout reservations |
 | Public A+B full generation | Failed at the 900-second generation cap; no candidate returned |
+| Public A frozen-controller attempt | Policy passed structural compilation after two repairs in 453.43 seconds; workflow generation was stopped when the isolation gate gap was discovered. Failed manifest and original artifacts preserved; no successful build |
 | Public A+B policy extraction | Revised policy-only run returned in about 276 seconds with zero structural repairs: 68 rules, 54 active kinds, seven operations; independent A+B/API review found no material omissions |
 | Tiny public generation probe | CLI returned a structured response in about six seconds; captured output passes the corrected local parser |
 | Freya staging publication/simulation | Not executed |
@@ -33,27 +34,33 @@ The successful local run is `t04-public-extraction-complete/20261010T12574236255
 
 ## Remaining correctness work
 
-**T05/T07/T08 source integration is present, with live acceptance pending.**
-The controller freezes the compiled policy, generates a contract-bound action
-plan, compiles trusted guard nodes and validates the exact compiled graph before
-deployment. Local checks cover protected state, identity/confirmation gates,
-unmodified tool results, failed writes, staged notes and transfer precedence.
-The primary thread is finishing dialogue facts projection and raw-template
-rejection. No banking agent generated through this integrated path has been
-published or exercised on Freya; local mock results do not establish that live
-behavior. Policy values and action mappings remain supplied run inputs.
+The default controller now freezes policy once and accepts restricted action plans
+only. It injects controller-owned action guards, validates by exact recompilation,
+and requires authenticated publication read-back equality. Confirmed immutable
+writes, trusted identity evidence, deferred notes, transfer handling, bounded
+qualified retries and last/at-most-once closing attempts have local tests. These
+checks cover reached actions; they do not establish complete dialogue meaning,
+persuasion compliance, eventual successful close or hosted platform behavior.
+See [the frozen pipeline](FROZEN-PIPELINE.md) and [action guards](ACTION-GUARDS.md).
 
-T02 has a reproducible Python 3.11 preflight and a live synthetic isolation
-probe. This computer passes runtime/sign-in/capability checks. The latest
-GPT-6.1 Sol audit reports three tools and an unknown CLI diagnostic, with zero
-omitted skills. The separately authorized GPT-5.5 audit also fails, reporting
-unrecognized tool names and nonempty loaded markers. Neither exposed a canary
-or emitted a tool action; that does not establish isolation or prove a forbidden
-file was accessed. Generation audits first and fails
-before sending a banking brief when that gate is unresolved. See
-[runtime evidence and setup](RUNTIME.md). T02 still needs a passing isolation
-audit in the active environment. It does not require Naci, a second computer or
-verification of the person using the authenticated CLI session.
+T02 remains the first blocker. This computer passes Python/sign-in/capability
+checks. Documented hardening removed omitted skill instructions, but both checked
+model candidates fail the unchanged synthetic isolation gate: GPT-6.1-sol reports
+residual tools and an unknown diagnostic; GPT-5.5 reports tools and loaded context.
+No canary exposure or tool event occurred. Those absences do not establish
+isolation. Substantive generation audits first and remains disabled after failure.
+An already-installed older alpha CLI is an untested option, not an accepted
+runtime. No collaborator identity, account-ownership or second-computer
+verification is required. See
+[runtime evidence and setup](RUNTIME.md).
+
+Older successful policy extractions demonstrate source/provenance work only; they
+predate the new typed execution interfaces and isolation acceptance. Revalidate
+and freshly extract complete typed semantics after a runtime passes. Do not patch
+an old generated policy or an agent manually to fabricate a complete build.
+Missing frozen execution rules stop the run instead of consuming plan repairs.
+API-only nonpersistence guarantees still need an auditable provenance
+representation; a free model assertion or matching status cannot grant retries.
 
 T03/T11 require actual platform compatibility evidence when trials are authorized. T07/T14 need a successful full compilation within the global deadline, followed by generalization and bounded repair checks. T15–T18 retain their evaluation, freeze, rehearsal and hidden-submission gates. These tasks stay open until their evidence exists.
 

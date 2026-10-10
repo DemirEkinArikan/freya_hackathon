@@ -17,6 +17,64 @@ class FrozenPipelineTests(unittest.TestCase):
     tearDown = test_builder.BuilderTests.tearDown
     args = test_builder.BuilderTests.args
     generator = test_builder.BuilderTests.generator
+    def test_invalid_execution_shape_is_repaired_before_contract_freeze(self):
+        invalid = fixture()
+        next(rule for rule in invalid["policy"]["rules"] if rule["kind"] == "product_order")["value"] = "ambiguous sort prose"
+        generator = self.generator()
+        generator.generate.side_effect = [invalid, fixture()]
+        generator.generate.return_value = fixture()
+        result = execute(self.args("--generate-only"), generator=generator,
+                         client_factory=lambda **kw: self.fail("Freya touched"))
+        self.assertEqual(result["policy_repairs"], 1)
+        self.assertEqual(generator.generate_plan.call_count, 1)
+        saved = json.loads((PROJECT / result["run_directory"] / "policy.json").read_text())
+        self.assertEqual(saved, fixture()["policy"])
+
+    def test_resumed_invalid_execution_profile_stops_before_plan_generation(self):
+        invalid = fixture()["policy"]
+        next(rule for rule in invalid["rules"] if rule["kind"] == "product_order")["value"] = "ambiguous sort prose"
+        policy_path = self.directory / "policy.json"
+        policy_path.write_text(json.dumps(invalid))
+        generator = self.generator()
+        with self.assertRaises(ValueError):
+            execute(self.args("--generate-only", "--policy-file", str(policy_path)), generator=generator)
+        generator.generate.assert_not_called()
+        generator.generate_plan.assert_not_called()
+
+    def test_missing_frozen_execution_rules_do_not_trigger_plan_repairs(self):
+        extracted = fixture()
+        extracted["policy"]["rules"] = [rule for rule in extracted["policy"]["rules"]
+                                         if rule["kind"] not in {"product_order", "identity_close"}]
+        generator = self.generator()
+        generator.generate.return_value = extracted
+        with self.assertRaisesRegex(ValueError, "no plan repair was attempted"):
+            execute(self.args("--generate-only"), generator=generator,
+                    client_factory=lambda **kw: self.fail("Freya touched"))
+        self.assertEqual(generator.generate.call_count, 1)
+        self.assertEqual(generator.generate_plan.call_count, 1)
+        run = next((self.directory / "out").iterdir())
+        self.assertEqual(json.loads((run / "manifest.json").read_text())["failure_kind"], "frozen_policy_contract")
+        self.assertTrue((run / "policy.contract.json").exists())
+        self.assertFalse((run / "workflow.json").exists())
+
+    def test_export_finishing_after_global_deadline_cannot_report_success(self):
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        class LateExport(test_builder.FakeClient):
+            def export_workflow(self, deployment, path):
+                result = super().export_workflow(deployment, path)
+                now[0] = 1801
+                return result
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        with self.assertRaises(DeadlineExceeded):
+            execute(self.args(), generator=generator, deadline=deadline, client_factory=LateExport)
+        run = next((self.directory / "out").iterdir())
+        self.assertEqual(json.loads((run / "manifest.json").read_text())["status"], "failed")
+        self.assertTrue((run / "submission.workflow.json").exists())
+        events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
+        self.assertEqual([event["status"] for event in events if event.get("event") == "end"], ["failed"])
+
     def test_contract_is_extracted_once_across_workflow_repairs(self):
         generator = self.generator()
         generator.generate.return_value = fixture()
@@ -134,7 +192,10 @@ class WorkflowWireTests(unittest.TestCase):
                     out += '\n' + json.dumps({'type': 'turn.completed'})
                 else:
                     calls.append((schema, kwargs))
-                    out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}})
+                    events = [{'type': 'thread.started', 'thread_id': 'synthetic-thread'}, {'type': 'turn.started'},
+                              {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}},
+                              {'type': 'turn.completed'}]
+                    out = '\n'.join(json.dumps(event) for event in events)
             return subprocess.CompletedProcess(argv, 0, out, '')
         return CodexGenerator(directory, Trace(directory / 'trace.jsonl'), Deadline(), run=run), calls
 

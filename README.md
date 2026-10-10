@@ -59,7 +59,8 @@ python3.11 builder/build.py \
 `--generate-only` calls the existing Codex account and performs local validation;
 it never initializes a Freya client. `--offline --workflow-file <candidate.json>`
 and `--validate-only --workflow-file <candidate.json>` use neither a model nor
-network. An offline candidate may be `{policy, workflow}`, a platform export, or
+network. Legacy offline inspection reports action-guard verification as false.
+An offline candidate may be `{policy, workflow}`, a platform export, or
 a bare workflow with optional `--policy-file`.
 
 Omitting those flags runs generation, staging validation, persistent save,
@@ -68,8 +69,12 @@ executing hosted checks; evaluator scripts/oracles never enter generator input.
 Use the A/B subset files under `benchmarks/fixtures/` for the corresponding brief.
 
 The controller reserves five minutes of its 30-minute total budget for export.
-Generation has bounded subprocess time and at most two repairs. Every run writes
-its policy, workflow, manifest and redacted start/end trace under `artifacts/`.
+Generation has bounded subprocess time and at most two repairs. Default generation extracts and freezes policy once, then receives only restricted
+dialogue/action plans. The controller compiles all code, bank calls, result maps,
+confirmation and closing nodes. Plan repairs cannot alter the frozen contract or
+add executable tools. Every generated run writes its policy/contract, plan, typed
+execution profile, action bindings, guard manifest, workflow and redacted trace
+under `artifacts/`. See [frozen generation](docs/FROZEN-PIPELINE.md).
 Generated definitions omit `agent_config`; the adapter preserves the event
 model, verifies publication and rejects platform stripping of authored fields.
 
@@ -77,7 +82,9 @@ Use `--extract-policy-only` to exercise brief interpretation independently of
 workflow generation. It emits a strict source/API contract with a recorded hash,
 creates no workflow and initializes no Freya client. Every accepted candidate
 with policy writes that same contract artifact. See [policy contract boundary](docs/POLICY-CONTRACT.md)
-for source coverage, explicit amendments and the limits of these checks.
+for source coverage, explicit amendments and the limits of these checks. An explicit
+`--policy-file` resume rechecks every input/API fingerprint and supported execution
+shape; it cannot substitute a policy from another bank or hide missing rules.
 
 ## Benchmarks and evidence
 

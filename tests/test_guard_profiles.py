@@ -56,6 +56,24 @@ class GuardProfileTests(unittest.TestCase):
                 with self.assertRaises(PolicyError):
                     self.compile_value(kind, value)
 
+    def test_disclosure_profile_is_explicit_without_default_permissions(self):
+        for fields in ([], ["product_caption", "days_late"]):
+            self.assertEqual(self.compile_value("account_disclosure_fields", fields)["profile"]["account_disclosure_fields"], fields)
+        self.assertNotIn("account_disclosure_fields", compile_execution_policy(invented_policy({}))["profile"])
+        self.rejects("account_disclosure_fields", [None, "product_caption", ["product_id"], ["customer_id"],
+                    ["product_caption", "product_caption"], [False], [{}]])
+
+    def test_identity_closing_choices_preserve_explicit_scopes_and_evidence(self):
+        choices = {"unreached": [{"outcome": "END_OUT", "reason": "WHY_BOOKED", "requires": "recorded_callback"},
+                                {"outcome": "END_OUT", "reason": "WHY_UNBOOKED", "requires": "no_recorded_callback"}],
+                   "incomplete": [{"outcome": "END_AUTH", "reason": "WHY_DECLINED", "requires": "none"}]}
+        self.assertEqual(self.compile_value("identity_close_choices", choices)["profile"]["identity_close_choices"], choices)
+        self.assertNotIn("identity_close_choices", compile_execution_policy(invented_policy({}))["profile"])
+        self.rejects("identity_close_choices", [{}, None, [], {"failed": choices["unreached"]}, {"unreached": []},
+                    {"unreached": [{"outcome": "END_OUT", "requires": "caller_says_callback"}]},
+                    {"unreached": [{"outcome": "END_OUT", "requires": []}]},
+                    {"unreached": [{"outcome": "END_OUT", "reason": False, "requires": "none"}]}])
+
     def test_all_guard_kinds_are_selected_from_active_typed_rules(self):
         policy = invented_policy(GUARD_VALUES)
         compiled = compile_execution_policy(policy, required_kinds=list(GUARD_VALUES))

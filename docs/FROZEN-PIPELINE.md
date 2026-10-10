@@ -11,7 +11,10 @@ operation schemas and the restricted plan interface. They return only a plan and
 the exact frozen contract hash. Replacement policy and changed hashes are fatal.
 Repairs receive a previous plan and sanitized violations, never a compiled action
 kernel, credentials, evaluator scripts, expected ledgers or historical rule quotes.
-Policy extraction and plan repair share a maximum of two repairs.
+Policy extraction and plan repair share a maximum of two repairs. Supported
+execution shapes are checked before freezing. If a proposed plan needs a missing
+typed rule, the run records a frozen-contract failure without spending plan
+repairs or rewriting bank requirements.
 
 The controller recompiles action bindings and typed execution profiles from frozen
 inputs, builds protected action nodes and validates the exact workflow through a

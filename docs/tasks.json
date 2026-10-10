@@ -1,13 +1,12 @@
 {
   "version": 1,
   "repository": "DemirEkinArikan/freya_hackathon",
-  "parent_title": "First-place readiness — adaptive banking builder, kit v3",
+  "parent_title": "First-place readiness \u2014 adaptive banking builder, kit v3",
   "collaborators": {
     "Demir": "DemirEkinArikan",
     "Naci": "burhan-launchway"
   },
   "checkpoint_minutes": 15,
-  "takeover_stale_minutes": 30,
   "deadline": {
     "opens": "2026-10-11T20:00:00+03:00",
     "closes": "2026-10-11T23:00:00+03:00"
@@ -32,13 +31,13 @@
     {
       "id": "T02",
       "title": "Reproducible runtime",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T01"
       ],
       "acceptance": [
-        "Python 3.11 setup is reproducible on both computers.",
-        "Each collaborator uses their own Codex sign-in.",
+        "Python 3.11 setup is reproducible for the active builder environment.",
+        "The active Codex CLI session can authenticate; no collaborator identity or second-computer verification is required.",
         "Generation-only isolation is tested with benign forbidden-path sentinels; record tool/context exposure."
       ],
       "checks": [
@@ -51,7 +50,7 @@
     {
       "id": "T03",
       "title": "Staging deployment adapter",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T02"
       ],
@@ -87,7 +86,7 @@
     {
       "id": "T05",
       "title": "Fresh builder controller",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T02",
         "T04"
@@ -145,7 +144,7 @@
     {
       "id": "T08",
       "title": "Irreversible-action handling",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T07"
       ],
@@ -164,7 +163,7 @@
     {
       "id": "T09",
       "title": "Structural and semantic validation",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T07",
         "T08"
@@ -201,7 +200,7 @@
     {
       "id": "T11",
       "title": "Hosted runner adapter",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T03"
       ],
@@ -238,7 +237,7 @@
     {
       "id": "T13",
       "title": "Stronger scoring and evidence",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T09",
         "T10",
@@ -278,7 +277,7 @@
     {
       "id": "T15",
       "title": "Development evaluation",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T14"
       ],
@@ -314,7 +313,7 @@
     {
       "id": "T17",
       "title": "Final rehearsal and freeze",
-      "assignee": "burhan-launchway",
+      "assignee": "DemirEkinArikan",
       "depends_on": [
         "T16"
       ],
@@ -349,13 +348,10 @@
       "branch": "task/t18-hidden-builds-and-submission-package"
     }
   ],
-  "ownership_window": {
-    "starts_at": "2026-10-10T16:36:47+03:00",
-    "handoff_at": "2026-10-10T17:36:47+03:00",
-    "owner": "DemirEkinArikan",
-    "next_owner": "burhan-launchway",
-    "scope": "all_open_tasks",
+  "active_work": {
+    "mode": "single_operator",
+    "default_assignee": "DemirEkinArikan",
     "authorized_by": "user",
-    "handoff": "Naci may claim from the latest pushed checkpoint after the handoff time without the normal 30-minute stale wait. Preserve task branches and acceptance gates."
+    "description": "Demir continues alone. Collaborator names, separate computers, account ownership attestations and timed handoffs are not prerequisites. Assignments are coordination metadata; GitHub permissions govern writes."
   }
 }

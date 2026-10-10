@@ -11,22 +11,23 @@ python3.11 -m venv .venv
 python3.11 tools/verify_kit.py
 codex --version
 codex login status
-python3.11 -m builder.preflight --operator demir
+python3.11 -m builder.preflight
 ```
 
-Naci uses `--operator naci` on his own computer. The operator field is a
-self-attestation label, not inferred account identity. Sign into Codex using
-your own account if necessary; do not exchange auth files, tokens or account
-credentials. The preflight invokes `codex login status` and retains only the
-authentication method and pass/fail. It never opens account/config files, `.env`,
-or sibling repositories. A status check alone cannot establish who owns an
-account or prove that a second computer works.
+The active environment is sufficient; there is no Demir/Naci identity check,
+account-ownership attestation or second-computer prerequisite. Optional
+`--operator <label>` is descriptive metadata only. The preflight invokes
+`codex login status` solely to check that the CLI can authenticate and retains
+only the authentication method and pass/fail. It never opens account/config
+files, `.env`, or sibling repositories. Authentication files, tokens and
+credentials stay private. A status check does not identify the person using
+the session, and the builder does not require it to do so.
 
 For the live generation-only audit, explicitly run:
 
 ```sh
-python3.11 -m builder.preflight --operator demir --probe-isolation \
-  --output artifacts/runtime-demir.json
+python3.11 -m builder.preflight --probe-isolation \
+  --output artifacts/runtime-active.json
 ```
 
 This sends only a synthetic audit prompt through the existing Codex sign-in,
@@ -87,10 +88,10 @@ tools (`exec`, `wait` and two request-input variants), five omitted skills and
 an unrecognized CLI diagnostic. Its bounded report is recorded in
 [local audit evidence](runtime-evidence/demir-20261010.json). It fails closed;
 this installed CLI is not currently accepted for banking generation.
-A passing report from each collaborator's own
-computer and a successful live isolation audit are still required for T02
-acceptance. Do not close the task based on the local implementation or unit
-checks alone.
+The current generation policy still requires a successful isolation audit in
+the active environment. No report from another collaborator or computer is
+required. Historical reports below retain their original attestation fields
+as evidence of earlier runs; those fields impose no current prerequisite.
 
 ## Source controls follow-up
 

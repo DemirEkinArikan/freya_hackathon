@@ -1,6 +1,6 @@
 # Shared implementation checkpoint — 10 October 2026
 
-The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. The revised user plan gives Demir all open tasks until **17:36 Istanbul on 10 October**, then Naci continues from the latest pushed checkpoints. Exact window bounds and the next owner are recorded in `docs/tasks.json`. Original manifest assignees are default leads; live issue assignees show current ownership. Closed tasks retain their historical owners. The account that created an issue remains its author independently of its assignee.
+The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Demir currently continues alone; Naci is unavailable. The latest user instruction supersedes the earlier 17:36 handoff: no timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Issue assignments describe coordination and do not grant permissions. Closed tasks retain their historical records.
 
 The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
 
@@ -52,7 +52,8 @@ or emitted a tool action; that does not establish isolation or prove a forbidden
 file was accessed. Generation audits first and fails
 before sending a banking brief when that gate is unresolved. See
 [runtime evidence and setup](RUNTIME.md). T02 still needs a passing isolation
-audit and an independent report from each collaborator's computer.
+audit in the active environment. It does not require Naci, a second computer or
+verification of the person using the authenticated CLI session.
 
 T03/T11 require actual platform compatibility evidence when trials are authorized. T07/T14 need a successful full compilation within the global deadline, followed by generalization and bounded repair checks. T15–T18 retain their evaluation, freeze, rehearsal and hidden-submission gates. These tasks stay open until their evidence exists.
 

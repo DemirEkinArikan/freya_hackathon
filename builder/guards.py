@@ -319,6 +319,22 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
         category_roles = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
                           "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
         for category_name, category in bindings.get("categories", {}).items():
+            if category_name == "notes" and rules.get("record_notes", {}).get("value") is False:
+                if (not isinstance(category, dict) or set(category) != {"binding_kind", "semantic_to_wire", "wire_to_semantic"}
+                        or category.get("binding_kind") != "local_disposition"):
+                    raise GuardCompileError(["local-only notes require exact policy disposition binding shape"])
+                forward = category["semantic_to_wire"]
+                reverse = category["wire_to_semantic"]
+                allowed_meanings = {"refused", "hardship", "dispute", "paid", "service_error"}
+                declared = rules.get("wire_codes", {}).get("value", {}).get("notes")
+                values = rules.get("note_reasons", {}).get("value", [])
+                if declared is None:
+                    declared = {value: value for value in values} if set(values) <= allowed_meanings else {}
+                if (forward != declared or not forward or set(forward) - allowed_meanings
+                        or len(set(forward.values())) != len(forward) or {v: k for k, v in forward.items()} != reverse
+                        or not set(values) <= set(forward.values())):
+                    raise GuardCompileError(["local disposition meanings must match the exact frozen injective policy mapping"])
+                continue
             actual_op = category.get("operation", {}).get("name")
             op = role_for_actual.get(actual_op)
             field = category.get("field")
@@ -518,7 +534,8 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
     if state['closed'] or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
-    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call'):
+    local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
+    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
         raise ValueError('the disposition phase is sealed')
     if state['transfer'] and action not in ('commit_transfer', 'close_call'):
         raise ValueError('a staged or recorded transfer permits only handoff and final close')
@@ -591,6 +608,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             state['transfer'] = dict(queue=queue, reason=profile['transfer_reasons'][queue], status='pending')
             state['pending_notes'] = dict()
             state['pending_promises'] = dict()
+            state['notes_finalized'] = False
             state['consent'] = ''
             state['batch'] = dict()
             return state, 'done', dict(), ''

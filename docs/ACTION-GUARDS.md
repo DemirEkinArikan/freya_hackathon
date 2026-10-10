@@ -135,7 +135,7 @@ Both native and JSON-string product arrays are accepted; unsupported flattened
 arrays or malformed evidence fail closed.
 
 Notes remain local dispositions until every product is resolved. Finalization
-seals that phase against subsequent promises, callbacks or transfers. With
+seals that phase against subsequent promises and callbacks. With
 `record_notes: false` it writes no notes. With `true` it commits staged notes and
 records success only from API evidence. Transfer staging discards pending
 dispositions/promises, retains successful earlier promises, and permits only
@@ -172,6 +172,21 @@ callbacks, reasons, confirmation and failure limits. Additional guard kinds are:
 can explicitly bind renamed API fields. Canonical names are accepted only when
 they exist exactly in the supplied schema; ambiguous/missing fields fail.
 Opaque wire vocabularies use T06's API-validated detached category bindings.
+
+When `record_notes` is explicitly boolean `false`, the notes category is instead
+`{binding_kind: "local_disposition", semantic_to_wire, wire_to_semantic}`. Its
+injective meanings come from the exact frozen policy; it has no bank operation,
+field or API-enum assertion. The parent descriptor still records the policy and
+OpenAPI hashes, and all actual bank-action categories retain their API checks.
+The checked binding reader rejects extra API claims or changed local meanings.
+Missing/true `record_notes` keeps actual note API validation mandatory.
+
+This permits local refusal/paid dispositions when `add_note` is not a permitted
+operation. Finalization emits no bank note, and closing maps those dispositions
+to the separate approved closing vocabulary. A later policy-permitted human
+handoff may discard finalized local-only dispositions and retains any successful
+promises. Once actual bank-note recording has begun, its phase remains sealed
+against transfer; this local-only exception cannot undo or conceal bank notes.
 
 ### Renamed operation IDs
 

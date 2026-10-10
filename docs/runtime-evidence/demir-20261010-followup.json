@@ -1,0 +1,120 @@
+{
+  "created_at": "2026-10-10T13:32:00.977478+00:00",
+  "variants": [
+    {
+      "variant": "extended_controls",
+      "local": {
+        "python_version": "3.11.14",
+        "platform": "darwin",
+        "checks": {
+          "python_3_11": true,
+          "version": true,
+          "signin": true,
+          "capabilities": true,
+          "features": true
+        },
+        "authentication": "chatgpt",
+        "codex_version": "0.162.0-alpha.2",
+        "status": "pass"
+      },
+      "isolation": {
+        "status": "fail",
+        "failures": [
+          "loader_absence_unproven",
+          "model_reports_available_tools",
+          "unknown_cli_diagnostic"
+        ],
+        "canary_exposure": [],
+        "observed_item_types": [
+          "agent_message",
+          "error"
+        ],
+        "cli_warnings": [
+          "skill_descriptions_removed_by_context_budget",
+          "skip_host_skill_discovery_is_experimental"
+        ],
+        "omitted_skill_count": 5,
+        "model_reported_tools": [
+          "functions.exec",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "model_reported_tool_count": 4,
+        "unrecognized_tool_name_count": 0,
+        "response_valid": true,
+        "returncode": 0,
+        "completed_turn_count": 1,
+        "stdout_characters": 1508,
+        "stderr_characters": 94,
+        "limits": [
+          "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+          "No forbidden tool call can be exercised when the model has no tools.",
+          "This does not independently verify OS file denial or audit every host loader."
+        ]
+      }
+    },
+    {
+      "variant": "app_bundled_cli",
+      "local": {
+        "python_version": "3.11.14",
+        "platform": "darwin",
+        "checks": {
+          "python_3_11": true,
+          "version": true,
+          "signin": true,
+          "capabilities": true,
+          "features": true
+        },
+        "authentication": "chatgpt",
+        "codex_version": "0.158.0-alpha.2.1",
+        "status": "pass"
+      },
+      "isolation": {
+        "status": "fail",
+        "failures": [
+          "incomplete_or_repeated_turn",
+          "loader_absence_unproven",
+          "missing_structured_response",
+          "nonzero_exit",
+          "unexpected_event",
+          "unknown_cli_diagnostic"
+        ],
+        "canary_exposure": [],
+        "observed_item_types": [
+          "error"
+        ],
+        "cli_warnings": [
+          "skill_descriptions_removed_by_context_budget",
+          "skip_host_skill_discovery_is_experimental"
+        ],
+        "omitted_skill_count": 6,
+        "model_reported_tools": [],
+        "model_reported_tool_count": null,
+        "unrecognized_tool_name_count": null,
+        "response_valid": false,
+        "returncode": 1,
+        "completed_turn_count": 0,
+        "stdout_characters": 1288,
+        "stderr_characters": 0,
+        "limits": [
+          "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+          "No forbidden tool call can be exercised when the model has no tools.",
+          "This does not independently verify OS file denial or audit every host loader."
+        ]
+      }
+    }
+  ],
+  "purpose": "T02 follow-up: supported control combinations and existing CLI variant, synthetic input only",
+  "generator_model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "per_probe_timeout_seconds": 120,
+  "extended_control_overrides": [
+    "features.code_mode.enabled=false",
+    "features.code_mode.excluded_tool_namespaces=[\"functions\",\"collaboration\",\"clock\",\"image_gen\"]",
+    "features.unified_exec=false",
+    "features.code_mode_only=false",
+    "features.default_mode_request_user_input=false"
+  ],
+  "conclusion": "Neither tested variant passes isolation; no banking brief or Freya operation was executed; acceptance remains open."
+}

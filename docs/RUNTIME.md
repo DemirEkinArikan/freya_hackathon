@@ -162,3 +162,17 @@ banking prompt, Freya call, purchase, or additional model probe followed this
 failure. No currently accepted Codex generation candidate has been established.
 After integrating main `815ea19`, the isolated capability checkpoint passed all
 279 local tests and `git diff --check`; the failed live audit status is unchanged.
+
+## Earlier parallel probe archive
+
+The parallel thread also recorded two synthetic-only failures before the later
+source-controls and GPT-5.5 probes above. Added feature/namespace disables under
+CLI 0.162.0-alpha.2 still reported four tools, five omitted skills and an unknown
+diagnostic. The existing app-bundled CLI 0.158.0-alpha.2.1 returned no complete
+structured audit response, exited unsuccessfully and reported six omitted
+skills. Neither run exposed a random canary or emitted a tool action.
+
+[Reviewed historical metadata](runtime-evidence/demir-20261010-followup.json)
+preserves those results and the exact experimental controls. They do not replace
+the production configuration or newer evidence. No new probe was run while
+archiving this metadata, and neither result authorizes banking generation.

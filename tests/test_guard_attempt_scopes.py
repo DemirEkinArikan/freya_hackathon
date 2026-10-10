@@ -37,9 +37,14 @@ def callback_packet(*, cap=1, scope='call', resume=True, opaque=False, confirmat
                     qualified=True, scopes=True):
     policy, sources, api = packet(['schedule_callback', 'close_call'], local=True, narrow=True)
     rule(policy, 'close_reasons')['value'] = {'not_reached': ['callback', 'no_callback']}
-    rule(policy, 'identity_close')['value'] = {
+    table = {
         key: {'outcome': 'not_reached', 'reason': 'no_callback'}
         for key in ['failed', 'incomplete', 'unreached']}
+    supplied = next((row for row in policy['rules'] if row['kind'] == 'identity_close'), None)
+    if supplied is None:
+        add_rule(policy, 'identity_close', table)
+    else:
+        supplied['value'] = table
     rule(policy, 'wire_codes')['value'] = {'outcomes': {'not_reached': 'not_reached'},
                                          'reasons': {'callback': 'callback', 'no_callback': 'no_callback'}}
     add_rule(policy, 'identity_close_choices', {key: [

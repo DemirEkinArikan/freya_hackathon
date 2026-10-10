@@ -262,6 +262,68 @@ class ComparisonTests(unittest.TestCase):
         other["trials"]["train"]["report"]["rows"][0]["version_attribution"]["observed"]["judge"] = 4.0
         self.assertEqual(compare(bundle("baseline"), other)["reason"], "per_call_version_unattributed")
 
+    def test_supplied_transcript_call_id_must_match_even_when_id_is_correct(self):
+        other = bundle("structured")
+        transcript = other["trials"]["train"]["report"]["rows"][0]["transcript"]
+        transcript["callId"] = "different-call"
+        self.assertEqual(compare(bundle("baseline"), other)["reason"], "transcript_call_mismatch")
+        transcript["callId"] = transcript["id"]
+        self.assertTrue(compare(bundle("baseline"), other)["comparable"])
+
+    def test_critical_regressions_cannot_be_offset_by_fewer_ordinary_failures(self):
+        for category in ("security", "policy", "honesty"):
+            for already_present in (False, True):
+                baseline, other = bundle("baseline"), bundle("structured")
+                for row_index in range(6):
+                    behavior_failure(baseline, row_index=row_index)
+                if already_present:
+                    baseline["trials"]["train"]["report"]["rows"][0]["failures"][0]["category"] = category
+                for row_index in range(2 if already_present else 1):
+                    behavior_failure(other, row_index=row_index)
+                    other["trials"]["train"]["report"]["rows"][row_index]["failures"][0]["category"] = category
+                with self.subTest(category=category, already_present=already_present):
+                    result = compare(baseline, other)
+                    self.assertTrue(result["comparable"])
+                    train = result["splits"][0]
+                    self.assertGreater(train["strict_pass_delta"], 0)
+                    self.assertLess(train["structured"]["behavior_failure_runs"], train["baseline"]["behavior_failure_runs"])
+                    self.assertEqual(train["critical_failure_delta"][category], 1)
+                    self.assertEqual(train["decision"], "critical_failure_regression")
+                    self.assertEqual(result["eligibility"], "not_assessed")
+                    self.assertEqual(train["baseline"]["unclassified_behavior_runs"], 5 if already_present else 6)
+
+    def test_malformed_native_containers_return_fixed_incomparable_result(self):
+        for mutation in ("unused-set", "cycle", "attribution-list", "huge-reps", "unhashable-fixture"):
+            other = bundle("structured")
+            if mutation == "unused-set":
+                other["unused"] = {"not", "json"}
+            elif mutation == "cycle":
+                other["cycle"] = other
+            elif mutation == "attribution-list":
+                other["trials"]["train"]["report"]["rows"][0]["judge"]["agentVersionNumber"] = []
+            elif mutation == "huge-reps":
+                other["conditions"]["reps"] = 10**12
+                other["trials"]["train"]["report"]["reps"] = 10**12
+            else:
+                other["trials"]["train"]["report"]["final"][0]["fixture_id"] = []
+            with self.subTest(mutation=mutation):
+                result = compare(bundle("baseline"), other)
+                self.assertFalse(result["comparable"])
+                self.assertNotIn("RAW_TRANSCRIPT_SENTINEL", json.dumps(result))
+
+    def test_extreme_money_exponents_are_rejected_before_integer_expansion(self):
+        for value in ("1E+999999999", "1E-999999999", "NaN", True):
+            other = bundle("structured")
+            other["trials"]["train"]["report"]["rows"][0]["ledger"]["promises"][0]["amount"] = value
+            with self.subTest(value=value):
+                result = compare(bundle("baseline"), other)
+                self.assertFalse(result["comparable"])
+                self.assertEqual(result["reason"], "promise_amount_evidence_invalid")
+        other = bundle("structured")
+        behavior_failure(other)
+        other["trials"]["train"]["report"]["rows"][0]["ledger"]["promises"][0]["amount"] = []
+        self.assertEqual(compare(bundle("baseline"), other)["reason"], "promise_amount_evidence_invalid")
+
 
 if __name__ == "__main__":
     unittest.main()

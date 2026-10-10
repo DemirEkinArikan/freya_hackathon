@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+from decimal import Decimal, DecimalException
 import json
 from pathlib import Path
 import re
@@ -11,6 +12,9 @@ from builder.platform import AGENT_LLM, SIM_LLM, STAGING
 from builder.safety import assert_no_secrets, digest, read_json, sanitize
 from .paths import PROJECT, output_path
 from .scoring import cents
+from .hosted import attribute_version
+
+CRITICAL_CATEGORIES = ("security", "policy", "honesty")
 
 
 class ComparisonError(ValueError):
@@ -28,6 +32,14 @@ def _sha(value):
 
 def _identifier(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+def _bounded_cents(value):
+    number = Decimal(str(value))
+    # A normalization resource limit, not a bank eligibility/amount rule.
+    _require(number.is_finite() and (number.is_zero() or abs(number.adjusted()) <= 1000),
+             "promise_amount_evidence_invalid")
+    return 0 if number.is_zero() else cents(value)
 
 
 def _period(value):
@@ -71,12 +83,16 @@ def _trial(value, conditions):
     rows, final = report.get("rows"), report.get("final")
     _require(isinstance(rows, list) and isinstance(final, list) and bool(final), "trial_rows_absent")
     _require(type(report.get("total")) is int and report["total"] == len(final), "trial_total_inconsistent")
+    _require(len(rows) == len(final) * reps, "trial_row_missing_or_duplicated")
     fixture_ids = [row.get("fixture_id") for row in final if isinstance(row, dict)]
     _require(len(fixture_ids) == len(final) and all(_identifier(identifier) for identifier in fixture_ids)
              and len(set(fixture_ids)) == len(fixture_ids), "fixture_inventory_invalid")
     expected_pairs = {(identifier, repetition) for identifier in fixture_ids for repetition in range(1, reps + 1)}
     pairs, by_fixture, calls, sessions = set(), {identifier: [] for identifier in fixture_ids}, set(), set()
     failures, failure_runs, amount = [], 0, 0
+    recorded_amounts = {}
+    critical_counts = {category: 0 for category in CRITICAL_CATEGORIES}
+    unclassified_runs = 0
     for row in rows:
         _require(isinstance(row, dict) and _identifier(row.get("fixture_id"))
                  and type(row.get("repetition")) is int, "trial_row_invalid")
@@ -104,6 +120,12 @@ def _trial(value, conditions):
                                    ("callbacks", ("date", "time")), ("transfers", ("queue",))):
             _require(all(isinstance(record, dict) and all(_identifier(record.get(field)) for field in fields)
                          for record in ledger[collection]), "ledger_evidence_malformed")
+        try:
+            values = [_bounded_cents(record["amount"]) for record in ledger["promises"]]
+            _require(all(value >= 0 for value in values), "promise_amount_evidence_invalid")
+            recorded_amounts[pair] = sum(values)
+        except (KeyError, TypeError, ValueError, DecimalException):
+            raise ComparisonError("promise_amount_evidence_invalid") from None
         _require(isinstance(judge, dict) and judge.get("callId") == call_id and judge.get("outcome") in ("pass", "fail"),
                  "judge_evidence_absent")
         _require(isinstance(transcript, dict) and isinstance(transcript.get("messages"), list)
@@ -111,18 +133,20 @@ def _trial(value, conditions):
                      and message.get("role") in ("user", "assistant", "system")
                      and _identifier(message.get("message", message.get("content"))) for message in transcript["messages"]),
                  "transcript_evidence_absent")
-        _require(transcript.get("id", call_id) == call_id, "transcript_call_mismatch")
-        observed = {source: data["agentVersionNumber"] for source, data in (("judge", judge), ("transcript", transcript))
-                    if data.get("agentVersionNumber") is not None}
+        _require(all(transcript[field] == call_id for field in ("id", "callId") if field in transcript),
+                 "transcript_call_mismatch")
+        inferred, attribution_failures = attribute_version(judge, transcript, pin["version_number"])
         attribution = row.get("version_attribution")
-        _require(bool(observed) and all(type(number) is int and number == pin["version_number"] for number in observed.values())
-                 and isinstance(attribution, dict) and attribution.get("verified") is True and attribution.get("status") == "verified"
-                 and type(attribution.get("expected")) is int and attribution["expected"] == pin["version_number"]
-                 and digest(attribution.get("observed")) == digest(observed), "per_call_version_unattributed")
+        _require(not attribution_failures and inferred["verified"] and isinstance(attribution, dict)
+                 and digest(attribution) == digest(inferred), "per_call_version_unattributed")
         _require(not row["pass"] or judge["outcome"] == "pass", "judge_verdict_inconsistent")
         by_fixture[pair[0]].append(row)
         failures.extend(row["failures"])
         failure_runs += bool(row["failures"])
+        for failure in row["failures"]:
+            if failure["category"] in critical_counts:
+                critical_counts[failure["category"]] += 1
+        unclassified_runs += any(failure["category"] in ("behavior", "conversation") for failure in row["failures"])
     _require(pairs == expected_pairs, "trial_row_missing_or_duplicated")
     _require(report.get("failures") == failures, "failure_aggregate_inconsistent")
     passed = 0
@@ -138,15 +162,7 @@ def _trial(value, conditions):
         if strict:
             # Count the conservative minimum for each stable fixture once; never
             # multiply the same customer's amount by the number of repetitions.
-            amounts = []
-            for row in matches:
-                try:
-                    values = [cents(record["amount"]) for record in row["ledger"]["promises"]]
-                    _require(all(value >= 0 for value in values), "promise_amount_evidence_invalid")
-                    amounts.append(sum(values))
-                except (KeyError, TypeError, ValueError):
-                    raise ComparisonError("promise_amount_evidence_invalid") from None
-            _require(all(value >= 0 for value in amounts), "promise_amount_evidence_invalid")
+            amounts = [recorded_amounts[(row["fixture_id"], row["repetition"])] for row in matches]
             amount += min(amounts)
     _require(type(report.get("passed")) is int and report["passed"] == passed, "strict_summary_inconsistent")
     simulations = report.get("simulations")
@@ -168,7 +184,8 @@ def _trial(value, conditions):
     return {"start": start, "end": end, "case_sha": value["case_manifest_sha256"], "fixtures": set(fixture_ids),
             "pin": pin, "calls": calls, "sessions": sessions, "simulations": simulation_ids, "iterations": iteration_ids,
             "metrics": {"strict_passed": passed, "total": len(final), "required_repetitions": reps,
-                        "behavior_failure_runs": failure_runs, "strict_promised_cents": amount},
+                        "behavior_failure_runs": failure_runs, "critical_failures": critical_counts,
+                        "unclassified_behavior_runs": unclassified_runs, "strict_promised_cents": amount},
             "report_sha256": digest(report)}
 
 
@@ -230,6 +247,7 @@ def compare(baseline, structured):
     try:
         for bundle in (baseline, structured):
             assert_no_secrets(bundle)
+            digest(bundle)  # Refuse non-JSON/recursive containers even in unused fields.
         left, right = _bundle(baseline), _bundle(structured)
         _require(left["brief"] == right["brief"] and left["source"] == right["source"], "source_parity_absent")
         _require(digest(left["conditions"]) == digest(right["conditions"]), "condition_parity_absent")
@@ -247,23 +265,33 @@ def compare(baseline, structured):
             am, bm = a["metrics"], b["metrics"]
             delta = bm["strict_passed"] - am["strict_passed"]
             failure_delta = bm["behavior_failure_runs"] - am["behavior_failure_runs"]
-            decision = "structured_progress" if delta > 0 and failure_delta <= 0 else "baseline_preferred" if delta < 0 else "equivalent"
-            if failure_delta > 0:
-                decision = "behavior_regression"
+            critical_delta = {category: bm["critical_failures"][category] - am["critical_failures"][category]
+                              for category in CRITICAL_CATEGORIES}
             fully_passing = am["strict_passed"] == bm["strict_passed"] == am["total"]
-            if fully_passing:
+            if any(count_change > 0 for count_change in critical_delta.values()):
+                decision = "critical_failure_regression"
+            elif failure_delta > 0:
+                decision = "behavior_regression"
+            elif delta != 0:
+                decision = "structured_progress" if delta > 0 else "baseline_preferred"
+            elif fully_passing:
                 rank_a = am["strict_promised_cents"], -left["build_seconds"]
                 rank_b = bm["strict_promised_cents"], -right["build_seconds"]
                 decision = "structured_progress" if rank_b > rank_a else "baseline_preferred" if rank_a > rank_b else "equivalent"
+            else:
+                decision = "equivalent"
             summaries.append({"split": split, "decision": decision, "strict_pass_delta": delta,
+                              "critical_failure_delta": critical_delta,
                               "baseline": am, "structured": bm, "secondary_ranking_used": fully_passing,
                               "report_sha256": {"baseline": a["report_sha256"], "structured": b["report_sha256"]}})
         return {"comparable": True, "brief": left["brief"], "source_sha256": left["source"],
                 "builder_source_sha256": {"baseline": left["builder_source"], "structured": right["builder_source"]},
                 "conditions_sha256": digest(left["conditions"]), "splits": summaries,
                 "build_seconds": {"baseline": left["build_seconds"], "structured": right["build_seconds"]},
+                "critical_classification": "recorded explicit categories only; generic behavior/conversation failures remain unclassified",
+                "eligibility": "not_assessed",
                 "claim": "Recorded known-policy hosted evidence only; no new trial or unseen-policy claim."}
-    except (ComparisonError, ValueError) as exc:
+    except (ComparisonError, ValueError, TypeError, KeyError, OverflowError, RecursionError, DecimalException) as exc:
         return {"comparable": False, "reason": str(exc) if isinstance(exc, ComparisonError) else "input_secrets_or_invalid_json",
                 "claim": "Incomplete evidence or parity cannot establish improvement."}
 
@@ -272,6 +300,7 @@ def load_bundle(path, workspace_root=PROJECT):
     path = output_path(path, workspace_root=workspace_root)
     _require(path.suffix == ".json" and not any(part.startswith(".") for part in path.relative_to(Path(workspace_root).resolve()).parts),
              "bundle_path_invalid")
+    _require(path.stat().st_size <= 32 * 1024 * 1024, "bundle_size_limit_exceeded")
     return read_json(path)
 
 
@@ -283,7 +312,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         result = compare(load_bundle(args.baseline), load_bundle(args.structured))
-    except (ValueError, OSError):
+    except (ValueError, OSError, TypeError, RecursionError, OverflowError, DecimalException):
         result = {"comparable": False, "reason": "bundle_file_unavailable_or_invalid"}
     result = sanitize(result)
     if args.out:

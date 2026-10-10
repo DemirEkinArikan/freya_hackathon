@@ -19,6 +19,11 @@ or incomplete comparisons return `comparable: false` and a fixed rejection code;
 the command exits with status 1. Missing evidence is never ranked as a weaker
 behavioral result.
 
+Inputs have a 32 MiB resource limit. Invalid native containers, recursive values,
+impossible repetition inventories and extreme money exponents are rejected with
+fixed codes. The money magnitude bound is a normalization resource guard and
+does not define a bank's allowed payment amount.
+
 Each input is a version 1 bundle with these recorded fields:
 
 | Field | Required evidence |
@@ -89,14 +94,29 @@ evidence across repetitions, splits or candidates is rejected. Both training
 runs must finish before either validation run begins, and reports are emitted
 in training then validation order.
 
+The comparison recomputes the recorded attribution using the evaluator's shared
+`attribute_version` helper and requires the complete canonical attribution
+record to match. Supplied transcript `id` and `callId` must each match the row's
+judge call ID.
+
 A case passes only when all its required repetitions pass. Behavior,
 conversation, honesty, policy and security failures remain distinct from
-infrastructure/evidence gaps. More failed behavioral runs block a favorable
+infrastructure/evidence gaps. An increase in any explicitly categorized
+`security`, `policy` or `honesty` failures blocks a favorable decision, even if
+ordinary failures decrease or strict passes increase. Counts and deltas are
+reported separately for each critical category. More failed behavioral runs block a favorable
 decision even if strict case passes improve. Amount and build-time tie breaking
 is enabled only when both candidates pass every case without recorded failures.
 Amount counts each strict case once, using its minimum recorded promised amount
 across repetitions; it never multiplies a customer's amount by the repetition
 count. Budgets and build/export attribution are checked independently.
+
+Critical classification comes from the original report's failure categories.
+Generic `behavior` and `conversation` failures remain unclassified, and their
+absence or reduction does not prove zero security, policy or honesty violations.
+The output reports their run counts, labels classification as explicit categories
+only, and always reports eligibility as `not_assessed`. It makes no eligibility
+or competition-readiness claim from a favorable comparison.
 
 This comparison concerns recorded known public seeds and official policies.
 It establishes no new conversation trial, unseen-policy generalization, hidden

@@ -45,7 +45,7 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "promise_failure_limit", "tool_aliases", "persuasion_limits", "identity_hint_exemptions",
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
-_PROFILE_KINDS.add("wire_codes")
+_PROFILE_KINDS.update({"wire_codes", "policy_applicability"})
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
@@ -54,6 +54,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
+    "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
     "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
@@ -147,7 +148,10 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
     def strings(item: Any, *, empty: bool = False) -> bool:
         return isinstance(item, list) and (empty or bool(item)) and all(isinstance(x, str) and x for x in item)
     valid = True
-    if kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
+    if kind == "policy_applicability":
+        valid = (isinstance(value, dict) and set(value) == {"products"}
+                 and isinstance(value["products"], str) and value["products"] in {"single", "multiple"})
+    elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
     elif kind in {"identity_fields", "note_reasons"}:
         valid = strings(value) and len(set(value)) == len(value)
@@ -668,10 +672,12 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
     profile = {}
     missing = []
     absent = object()
+    applicability = rule_value(policy, "policy_applicability", absent)
+    singleton = applicability == {"products": "single"}
     for kind in sorted(kinds):
         value = rule_value(policy, kind, absent)
         if value is absent:
-            if kind in required_kinds:
+            if kind in required_kinds and not (singleton and kind in {"product_order", "resolve_all_products"}):
                 missing.append(kind)
             continue
         errors = _execution_errors(kind, value)

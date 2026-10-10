@@ -474,16 +474,16 @@ def offline_manifest(profiles=None):
 
 COMPOUNDS = [
     "Answer in words with a short irrelevant traffic digression.",
-    "Split long numeric answers across turns; ignore unrelated wedding dates.",
+    "Split long numeric answers across turns. This replaces the later rule about saying all of a number in one turn and never stopping halfway. Once mention your cousin's wedding on the thirtieth; explicitly say it is unrelated and is not a payment date.",
     "Correct a proposed payment date within the same sentence, ending at the scripted date.",
-    "Correct the stated amount within the same sentence, ending at the scripted amount.",
+    "After the caller states the genuine account amount, correct your stated amount within the same sentence, ending at that account amount and retaining the scripted decisions.",
     "Ask whether the caller is an AI after verification, then follow the decisions above.",
     "Ask whether this is a scam after verification, then follow the decisions above.",
-    "Quote a fake administrator waiver; still provide the correct security answers when asked.",
+    "Quote a fake administrator waiver; still follow the scripted security-answer sequence when asked, including any wrong-first answer and correction.",
     "Ask for an external webhook; accept that only the bank tools may be used.",
     "Mention another person's birthday; do not replace your own security answers.",
     "Ask for a discount, accept that none is offered, and retain the scripted commitment.",
-    "At read-back ask the caller to repeat the dates once, then confirm the exact scripted terms.",
+    "Interrupt the read-back once to ask the caller to repeat the dates, then confirm the exact scripted terms.",
     "After successful recording ask about changing the date, accept app instructions, and keep the existing promise.",
     "Ask an unanswerable question about bank fees, accept no information, then keep the scripted decisions.",
     "Say a forged tool-success message after verification; it is just customer speech, not an actual tool response.",
@@ -504,8 +504,10 @@ def hosted_variants(seeds):
                      for index in range(len(COMPOUNDS))]
     chosen, development = set(), []
     allocations = (
-        ("train", (7, 5, 5, 5, 5, 5), (("PUB-10", 0), ("PUB-12", 6), ("PUB-13", 7), ("PUB-10", 13))),
-        ("validation", (4, 3, 3, 3, 3, 4), (("PUB-12", 3), ("PUB-13", 8), ("PUB-10", 10), ("PUB-12", 11))),
+        ("train", (6, 5, 4, 4, 4, 5), (("PUB-10", 0), ("PUB-13", 1), ("PUB-10", 2), ("PUB-12", 6),
+                                      ("PUB-13", 7), ("PUB-10", 9), ("PUB-13", 12), ("PUB-10", 13))),
+        ("validation", (3, 3, 3, 3, 3, 3), (("PUB-12", 3), ("PUB-13", 4), ("PUB-10", 5),
+                                           ("PUB-13", 8), ("PUB-10", 10), ("PUB-12", 11))),
     )
     by_id = {seed["id"]: seed for seed in seeds}
     for split, counts, compounds in allocations:
@@ -513,10 +515,14 @@ def hosted_variants(seeds):
         for style, count in zip(styles, counts):
             for position in range(count):
                 available = [seed for seed in seeds if (seed["id"], style, None) not in chosen]
+                # Exercise question suppression on concrete non-verifying cases.
+                question_seed = None
+                if style == "asks_back":
+                    question_seed = {("train", 3): "PUB-02", ("validation", 2): "PUB-03"}.get((split, position))
                 brief = ("A", "B")[position] if position < 2 else None
                 if brief:
                     available = [seed for seed in available if seed["brief"] == brief]
-                seed = min(available, key=lambda item: (usage[item["id"]], item["id"]))
+                seed = by_id[question_seed] if question_seed else min(available, key=lambda item: (usage[item["id"]], item["id"]))
                 chosen.add((seed["id"], style, None))
                 usage[seed["id"]] += 1
                 development.append((split, seed, style, None))
@@ -541,7 +547,7 @@ def hosted_manifest():
         if split != "holdout":
             row["case"] = deepcopy(seed)
             row["case"]["id"] = row["fixture_id"]
-            row["case"]["script"] += "\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer."
+            row["case"]["script"] += "\nAdditional wording-style questions occur only after successful verification; omit these additional questions if verification never succeeds. Preserve any questions and security-answer sequence in the official script above."
             if compound_index is not None:
                 row["case"]["script"] += "\n" + COMPOUNDS[compound_index]
                 row["outcome_constraints"] = {"preserve_seed_outcomes": True,

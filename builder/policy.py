@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
@@ -105,7 +106,7 @@ _SHAPE_GUIDANCE = {
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
-    "resolve_all_products": "a boolean, not a string or integer",
+    "resolve_all_products": "a boolean, or exactly {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution; selector occurs literally in this rule's quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only the every-product closing prerequisite, never allowed outcomes, actions or note finalization",
     "transfer_prerequisites": 'a nonempty object mapping queue names to "none", "identity", or "account"',
     "promise_readback": "an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps",
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
@@ -178,7 +179,7 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, dict) and bool(value) and not set(value) - {"min", "max"}
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
-    elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions"}:
+    elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -268,7 +269,7 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  and fields(value["common"]) and isinstance(value["by_product_type"], dict)
                  and bool(value["by_product_type"])
                  and all(text(kind) and fields(items) for kind, items in value["by_product_type"].items()))
-    elif kind in {"record_notes", "resolve_all_products"}:
+    elif kind == "record_notes":
         valid = type(value) is bool
     elif kind == "attempt_scopes":
         valid = (isinstance(value, dict) and bool(value)
@@ -280,6 +281,15 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, list) and all(text(action) for action in value)
                  and len(set(value)) == len(value)
                  and set(value) <= {"finalize_notes", "schedule_callback", "commit_transfer"})
+    elif kind == "resolve_all_products":
+        valid = type(value) is bool
+        if isinstance(value, dict) and set(value) == {"selector", "by_value"}:
+            try:
+                check_call_variables([value["selector"]])
+                valid = (isinstance(value["by_value"], dict) and bool(value["by_value"])
+                         and all(text(code) and type(required) is bool for code, required in value["by_value"].items()))
+            except CallVariablesError:
+                valid = False
     elif kind in {"confirmation_actions", "close_precedence"}:
         valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))
                  and all(text(item) for item in value) and len(set(value)) == len(value))
@@ -438,6 +448,10 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                 question = rule.get("value")
                 if rule.get("kind") == "confirmation_question" and isinstance(question, str) and question not in quote:
                     errors.append(prefix + " confirmation_question must appear literally in its cited source quote")
+                if rule.get("kind") == "resolve_all_products" and isinstance(question, dict):
+                    selector = question.get("selector")
+                    if isinstance(selector, str) and not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", quote):
+                        errors.append(prefix + " product-resolution selector must appear literally in its cited source quote")
                 if source_documents is not None:
                     document = source_documents.get(sid) if isinstance(sid, str) else None
                     if document is None or quote not in document:

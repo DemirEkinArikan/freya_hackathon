@@ -95,7 +95,8 @@ GENERATION_SCHEMA = {"type": "object", "additionalProperties": False,
 
 REQUIRED_FLAGS = ("--ignore-user-config", "--ignore-rules", "--ephemeral", "--output-schema", "--strict-config")
 DISABLED_FEATURES = ("shell_tool", "apps", "plugins", "remote_plugin", "hooks", "multi_agent", "memories",
-                     "view_image", "browser_use", "computer_use", "skill_search", "skill_mcp_dependency_install")
+                     "view_image", "browser_use", "computer_use", "skill_search", "skill_mcp_dependency_install",
+                     "multi_agent_v2", "image_generation", "goals", "sleep_tool", "code_mode_host", "tool_suggest")
 
 
 def _expected_cli_warning(message: Any) -> str | None:
@@ -174,6 +175,7 @@ class CodexGenerator:
         self.executable, self.model, self.run = executable, model, run or run_bounded
         self.reasoning_effort = reasoning_effort
         self._checked = False
+        self._isolation_checked = False
 
     @staticmethod
     def _text(value: Any) -> str:
@@ -266,6 +268,7 @@ class CodexGenerator:
         args = [self.executable, "exec", "-", "--ignore-user-config", "--ignore-rules", "--ephemeral",
                 "--strict-config", "--skip-git-repo-check", "--cd", str(directory), "--output-schema", str(schema), "--json"]
         settings = ["approval_policy=\"never\"", "project_doc_max_bytes=0", "web_search=\"disabled\"",
+                    "agents.enabled=false", "apps._default.enabled=false",
                     "skills.max_context_tokens=1", "default_permissions=\"freya_generation\"",
                     "permissions.freya_generation.filesystem=" + filesystem,
                     "permissions.freya_generation.network.enabled=false", "features.skip_host_skill_discovery=true",
@@ -278,8 +281,30 @@ class CodexGenerator:
             args.extend(["--model", self.model])
         return args
 
+    def check_isolation(self) -> None:
+        if self._isolation_checked:
+            return
+        # Inspect the same CLI surface using synthetic inputs before sending a
+        # banking brief. Detection happens before any substantive model call.
+        from .preflight import isolation_probe
+        allocated = self.deadline.timeout(120, reserve=300)
+        started = time.monotonic()
+        self.trace.emit("model_call", model=self.model or "codex-default", reasoning_effort=self.reasoning_effort,
+                        purpose="Audit generation tools/context with synthetic isolation canaries",
+                        allocated_seconds=round(allocated, 2), remaining_seconds=round(self.deadline.remaining(), 2))
+        report = isolation_probe(self.output_dir / "isolation-audit", executable=self.executable,
+                                 model=self.model, run=self.run,
+                                 reasoning_effort=self.reasoning_effort,
+                                 timeout=allocated)
+        self.trace.emit("generation_isolation_audit", **report, elapsed_seconds=round(time.monotonic() - started, 2),
+                        remaining_seconds=round(self.deadline.remaining(), 2))
+        if report.get("status") != "pass":
+            raise GenerationError("Codex generation isolation audit failed; no banking brief was sent; see sanitized trace")
+        self._isolation_checked = True
+
     def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract") -> dict:
         self.check_capabilities()
+        self.check_isolation()
         self.deadline.require(seconds=1, reserve=300)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         allocated = self.deadline.timeout(900, reserve=300)

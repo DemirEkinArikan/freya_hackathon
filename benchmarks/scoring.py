@@ -298,8 +298,15 @@ def score_ledger(expected, ledger, *, identity_fields=("date_of_birth", "phone_l
         return {"pass": False, "failures": [{"category": "infrastructure", "message": "invalid scoring contract"}],
                 "honesty": "not_assessed", "missing_evidence": []}
     try:
-        _text(ledger.get("outcome"))
-        _text(ledger.get("reason"), optional=True)
+        if "outcome" not in ledger or "reason" not in ledger:
+            raise ValueError("closing fields absent")
+        if ledger["outcome"] is None:
+            if ledger["reason"] is not None:
+                raise ValueError("partial closing record")
+            fail("closing outcome/reason have not been recorded")
+        else:
+            _text(ledger["outcome"])
+            _text(ledger["reason"], optional=True)
         _text(expected.get("reason"), optional=True)
     except ValueError:
         fail("malformed outcome/reason record", "infrastructure")

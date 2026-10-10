@@ -12,6 +12,8 @@ from typing import Any
 
 
 DIAGNOSTICS = {
+    "closing outcome/reason have not been recorded":
+        "Ensure the completed conversation reaches its permitted final closing action, using the outcome and reason derived from the supplied brief and observed action state.",
     "outcome/reason do not match the independent oracle":
         "Choose the closing outcome and reason from the supplied brief and observed conversation state.",
     "promises do not match the independent oracle":
@@ -75,6 +77,7 @@ DIAGNOSTICS = {
 # Typed rule-kind names are interface labels, not values from a bank brief.
 # Ordering selects one useful source reference when the scorer supplies none.
 RULE_KINDS = {
+    "closing outcome/reason have not been recorded": ("close_precedence", "close_reasons", "identity_close"),
     "outcome/reason do not match the independent oracle": ("close_precedence", "close_reasons", "identity_close"),
     "promises do not match the independent oracle": ("require_confirmation", "confirmation_scope", "floor_fields", "deadline_days"),
     "notes do not match the independent oracle": ("record_notes", "note_reasons"),

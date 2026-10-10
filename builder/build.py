@@ -326,6 +326,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     compiled = compile_policy_contract(policy, sources, openapi)
                 except (PolicyContractError, ValueError) as exc:
                     errors = getattr(exc, "errors", [str(exc)])
+                    _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
+                        {"policy": policy, "validation_errors": errors}, secrets=secret_values))
                     trace.emit("policy_validation", passed=False, errors=errors)
                     if attempt == MAX_REPAIRS:
                         raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
@@ -350,6 +352,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             candidate = generator.generate(make_prompt(sources, openapi, repair))
             errors = candidate_errors(candidate, sources, openapi, require_policy=True)
             if errors:
+                _write_json(run_dir / f"candidate.rejected-{repairs + 1}.json", sanitize(
+                    {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
                 trace.emit("validation", passed=False, errors=errors)
                 if repairs >= MAX_REPAIRS:
                     raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))

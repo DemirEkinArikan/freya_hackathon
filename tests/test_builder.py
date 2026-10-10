@@ -246,6 +246,9 @@ class BuilderTests(unittest.TestCase):
         result = execute(self.args('--extract-policy-only'), generator=generator,
                          client_factory=lambda **kw: self.fail('Freya initialized'))
         self.assertEqual(result['repairs'], 1)
+        rejected = json.loads((PROJECT / result['run_directory'] / 'policy.rejected-1.json').read_text())
+        self.assertEqual(rejected['policy']['sources'][0]['sha256'], '0' * 64)
+        self.assertTrue(rejected['validation_errors'])
         payload = json.loads(generator.generate.call_args_list[1].args[0].split('\n\nAUTHORIZED INPUTS:\n', 1)[1])
         self.assertIn('validation_errors', payload['repair'])
         self.assertNotIn('workflow', payload['repair'])

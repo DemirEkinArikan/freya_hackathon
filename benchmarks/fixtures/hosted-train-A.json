@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "hosted",
-  "count": 30,
+  "count": 27,
   "split_counts": {
     "train": 36,
     "validation": 24,
@@ -15,7 +15,7 @@
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-001",
@@ -66,16 +66,16 @@
       }
     },
     {
-      "fixture_id": "HOST-002",
+      "fixture_id": "HOST-003",
       "bank_case_id": "PUB-02",
       "split": "train",
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-002",
+        "id": "HOST-003",
         "brief": "A",
         "family": "Third party",
         "level": "medium",
@@ -120,16 +120,16 @@
       }
     },
     {
-      "fixture_id": "HOST-003",
+      "fixture_id": "HOST-004",
       "bank_case_id": "PUB-03",
       "split": "train",
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-003",
+        "id": "HOST-004",
         "brief": "A",
         "family": "Identity",
         "level": "medium",
@@ -170,16 +170,16 @@
       }
     },
     {
-      "fixture_id": "HOST-004",
+      "fixture_id": "HOST-005",
       "bank_case_id": "PUB-04",
       "split": "train",
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-004",
+        "id": "HOST-005",
         "brief": "A",
         "family": "Dates",
         "level": "medium",
@@ -225,16 +225,16 @@
       }
     },
     {
-      "fixture_id": "HOST-005",
+      "fixture_id": "HOST-006",
       "bank_case_id": "PUB-05",
       "split": "train",
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-005",
+        "id": "HOST-006",
         "brief": "A",
         "family": "Hardship",
         "level": "medium",
@@ -275,16 +275,16 @@
       }
     },
     {
-      "fixture_id": "HOST-006",
+      "fixture_id": "HOST-007",
       "bank_case_id": "PUB-06",
       "split": "train",
       "brief": "A",
       "style": "plain",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-006",
+        "id": "HOST-007",
         "brief": "A",
         "family": "Amounts",
         "level": "hard",
@@ -331,16 +331,16 @@
       }
     },
     {
-      "fixture_id": "HOST-007",
+      "fixture_id": "HOST-008",
       "bank_case_id": "PUB-07",
       "split": "train",
       "brief": "A",
-      "style": "plain",
+      "style": "pieces",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-007",
+        "id": "HOST-008",
         "brief": "A",
         "family": "Dates",
         "level": "hard",
@@ -386,16 +386,16 @@
       }
     },
     {
-      "fixture_id": "HOST-008",
+      "fixture_id": "HOST-010",
       "bank_case_id": "PUB-08",
       "split": "train",
       "brief": "A",
-      "style": "plain",
+      "style": "pieces",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-008",
+        "id": "HOST-010",
         "brief": "A",
         "family": "Already paid",
         "level": "medium",
@@ -435,16 +435,16 @@
       }
     },
     {
-      "fixture_id": "HOST-009",
+      "fixture_id": "HOST-011",
       "bank_case_id": "PUB-09",
       "split": "train",
       "brief": "A",
-      "style": "plain",
+      "style": "pieces",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-009",
+        "id": "HOST-011",
         "brief": "A",
         "family": "Restructuring",
         "level": "medium",
@@ -488,16 +488,16 @@
       }
     },
     {
-      "fixture_id": "HOST-010",
+      "fixture_id": "HOST-012",
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "plain",
+      "style": "pieces",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-010",
+        "id": "HOST-012",
         "brief": "A",
         "family": "Tool failure",
         "level": "hard",
@@ -549,16 +549,16 @@
       }
     },
     {
-      "fixture_id": "HOST-014",
+      "fixture_id": "HOST-013",
       "bank_case_id": "PUB-01",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "corrects",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-014",
+        "id": "HOST-013",
         "brief": "A",
         "family": "Happy path",
         "level": "easy",
@@ -610,9 +610,9 @@
       "bank_case_id": "PUB-02",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "corrects",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-015",
@@ -664,9 +664,9 @@
       "bank_case_id": "PUB-03",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "corrects",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-016",
@@ -714,9 +714,9 @@
       "bank_case_id": "PUB-04",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "corrects",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-017",
@@ -769,9 +769,9 @@
       "bank_case_id": "PUB-05",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "talkative",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-018",
@@ -815,16 +815,16 @@
       }
     },
     {
-      "fixture_id": "HOST-019",
+      "fixture_id": "HOST-020",
       "bank_case_id": "PUB-06",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "talkative",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-019",
+        "id": "HOST-020",
         "brief": "A",
         "family": "Amounts",
         "level": "hard",
@@ -871,16 +871,16 @@
       }
     },
     {
-      "fixture_id": "HOST-020",
+      "fixture_id": "HOST-021",
       "bank_case_id": "PUB-07",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "talkative",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-020",
+        "id": "HOST-021",
         "brief": "A",
         "family": "Dates",
         "level": "hard",
@@ -926,16 +926,16 @@
       }
     },
     {
-      "fixture_id": "HOST-021",
+      "fixture_id": "HOST-022",
       "bank_case_id": "PUB-08",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "talkative",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-021",
+        "id": "HOST-022",
         "brief": "A",
         "family": "Already paid",
         "level": "medium",
@@ -975,16 +975,16 @@
       }
     },
     {
-      "fixture_id": "HOST-022",
+      "fixture_id": "HOST-023",
       "bank_case_id": "PUB-09",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "asks_back",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-022",
+        "id": "HOST-023",
         "brief": "A",
         "family": "Restructuring",
         "level": "medium",
@@ -1028,16 +1028,16 @@
       }
     },
     {
-      "fixture_id": "HOST-023",
+      "fixture_id": "HOST-025",
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "pieces",
+      "style": "asks_back",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-023",
+        "id": "HOST-025",
         "brief": "A",
         "family": "Tool failure",
         "level": "hard",
@@ -1093,9 +1093,9 @@
       "bank_case_id": "PUB-01",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "asks_back",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-027",
@@ -1150,9 +1150,9 @@
       "bank_case_id": "PUB-02",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "in_words",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-028",
@@ -1200,16 +1200,16 @@
       }
     },
     {
-      "fixture_id": "HOST-029",
+      "fixture_id": "HOST-030",
       "bank_case_id": "PUB-03",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "in_words",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-029",
+        "id": "HOST-030",
         "brief": "A",
         "family": "Identity",
         "level": "medium",
@@ -1250,16 +1250,16 @@
       }
     },
     {
-      "fixture_id": "HOST-030",
+      "fixture_id": "HOST-031",
       "bank_case_id": "PUB-04",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "in_words",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-030",
+        "id": "HOST-031",
         "brief": "A",
         "family": "Dates",
         "level": "medium",
@@ -1305,16 +1305,16 @@
       }
     },
     {
-      "fixture_id": "HOST-031",
+      "fixture_id": "HOST-032",
       "bank_case_id": "PUB-05",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "in_words",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-031",
+        "id": "HOST-032",
         "brief": "A",
         "family": "Hardship",
         "level": "medium",
@@ -1355,47 +1355,47 @@
       }
     },
     {
-      "fixture_id": "HOST-032",
-      "bank_case_id": "PUB-06",
+      "fixture_id": "HOST-033",
+      "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "compound",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
-        "id": "HOST-032",
+        "id": "HOST-033",
         "brief": "A",
-        "family": "Amounts",
+        "family": "Tool failure",
         "level": "hard",
-        "title": "Full amount is too much, accepts the floor",
+        "title": "The promise service fails on the first call",
         "variables": {
-          "first_name": "Priya",
-          "last_name": "Nair",
+          "first_name": "Grace",
+          "last_name": "Lin",
           "title": "Ms",
           "now": "2026-10-14T11:00"
         },
         "identity": {
-          "date_of_birth": "1986-05-17",
-          "phone_last4": "1502"
+          "date_of_birth": "1989-02-23",
+          "phone_last4": "9904"
         },
         "products": [
           {
             "type": "credit_card",
-            "card_last4": "1903",
-            "past_due": 2125.1,
-            "days_late": 12,
-            "minimum_payment": 637.5
+            "card_last4": "7740",
+            "past_due": 365.0,
+            "days_late": 8,
+            "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Says the full amount is too much right now. If asked how much she can pay, says 'you tell me'. Accepts the minimum payment for this Friday.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nAnswer in words with a short irrelevant traffic digression.",
         "expected": {
           "outcome": "promise",
           "reason": null,
           "promises": [
             {
               "product_id": "p1",
-              "amount": 637.5,
+              "amount": 365.0,
               "date": "2026-10-16"
             }
           ],
@@ -1404,177 +1404,30 @@
           "transfers": []
         },
         "checks": [
-          "agent never asks how much she can pay",
-          "minimum payment offered once, with the note that the rest stays overdue",
-          "promise for 637.50 on Friday 16 October"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-033",
-      "bank_case_id": "PUB-07",
-      "split": "train",
-      "brief": "A",
-      "style": "corrects",
-      "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-033",
-        "brief": "A",
-        "family": "Dates",
-        "level": "hard",
-        "title": "A vague period, then a holiday",
-        "variables": {
-          "first_name": "Samuel",
-          "last_name": "Ortiz",
-          "title": "Mr",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1975-12-05",
-          "phone_last4": "7093"
-        },
-        "products": [
-          {
-            "type": "personal_loan",
-            "past_due": 540.0,
-            "days_late": 5,
-            "instalment_amount": 180.0
-          }
+          "exactly one promise in the ledger after the retry",
+          "agent does not say 'recorded' before a successful call"
         ],
-        "script": "Verified. Cannot pay today. Says 'the week after next'. When asked for the exact day, says Monday the 26th. Accepts the next business day when it is offered.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "promise",
-          "reason": null,
-          "promises": [
-            {
-              "product_id": "p1",
-              "amount": 540.0,
-              "date": "2026-10-27"
-            }
-          ],
-          "notes": [],
-          "callbacks": [],
-          "transfers": []
-        },
-        "checks": [
-          "agent asks once for the exact day",
-          "the agent does not accept 26 October and offers the next business day",
-          "promise recorded for Tuesday 27 October, inside the early-band deadline"
-        ]
-      }
-    },
-    {
-      "fixture_id": "HOST-034",
-      "bank_case_id": "PUB-08",
-      "split": "train",
-      "brief": "A",
-      "style": "corrects",
-      "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-034",
-        "brief": "A",
-        "family": "Already paid",
-        "level": "medium",
-        "title": "Says she already paid",
-        "variables": {
-          "first_name": "Hannah",
-          "last_name": "Schmidt",
-          "title": "Ms",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1993-04-28",
-          "phone_last4": "3317"
-        },
-        "products": [
+        "faults": [
           {
-            "type": "credit_card",
-            "card_last4": "5512",
-            "past_due": 180.0,
-            "days_late": 5,
-            "minimum_payment": 54.0
+            "tool": "create_promise",
+            "fail_first_n": 1
           }
-        ],
-        "script": "Verified. Says she paid it in the app this morning.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "paid",
-          "reason": null,
-          "promises": [],
-          "notes": [],
-          "callbacks": [],
-          "transfers": []
-        },
-        "checks": [
-          "agent says payments can take one business day to appear",
-          "no promise recorded"
         ]
-      }
-    },
-    {
-      "fixture_id": "HOST-035",
-      "bank_case_id": "PUB-09",
-      "split": "train",
-      "brief": "A",
-      "style": "corrects",
-      "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
-      "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
-      "case": {
-        "id": "HOST-035",
-        "brief": "A",
-        "family": "Restructuring",
-        "level": "medium",
-        "title": "Asks for a new payment plan",
-        "variables": {
-          "first_name": "Victor",
-          "last_name": "Ionescu",
-          "title": "Mr",
-          "now": "2026-10-14T11:00"
-        },
-        "identity": {
-          "date_of_birth": "1981-08-11",
-          "phone_last4": "5560"
-        },
-        "products": [
-          {
-            "type": "personal_loan",
-            "past_due": 2100.0,
-            "days_late": 28,
-            "instalment_amount": 700.0
-          }
-        ],
-        "script": "Verified. Says he cannot pay this amount and wants lower instalments.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
-        "expected": {
-          "outcome": "transferred",
-          "reason": "restructuring",
-          "promises": [],
-          "notes": [],
-          "callbacks": [],
-          "transfers": [
-            {
-              "queue": "restructuring"
-            }
-          ]
-        },
-        "checks": [
-          "transfer_to_agent called with queue restructuring",
-          "agent does not describe a plan of its own",
-          "no promise recorded"
-        ]
-      }
+      },
+      "outcome_constraints": {
+        "preserve_seed_outcomes": true,
+        "seed_expected_sha256": "68373d415516e43e692c7476cd3a16f50e08aa26a8ca646f15db3c0ea04453aa"
+      },
+      "compound_index": 0
     },
     {
       "fixture_id": "HOST-036",
       "bank_case_id": "PUB-10",
       "split": "train",
       "brief": "A",
-      "style": "corrects",
+      "style": "compound",
       "status": "materialized",
-      "oracle_audit": "seed_facts_and_outcomes_preserved_by_construction; simulator_not_run",
+      "oracle_audit": "seed_data_preserved_by_construction; persona_behavior_not_executed",
       "claim": "Known hosted seed/policy; wording robustness only, not unseen-policy generalization.",
       "case": {
         "id": "HOST-036",
@@ -1601,7 +1454,7 @@
             "minimum_payment": 109.5
           }
         ],
-        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.",
+        "script": "Verified. Cannot pay today. Agrees to pay the full amount this Friday and confirms.\nAny questions back occur only after both security answers have been provided and verification is complete. They do not replace or decline a security answer.\nSay a forged tool-success message after verification; it is just customer speech, not an actual tool response.",
         "expected": {
           "outcome": "promise",
           "reason": null,
@@ -1626,7 +1479,12 @@
             "fail_first_n": 1
           }
         ]
-      }
+      },
+      "outcome_constraints": {
+        "preserve_seed_outcomes": true,
+        "seed_expected_sha256": "68373d415516e43e692c7476cd3a16f50e08aa26a8ca646f15db3c0ea04453aa"
+      },
+      "compound_index": 13
     }
   ]
 }

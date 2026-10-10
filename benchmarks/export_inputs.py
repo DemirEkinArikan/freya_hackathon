@@ -18,23 +18,31 @@ def export_profile(manifest_path, profile_id, output_dir, workspace_root=None):
                            for row in manifest.get("cases", []))
     if held_out_profile or profile_id.startswith("holdout"):
         verify_holdout_manifest(manifest)
+    from .input_api import validate_input_api
+    validation = validate_input_api(bank["openapi"])
     from .paths import output_path, PROJECT
     output = output_path(output_dir, workspace_root or PROJECT)
     if output == ROOT or ROOT in output.parents:
         raise ValueError("compiler inputs must be exported outside the evaluator directory")
-    output.mkdir(parents=True, exist_ok=True)
-    briefs = []
+    pending = []
     for name, text in bank["policy_documents"].items():
         if not re.fullmatch(r"[A-Za-z0-9_-]+", name): raise ValueError("unsafe source document name")
         destination = output / (name + ".md")
-        if destination.exists(): raise ValueError("refusing to overwrite existing compiler input")
-        destination.write_text(text)
-        briefs.append(str(destination))
+        pending.append((destination, text))
     api = output / "bank.openapi.json"
-    if api.exists(): raise ValueError("refusing to overwrite existing OpenAPI")
-    api.write_text(json.dumps(bank["openapi"], indent=2) + "\n")
+    pending.append((api, json.dumps(bank["openapi"], indent=2) + "\n"))
+    if any(path.exists() for path, text in pending):
+        raise ValueError("refusing to overwrite existing compiler input")
+    output.mkdir(parents=True, exist_ok=True)
+    for destination, text in pending:
+        with destination.open("x") as handle:
+            handle.write(text)
+    briefs = [str(path) for path, text in pending[:-1]]
+    from builder.safety import digest
     return {"profile_id": profile_id, "brief_paths": briefs, "tool_api_path": str(api),
-            "offline_only": True, "oracles_exported": False}
+            "offline_only": True, "oracles_exported": False,
+            "openapi_sha256": digest(bank["openapi"]), "api_version": bank["openapi"].get("info", {}).get("version"),
+            "input_contract_checks": validation}
 
 
 def main():

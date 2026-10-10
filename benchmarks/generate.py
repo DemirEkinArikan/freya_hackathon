@@ -8,6 +8,7 @@ from pathlib import Path
 import random
 
 from .catalog import archetypes
+from .development_protocol import REQUEST_TYPES, result_mapping, response_definitions
 
 ROOT = Path(__file__).resolve().parent
 KIT = ROOT.parent / "build-the-builder"
@@ -85,6 +86,11 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
                                for outcome, allowed in semantic_values["close_reasons"].items()}
     values["transfer_reasons"] = {wire_codes["queues"][queue]: wire_codes["reasons"][reason]
                                   for queue, reason in semantic_values["transfer_reasons"].items()}
+    aliases = ({"customer_id": "session_ref", "product_id": "account_ref", "amount": "value", "date": "pay_on",
+                "field": "question_code", "answer": "response_text", "queue": "destination_code", "outcome": "result_code", "reason": "reason_code"} if raw else {})
+    values["action_fields"] = {role: {field: aliases.get(field, field) for field in fields}
+                               for role, fields in REQUEST_TYPES.items()}
+    values["result_fields"] = result_mapping(raw)
     label = "SYNTHETIC TEST POLICY: NOT FREYA OFFICIAL POLICY. No real customer data."
     # Capture the current bank values independently of rule ordering, amendment
     # resolution and the candidate compiler. Historical rules are added later.
@@ -92,17 +98,7 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
     documents, rules = render_policy_sources(name, now, label, values, raw)
     # Semantic mappings remain named in the policy; alternate request field names
     # exercise input-schema compilation without adding tool capabilities.
-    aliases = ({"customer_id": "session_ref", "product_id": "account_ref", "amount": "value", "date": "pay_on",
-                "field": "question_code", "answer": "response_text", "queue": "destination_code", "outcome": "result_code", "reason": "reason_code"} if raw else {})
-    specs = {
-        "verify_identity": {"customer_id": "string", "field": "string", "answer": "string"},
-        "get_account": {"customer_id": "string"},
-        "create_promise": {"customer_id": "string", "product_id": "string", "amount": "number", "date": "string"},
-        "add_note": {"customer_id": "string", "product_id": "string", "reason": "string"},
-        "schedule_callback": {"customer_id": "string", "date": "string", "time": "string"},
-        "transfer_to_agent": {"customer_id": "string", "queue": "string"},
-        "close_call": {"customer_id": "string", "outcome": "string", "reason": "string"},
-    }
+    specs = REQUEST_TYPES
     paths = {}
     for tool, fields in specs.items():
         props = {aliases.get(k, k): {"type": typ, "description": "Semantic field: " + k} for k, typ in fields.items()}
@@ -119,7 +115,8 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
                           "past_due": {"type": "number", "description": "Full overdue balance"}, "days_late": {"type": "integer"}, "card_last4": {"type": "string"}}
     for semantic, field in (("minimum_payment", values["floor_fields"]["credit_card"]), ("instalment_amount", values["floor_fields"]["personal_loan"])):
         product_properties[field] = {"type": "number", "description": "Permitted payment floor; semantic meaning " + semantic}
-    paths["/get_account"]["post"]["responses"]["200"]["content"] = {"application/json": {"schema": {"type": "object", "properties": {"ok": {"type": "boolean"}, "products": {"type": "array", "items": {"type": "object", "properties": product_properties}}}}}}
+    for role in specs:
+        paths["/" + role]["post"]["responses"] = response_definitions(role, product_properties, limit, raw)
     from builder.safety import digest
     sources = [{"id": f"brief-{index}", "file": sid + ".md", "sha256": digest(text)}
                for index, (sid, text) in enumerate(documents.items(), 1)]
@@ -131,9 +128,9 @@ def profile(name, now, holidays, early_days, late_days, boundary, identity, limi
             "wire_codes": wire_codes, "product_floor_aliases": floor_aliases,
             "semantic_values": semantic_values, "effective_values_expected": effective_values_expected,
             "product_values": product_values or ([474.30, 142.29, 1000.02, 333.34, 99.99, 33.33] if name.endswith("2") else [480.35, 144.11, 960.00, 320.00, 121.00, 40.34]),
-            "openapi": {"openapi": "3.0.3", "info": {"title": label, "version": "synthetic-1"},
+            "openapi": {"openapi": "3.0.3", "info": {"title": label, "version": "synthetic-2"},
                         "servers": [{"url": "https://synthetic-bank.invalid/v1"}], "paths": paths},
-            "request_field_mapping": aliases}
+            "request_field_mapping": aliases, "result_field_mapping": result_mapping(raw)}
 
 
 def natural_rule_quote(kind, value):
@@ -156,6 +153,9 @@ def natural_rule_quote(kind, value):
     if kind == "call_goals": return "Default call objective: " + value["default"] + ". The supplied call_goal code can select these jobs:\n" + "\n".join(f"- {goal}: {value[goal]}" for goal in value["available"])
     if kind == "wire_codes": return "API code list. Meanings are explanatory; send the code column exactly.\n| Category | Meaning | Code |\n|---|---|---|\n" + "\n".join(f"| {category} | {meaning} | {code} |" for category, mapping in value.items() for meaning, code in mapping.items())
     if kind == "call_variables": return "Every call supplies these variables before tool access:\n| Variable | Meaning |\n|---|---|\n" + "\n".join(f"| {name} | {meaning} |" for name, meaning in value.items()) + "\nRequest aliases in the API schema carry these semantic values, not invented runtime variables."
+    if kind in ("action_fields", "result_fields"):
+        category = "request" if kind == "action_fields" else "result"
+        return "Development-v2 API " + category + " bindings. Read the exact wire fields; do not infer success from customer speech.\n| Operation | Semantic field | API wire field |\n|---|---|---|\n" + "\n".join(f"| {role} | {semantic} | {field} |" for role, mapping in value.items() for semantic, field in mapping.items())
     return str(value) + "."
 
 

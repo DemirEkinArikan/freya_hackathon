@@ -85,8 +85,10 @@ def validate_rows(rows):
         raise ValueError("hosted fixtures must select official brief A or B")
 
 
-def index_runs(iteration, persona_ids):
+def index_runs(iteration, persona_ids, seen_call_ids=None):
     """Do not silently overwrite duplicate runs or accept incomplete pagination."""
+    if not isinstance(iteration, dict):
+        raise ValueError("iteration must be an object")
     runs = iteration.get("runs")
     if not isinstance(runs, list):
         raise ValueError("iteration runs are absent")
@@ -95,17 +97,22 @@ def index_runs(iteration, persona_ids):
         raise ValueError("iteration did not return every run")
     indexed, call_ids = {}, set()
     for run in runs:
+        if not isinstance(run, dict):
+            raise ValueError("iteration runs must be objects")
         persona = run.get("personaId")
         if not isinstance(persona, str) or persona not in persona_ids or persona in indexed:
             raise ValueError("iteration persona IDs are unexpected or duplicated")
         call_id = run.get("callId")
         if call_id is not None:
-            if not isinstance(call_id, str) or not call_id.strip() or call_id in call_ids:
+            if (not isinstance(call_id, str) or not call_id.strip() or call_id in call_ids
+                    or (seen_call_ids is not None and call_id in seen_call_ids)):
                 raise ValueError("iteration call IDs are invalid or reused")
             call_ids.add(call_id)
         indexed[persona] = run
     if set(indexed) != set(persona_ids):
         raise ValueError("iteration is missing requested personas")
+    if seen_call_ids is not None:
+        seen_call_ids.update(call_ids)
     return indexed
 
 
@@ -148,6 +155,9 @@ class HostedBackend:
     def create_personas(self, personas): return self.client.create_personas(personas)
     def simulate(self, agent_id, name, variables, concurrency=5):
         return self.client.run_simulation(agent_id, name, variables, concurrency=concurrency)
+    @property
+    def simulation_handoff(self):
+        return getattr(self.client, "simulation_handoff", None)
     def iteration(self, simulation): return self.client.get_iteration(simulation["simulation_id"], simulation["iteration_id"])
     def call(self, call_id): return self.client.get_call(call_id)
 
@@ -185,7 +195,9 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
         raise ValueError("persona IDs are missing or duplicated")
     persona_ids = {r["fixture_id"]: p["id"] for r, p in zip(rows, personas)}
     all_rows, seen_sessions, seen_session_ids, simulations = [], set(), set(), []
+    seen_simulations, seen_iterations, seen_call_ids = set(), set(), set()
     for repetition in range(reps):
+        simulation_requested = False
         try:
             variables = {}
             customer_ids = {}
@@ -203,11 +215,27 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
                     seen_session_ids.add(session_id)
                 customer_ids[row["fixture_id"]] = customer
                 variables[persona_ids[row["fixture_id"]]] = deepcopy(session)
+            simulation_requested = True
             simulation = backend.simulate(agent_id, f"bank benchmark repetition {repetition + 1}", variables, concurrency)
+            if not isinstance(simulation, dict):
+                raise ValueError("simulation must be an object")
             simulations.append({"repetition": repetition + 1, **{key: simulation.get(key) for key in ("simulation_id", "iteration_id", "status")}})
             if simulation.get("status") != "completed": raise RuntimeError("simulation did not complete")
-            runs = index_runs(backend.iteration(simulation), set(persona_ids.values()))
+            for key, seen in (("simulation_id", seen_simulations), ("iteration_id", seen_iterations)):
+                identifier = simulation.get(key)
+                if not isinstance(identifier, str) or not identifier.strip() or identifier in seen:
+                    raise ValueError("simulation/iteration IDs are missing or reused across repetitions")
+                seen.add(identifier)
+            runs = index_runs(backend.iteration(simulation), set(persona_ids.values()), seen_call_ids)
         except Exception as exc:
+            if simulation_requested and not any(s["repetition"] == repetition + 1 for s in simulations):
+                handoff = getattr(backend, "simulation_handoff", None)
+                if not isinstance(handoff, dict):
+                    handoff = getattr(exc, "lease", None)
+                if isinstance(handoff, dict):
+                    identifiers = {key: handoff.get(key) if isinstance(handoff.get(key), str) else None
+                                   for key in ("simulation_id", "iteration_id", "status")}
+                    simulations.append({"repetition": repetition + 1, "interrupted": True, **identifiers})
             all_rows.extend({"fixture_id": row["fixture_id"], "repetition": repetition + 1, "pass": False,
                              "failures": [{"category": "infrastructure", "message": type(exc).__name__ + ": " + str(exc)}]} for row in rows)
             break

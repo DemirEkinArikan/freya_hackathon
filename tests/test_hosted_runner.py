@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from benchmarks.hosted import HostedBackend, evaluate
+from benchmarks.hosted import HostedBackend, evaluate, index_runs
 from builder.platform import FreyaClient
 from builder.runtime import Deadline, DeadlineExceeded
 
@@ -165,6 +165,69 @@ class HostedRunnerTests(unittest.TestCase):
             result = evaluate(backend, "agent", rows, reps=1, deployment=deployment)
             with self.subTest(source=source):
                 self.assertEqual((result["passed"], result["status"]), (0, "infrastructure_failure"))
+
+    def test_cross_repetition_call_and_simulation_identifiers_cannot_prove_repetitions(self):
+        rows = fixture_rows()
+        for field in ("callId", "simulation_id", "iteration_id"):
+            backend = RunnerBackend(rows)
+            if field == "callId":
+                original = backend.iteration
+                def reused_call(simulation):
+                    iteration = original(simulation)
+                    iteration["runs"][0]["callId"] = "same-call"
+                    return iteration
+                backend.iteration = reused_call
+            else:
+                original = backend.simulate
+                def reused_simulation(*args):
+                    simulation = original(*args)
+                    simulation[field] = "same-identifier"
+                    return simulation
+                backend.simulate = reused_simulation
+            result = evaluate(backend, "agent", rows)
+            with self.subTest(field=field):
+                self.assertEqual(result["status"], "infrastructure_failure")
+                self.assertEqual(result["passed"], 0)
+                self.assertEqual(result["final"][0]["passes"], 1)
+                self.assertEqual(result["final"][0]["runs"], 2)
+
+    def test_malformed_iteration_and_run_types_are_explicit_validation_errors(self):
+        for iteration in (None, [], "bad", {"runs": [None]}, {"runs": ["bad"]}):
+            with self.subTest(iteration=iteration), self.assertRaises(ValueError):
+                index_runs(iteration, {"persona"})
+
+    def test_interrupted_simulation_retains_only_safe_available_handoff_identifiers(self):
+        rows = fixture_rows()
+        backend = RunnerBackend(rows)
+        backend.simulation_handoff = {"simulation_id": "running-simulation", "iteration_id": "running-iteration",
+                                      "status": "running", "variables": {"private": "not-for-output"}}
+        def interrupted(*args):
+            raise DeadlineExceeded("mock timeout")
+        backend.simulate = interrupted
+        result = evaluate(backend, "agent", rows)
+        self.assertEqual(result["status"], "infrastructure_failure")
+        self.assertEqual(result["simulations"], [{"repetition": 1, "interrupted": True,
+                          "simulation_id": "running-simulation", "iteration_id": "running-iteration", "status": "running"}])
+        self.assertNotIn("not-for-output", json.dumps(result))
+
+    def test_backend_exposes_client_simulation_handoff_without_copying_variables(self):
+        client = FreyaClient(api_key="mock-only")
+        client.simulation_handoff = {"simulation_id": "running-simulation", "status": "running"}
+        backend = HostedBackend(client, team_key="mock-team-key-only")
+        self.assertEqual(backend.simulation_handoff, client.simulation_handoff)
+
+    def test_interrupt_lease_identifiers_are_retained_when_client_handoff_is_absent(self):
+        rows = fixture_rows()
+        backend = RunnerBackend(rows)
+        def interrupted(*args):
+            exception = DeadlineExceeded("mock timeout")
+            exception.lease = {"simulation_id": "lease-simulation", "iteration_id": "lease-iteration", "path": "private-local-path"}
+            raise exception
+        backend.simulate = interrupted
+        result = evaluate(backend, "agent", rows)
+        self.assertEqual(result["simulations"][0]["simulation_id"], "lease-simulation")
+        self.assertEqual(result["simulations"][0]["iteration_id"], "lease-iteration")
+        self.assertNotIn("private-local-path", json.dumps(result))
 
     def test_one_failed_repetition_prevents_final_pass(self):
         rows = fixture_rows()

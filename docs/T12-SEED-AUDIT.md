@@ -54,9 +54,13 @@ when it materializes a compound holdout; its supplemental security check leaves
 the official checks intact.
 
 This module performs local file reads and comparison only. No Codex, Freya,
-bank service, persona creation or simulation call is made. Its eventual runner
-integration is a separate change owned by T11/T12; standalone checks alone do
-not complete hosted acceptance.
+bank service, persona creation or simulation call is made. Hosted manifest
+loading and direct evaluation already invoke the audit before creating any
+persona, session or simulation; `tests/test_hosted_seed_integration.py` checks
+both boundaries. This is local implementation evidence, not T11 live acceptance.
+The [development wording audit](T12-DEVELOPMENT-COVERAGE.md) records all 14
+concrete compound families, script regressions, combined-behavior limits and
+T12's dependency-based closure handoff.
 
 ```sh
 python3.11 -m unittest discover -s tests -p 'test_seed_audit.py' -v

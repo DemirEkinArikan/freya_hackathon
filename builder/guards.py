@@ -48,7 +48,9 @@ _REQUIRED = {
     "stage_promise": {"identity_fields", "identity_wrong_limit", "band_ranges", "deadline_days",
                       "floor_fields", "holidays", "business_weekdays", "require_confirmation",
                       "promise_failure_limit"},
-    "commit_promises": {"require_confirmation", "confirmation_scope", "promise_failure_limit", "nonpersistent_failures", "promise_failure_disposition", "promise_readback"},
+    # Absent API nonpersistence guarantees authorize no retry. An absent failure
+    # disposition stays uncertain/quarantined; it never supplies a bank reason.
+    "commit_promises": {"require_confirmation", "confirmation_scope", "promise_failure_limit", "promise_readback"},
     "stage_note": {"note_reasons", "record_notes"}, "finalize_notes": {"note_reasons", "record_notes"},
     "stage_transfer": {"transfer_reasons", "transfer_prerequisites"}, "commit_transfer": {"transfer_reasons", "transfer_prerequisites"},
     "schedule_callback": {"callback_window", "holidays", "business_weekdays"},
@@ -193,8 +195,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     for kind in set(contract.get("active_rules", {})) & (_PROFILE_KINDS | _EXECUTION_ONLY_KINDS):
         if kind not in profile:
             errors.append("active execution rule omitted from profile: " + kind)
+    singleton = profile.get("policy_applicability") == {"products": "single"}
     for kind in required_execution_kinds(plan):
-        if kind not in profile:
+        if kind not in profile and not (singleton and kind in {"product_order", "resolve_all_products"}):
             errors.append("missing typed execution kind: " + kind)
     for kind, value in profile.items():
         active = contract.get("active_rules", {}).get(kind)
@@ -249,6 +252,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
+    if result.get("policy_applicability") == {"products": "single"}:
+        # Conservative kernel invariant: the sole product must be resolved.
+        # This is not an invented cross-product policy rule or sort order;
+        # explicitly supplied resolution rules still take precedence.
+        result.setdefault("resolve_all_products", True)
     # Decode controller-verified wire categories only for internal semantics.
     categories = (bindings or {}).get("categories", {})
     def decode(group: str, value: str) -> str:
@@ -522,10 +530,18 @@ def guard_product(state, pid):
     return found[0]
 
 def guard_order(state, profile):
-    order = profile['product_order']
+    products = state['products']
+    singleton = profile.get('policy_applicability') == dict(products='single')
+    if singleton and len(products) > 1:
+        raise ValueError('account cardinality exceeds supplied single-product scope')
+    order = profile.get('product_order')
+    if order is None:
+        if singleton:
+            return list(products)
+        raise ValueError('product ordering requires an explicit policy rule or single-product scope')
     if order.get('mode') == 'account_order':
-        return list(state['products'])
-    return sorted(state['products'], key=lambda p: p[order['field']], reverse=order['direction'] == 'descending')
+        return list(products)
+    return sorted(products, key=lambda p: p[order['field']], reverse=order['direction'] == 'descending')
 
 def guard_product_turn(state, pid, profile):
     if pid in state['pending_promises'] or pid in state['pending_notes']:
@@ -1033,8 +1049,22 @@ def guard_result(state, data, profile, catalog, expected_action):
     action = tx['action']
     ok = data.get('ok')
     status = data.get('_http_status')
-    if isinstance(status, str) and status.isdigit():
+    # Mapped runtime envelopes always carry this field, including an empty
+    # value when transport evidence is missing. Local semantic harnesses may
+    # omit it; a supplied status must be an exact HTTP status, never guessed.
+    if type(status) is str and re.fullmatch(r'[1-5][0-9]{2}', status):
         status = int(status)
+    status_valid = '_http_status' not in data or type(status) is int and 100 <= status <= 599
+    success_status = '_http_status' not in data or status_valid and 200 <= status <= 299
+    if not status_valid or guard_true(ok) and not success_status:
+        state['quarantined'] = True
+        if tx.get('key'):
+            state['attempts'][tx['key']]['status'] = 'unknown_persistence'
+        if action == 'close_call':
+            state['batch'] = dict()
+            state['consent'] = ''
+            return state, 'closed', dict(), ''
+        return state, 'failure', dict(), ''
     nonpersistent = any(type(status) is int and status == case['http_status'] and
                         ('error' not in case or data.get('error') == case['error'])
                         for case in profile.get('nonpersistent_failures', dict()).get(tx['operation'], list()))
@@ -1071,6 +1101,12 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'failure', dict(), ''
     if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):
         state['quarantined'] = True
+        return state, 'failure', dict(), ''
+    if action == 'commit_promises' and guard_true(ok) and (not isinstance(data.get('promise_id'), str) or not data['promise_id'].strip()):
+        # An affirmative flag without the required persisted-record identity is
+        # uncertain evidence. Retain the exact pending request and never retry.
+        state['quarantined'] = True
+        state['attempts'][tx['key']]['status'] = 'unknown_persistence'
         return state, 'failure', dict(), ''
     state['inflight'] = dict()
     if action == 'verify_identity':
@@ -1128,9 +1164,6 @@ def guard_result(state, data, profile, catalog, expected_action):
     state['attempts'][key]['status'] = 'recorded'
     if action == 'commit_promises':
         pid = tx['semantic']['product_id']
-        if not isinstance(data.get('promise_id'), str) or not data['promise_id']:
-            state['quarantined'] = True
-            return state, 'failure', dict(), ''
         state['recorded_promises'][pid] = state['pending_promises'].pop(pid)
     elif action == 'finalize_notes':
         pid = tx['semantic']['product_id']

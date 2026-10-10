@@ -32,13 +32,22 @@ To evaluate compilation without exposing the benchmark, export only bank source 
 
 ## Candidate freeze and holdout lifecycle
 
+The independent T16 authoring and evidence gates are recorded in
+[the held-out runbook](../docs/T16-HOLDOUT-RUNBOOK.md). While T15 remains open,
+inspect inventories only; do not author or execute real holdouts. Readiness
+reports actual reservations/materialized rows without writing a freeze:
+
 ```sh
-python3 -m benchmarks.freeze create --candidate-root builder --config-file artifacts/runtime-config.json --record benchmarks/freezes/candidate-1.json
-python3 -m benchmarks.freeze generate-holdout --record benchmarks/freezes/candidate-1.json
-python3 -m benchmarks.freeze consume --record benchmarks/freezes/candidate-1.json --reason 'repair after held-out evaluation'
+python3.11 -m benchmarks.freeze readiness --candidate-root builder --runtime-root .
 ```
 
-Freeze captures source/config files under the candidate root, excluding credentials, hidden files and caches. `--config-file` includes nonsecret resolved CLI/model/runtime configuration in the digest; hosted holdout requires at least `model` and `reasoning_effort`, matched against the actual builder deployment manifest. Optional `concurrency`, `reps` and `budget_seconds` also match evaluation arguments. Pure offline freezes may omit config. Holdout generation verifies the snapshot, creates two fresh policy profiles and fills exactly 60 reserved slots in each manifest. It refuses silent regeneration. If any candidate source or resolved config changes, verification rejects the old snapshot. After repair or disclosure, mark the holdout consumed; a new candidate requires a new record and fresh initial manifests in another evaluator directory. A previously exposed set becomes validation, never a fresh blind holdout. This is procedural isolation, not filesystem access control.
+```sh
+python3.11 -m benchmarks.freeze create --candidate-root artifacts/t16/candidate-source --config-file artifacts/runtime-config.json --record benchmarks/freezes/candidate-1.json
+python3.11 -m benchmarks.freeze verify --record benchmarks/freezes/candidate-1.json
+python3.11 -m benchmarks.freeze consume --record benchmarks/freezes/candidate-1.json --reason 'repair after held-out evaluation'
+```
+
+Freeze captures source/config files under the candidate root, excluding credentials, hidden files and caches. Keep the record, resolved config, fixture packs and evaluator outputs outside that root. An isolated source inventory must match the original invocation and the actual executed source; freezing `builder/` alone omits benchmark runtime hooks. `--config-file` includes nonsecret resolved CLI/model/runtime configuration in the digest; hosted holdout requires at least `model` and `reasoning_effort`, matched against the actual builder deployment manifest. Optional `concurrency`, `reps` and `budget_seconds` also match evaluation arguments. Pure offline freezes may omit config. The legacy `generate-holdout` materializer verifies the snapshot and reservation metadata before generating variants, reports observed counts, and refuses silent regeneration. Its reused development templates and script suffixes do not establish independently authored fresh acceptance. If any candidate source or resolved config changes, verification rejects the old snapshot. After repair or disclosure, mark the holdout consumed; preserve original evidence and create validation copies with disclosed lineage. Consumption does not rewrite fixture splits automatically. A new blind claim requires a new record and independently authored manifests in another evaluator directory. This is procedural isolation, not filesystem access control.
 
 ## Hosted evaluation: explicit execution only
 

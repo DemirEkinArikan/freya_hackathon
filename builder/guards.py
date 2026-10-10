@@ -1111,7 +1111,19 @@ def guard_result(state, data, profile, catalog, expected_action):
         state['quarantined'] = not state['closed']
         state['attempts'][tx['key']]['status'] = 'recorded' if state['closed'] else 'unknown_persistence'
         return state, 'closed', dict(), ''
-    if action == 'commit_promises' and nonpersistent and negative_ok:
+    # An exact API-qualified non-success transport response may intentionally
+    # have no JSON success flag. A successful transport still needs an explicit
+    # negative flag; missing/malformed evidence cannot grant replay. A returned
+    # record identity conflicts with nonpersistence and is never replayed.
+    missing_ok = ok is None or type(ok) is str and ok == ''
+    empty_record = data.get('promise_id') is None or data.get('promise_id') == ''
+    qualified_negative = nonpersistent and (negative_ok or
+        not success_status and missing_ok)
+    if action == 'commit_promises' and qualified_negative and not empty_record:
+        state['quarantined'] = True
+        state['attempts'][tx['key']]['status'] = 'unknown_persistence'
+        return state, 'failure', dict(), ''
+    if action == 'commit_promises' and qualified_negative:
         state['inflight'] = dict()
         state['attempts'][tx['key']]['status'] = 'nonpersistent_failed'
         pid = tx['semantic']['product_id']
@@ -1370,7 +1382,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         # Transport only the actual immutable HTTP envelope status. The kit
         # documents hooks before response_mapping; API pre_action automatic
         # result-key naming is insufficiently explicit to use as evidence.
-        tool["post_process_code"] = "try:\n    if isinstance(result, dict) and isinstance(result.get('data'), dict):\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
+        tool["post_process_code"] = "try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}

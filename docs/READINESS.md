@@ -4,10 +4,12 @@ The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_
 
 The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
 
-At the 17:10 Istanbul checkpoint, **4 of 18 tasks are complete**: T01, T04,
+At the 17:18 Istanbul checkpoint, **4 of 18 tasks are complete**: T01, T04,
 T06 and T10. The other 14 are open. PR35 integrated guarded generation; PR36
-integrated evaluator coverage and evidence fixes. Their combined source passes
-417 Python 3.11 tests and the source package check. These local results do not
+integrated evaluator coverage and evidence fixes. PR37 binds freeze inventories
+and runtime configuration to the actual candidate snapshot; PR38 validates timed
+model/deployment/test traces before packaging. Their combined source passes
+454 Python 3.11 tests and the source package check. These local results do not
 complete the outstanding runtime, staging, conversation or submission gates.
 
 | Evidence | Current result |

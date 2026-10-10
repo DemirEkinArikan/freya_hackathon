@@ -96,7 +96,7 @@ class ControllerBudgetTests(unittest.TestCase):
     def test_malformed_budget_cannot_erase_a_dispatched_positive_receipt(self):
         self.dispatch()
         before = deepcopy(self.h.variables)
-        for value in (None, "garbage", "-1", "99999999"):
+        for value in (None, "garbage", "-1", "99999999", "²", "١"):
             with self.subTest(counter=value):
                 self.h.variables = deepcopy(before)
                 self.h.variables["bg_control_entries"] = value
@@ -105,6 +105,34 @@ class ControllerBudgetTests(unittest.TestCase):
                 self.assertFalse(self.state["inflight"])
                 self.assertTrue(self.state["quarantined"])
                 self.assertFalse(self.h.variables["bg_body"])
+
+    def test_budget_after_first_batch_success_does_not_invent_a_second_dispatch(self):
+        self.h.account()
+        self.h.stage()
+        self.h.stage("internal-product-A", "82.10")
+        self.h.code("commit")
+        self.h.variables["bg_consent"] = "yes"
+        self.h.code("bg_commit_accept")
+        self.h.variables["bg_control_entries"] = str(CONTROLLED_ENTRY_LIMIT)
+        self.h.api_result("commit", {"evidence_ok": True, "evidence_promise_id": "first-record"})
+        self.assertEqual(set(self.state["recorded_promises"]), {"internal-product-Z"})
+        self.assertFalse(self.state["inflight"])
+        self.assertEqual(len(self.state["attempts"]), 1)
+        self.assertEqual(next(iter(self.state["attempts"].values())), {"status": "recorded", "count": 1})
+        self.assertIn("internal-product-A", self.state["pending_promises"])
+        self.assertTrue(self.state["quarantined"])
+        self.assertFalse(self.h.variables["bg_body"])
+
+    def test_budget_after_qualified_failure_does_not_invent_a_retry(self):
+        self.dispatch()
+        self.h.variables["bg_control_entries"] = str(CONTROLLED_ENTRY_LIMIT)
+        self.h.api_result("commit", {"evidence_ok": False, "evidence_error": "ERR_BUSY"}, status=503)
+        self.assertFalse(self.state["inflight"])
+        self.assertFalse(self.state["recorded_promises"])
+        self.assertEqual(len(self.state["attempts"]), 1)
+        self.assertEqual(next(iter(self.state["attempts"].values())), {"status": "nonpersistent_failed", "count": 1})
+        self.assertTrue(self.state["quarantined"])
+        self.assertFalse(self.h.variables["bg_body"])
 
     def test_gate_preserves_recorded_success_and_an_uncertain_second_write(self):
         self.dispatch()

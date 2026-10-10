@@ -1364,9 +1364,9 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
         tail += "    entry_count = vars.get('bg_control_entries')\n"
         if phase == "result":
             # A bookkeeping fault cannot erase an already-dispatched receipt.
-            tail += "    if not isinstance(entry_count, str) or not entry_count.isdigit() or len(entry_count) > 7:\n        entry_count = " + str(CONTROLLED_ENTRY_LIMIT + 1) + "\n    else:\n        entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
+            tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        entry_count = " + str(CONTROLLED_ENTRY_LIMIT + 1) + "\n    else:\n        entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
         else:
-            tail += "    if not isinstance(entry_count, str) or not entry_count.isdigit() or len(entry_count) > 7:\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry count is unavailable')\n    entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
+            tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry count is unavailable')\n    entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
         if phase != "result":
             tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry budget exhausted')\n"
         if phase == "prepare":
@@ -1375,6 +1375,10 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
         elif phase == "confirm":
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"
         else:
+            # Reconciliation may otherwise prepare the next batch member or
+            # qualified retry internally. Stop that preparation before it
+            # marks an unsent request as inflight or increments bank counters.
+            tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        def guard_continue(reconciled_state, reconciled_catalog):\n            return guard_projection_quarantine(reconciled_state), 'blocked', dict(), ''\n"
             tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'], spec['action'])\n"
             # Reconcile a dispatched request before administrative termination.
             # Known recorded successes and uncertain persistence survive it.
@@ -1425,7 +1429,7 @@ def _entry_budget_code(*, abort: bool = False) -> str:
     """Small controller-only gate; never changes a permitted bank action."""
     source = ("import json\nvars['bg_budget_route'] = 'stop'\ntry:\n"
               "    count = vars.get('bg_control_entries')\n"
-              "    if not isinstance(count, str) or not count.isdigit() or len(count) > 7:\n"
+              "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
               "        raise ValueError('controller entry count is unavailable')\n"
               "    count = int(count) + 1\n"
               "    vars['bg_control_entries'] = str(count)\n")

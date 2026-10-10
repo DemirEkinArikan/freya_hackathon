@@ -57,6 +57,24 @@ class FrozenPipelineTests(unittest.TestCase):
         self.assertTrue((run / "policy.contract.json").exists())
         self.assertFalse((run / "workflow.json").exists())
 
+    def test_export_finishing_after_global_deadline_cannot_report_success(self):
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        class LateExport(test_builder.FakeClient):
+            def export_workflow(self, deployment, path):
+                result = super().export_workflow(deployment, path)
+                now[0] = 1801
+                return result
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        with self.assertRaises(DeadlineExceeded):
+            execute(self.args(), generator=generator, deadline=deadline, client_factory=LateExport)
+        run = next((self.directory / "out").iterdir())
+        self.assertEqual(json.loads((run / "manifest.json").read_text())["status"], "failed")
+        self.assertTrue((run / "submission.workflow.json").exists())
+        events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
+        self.assertEqual([event["status"] for event in events if event.get("event") == "end"], ["failed"])
+
     def test_contract_is_extracted_once_across_workflow_repairs(self):
         generator = self.generator()
         generator.generate.return_value = fixture()

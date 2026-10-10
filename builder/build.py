@@ -525,6 +525,9 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         client.reserve = 0
         deadline.require()
         exported = client.export_workflow(deployment, run_dir / "submission.workflow.json")
+        # An export response can arrive after its allocation. Preserve it as
+        # evidence, but never report a build exceeding the global limit as done.
+        deadline.require()
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},

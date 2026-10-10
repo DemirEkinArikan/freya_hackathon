@@ -112,20 +112,33 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]
             if isinstance(node, ast.ImportFrom) and node.level:
                 errors.append(path + ": relative imports are forbidden")
-            if any(name.split(".")[0] not in _ALLOWED_MODULES for name in names):
+            if any(name not in _ALLOWED_MODULES for name in names):
                 errors.append(path + ": file/network or unapproved imports are forbidden")
             if any(alias.name.startswith("_") for alias in node.names):
                 errors.append(path + ": private module imports are forbidden")
+            if isinstance(node, ast.ImportFrom):
+                if any(alias.name == "*" for alias in node.names):
+                    errors.append(path + ": wildcard imports hide the callable surface and are forbidden")
+                if any(alias.name in _FORBIDDEN_CALLS or alias.name in _FORBIDDEN_ATTRIBUTES for alias in node.names):
+                    errors.append(path + ": unsafe imported functions are forbidden, including aliases")
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             errors.append(path + ": dunder names are forbidden")
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in _FORBIDDEN_CALLS:
+            errors.append(path + ": unsafe builtin references are forbidden, including aliases")
         if isinstance(node, ast.Attribute) and (node.attr.startswith("_") or node.attr in _FORBIDDEN_ATTRIBUTES):
             errors.append(path + ": unsafe/file/network/real-clock attribute is forbidden")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALLS:
             errors.append(path + ": unsafe execution or file access is forbidden")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "vars":
             errors.append(path + ": vars is a workflow mapping, not a callable")
-        if isinstance(node, ast.While) and isinstance(node.test, ast.Constant) and node.test.value is True:
-            errors.append(path + ": unbounded while loop is forbidden")
+        if isinstance(node, ast.While):
+            try:
+                constant_condition = ast.literal_eval(node.test)
+            except (ValueError, TypeError, SyntaxError, RecursionError):
+                pass
+            else:
+                if bool(constant_condition):
+                    errors.append(path + ": unbounded while loop is forbidden")
         if guard_request_config and isinstance(node, ast.Name) and node.id == "config":
             parent = parents.get(node)
             if not (isinstance(parent, ast.Subscript) and parent.value is node

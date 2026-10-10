@@ -14,7 +14,7 @@ if __package__ in (None, ""):
     __package__ = "builder"
 
 from .platform import FreyaClient, PlatformError
-from .policy import validate_policy
+from .contract import compile_policy_contract, PolicyContractError
 from .runtime import CodexGenerator, Deadline, DeadlineExceeded, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
@@ -39,6 +39,7 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--adopt-workflow", help="Explicit existing workflow ID to bind to this slot after workspace ownership verification")
     out.add_argument("--offline", action="store_true", help="Validate an explicit fixture, with no model or network")
     out.add_argument("--generate-only", action="store_true", help="Generate and validate locally; never initialize a Freya client")
+    out.add_argument("--extract-policy-only", action="store_true", help="Extract and compile policy/API contract only; no workflow or Freya client")
     out.add_argument("--validate-only", action="store_true", help="Only validate --workflow-file locally")
     out.add_argument("--workflow-file", type=Path, help="Offline candidate: workflow, platform export, or {policy,workflow}")
     out.add_argument("--policy-file", type=Path, help="Optional provenance policy for a bare offline workflow")
@@ -89,7 +90,9 @@ def _load_inputs(args) -> tuple[list[dict], dict]:
     openapi = read_json(api_path)
     assert_no_secrets(openapi, forbidden_values=_known_secrets())
     operations(openapi)  # Fail on unresolved or unsupported contracts before generation.
-    openapi = resolve_refs(openapi, openapi)
+    # Preserve composition evidence for the strict contract compiler. Tool
+    # declarations resolve local references separately; flattening allOf here
+    # would hide incompatible field constraints before they can be rejected.
     return sources, openapi
 
 
@@ -103,6 +106,18 @@ def make_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) 
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
+
+
+def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) -> str:
+    template = (PROJECT / "builder/prompts/compile.txt").read_text(encoding="utf-8")
+    policy_instructions = template.split("Adapt to the supplied banking objective", 1)[1].split(
+        "Generate a complete Freya workflow", 1)[0]
+    header = (PROJECT / "builder/prompts/extract.txt").read_text(encoding="utf-8")
+    payload = {"sources": sources, "openapi": openapi}
+    if repair:
+        payload["repair"] = repair
+    assert_no_secrets(payload, forbidden_values=_known_secrets())
+    return header + "\nAdapt to the supplied banking objective" + policy_instructions + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
 def _candidate(path: Path, policy_path: Path | None) -> dict:
@@ -127,15 +142,28 @@ def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, requir
         if require_policy:
             errors.append("Generated candidates require a provenance policy")
     else:
-        errors.extend(validate_policy(policy, {source["id"]: source["text"] for source in sources}))
-        if policy.get("unsupported_constraints"):
-            errors.append("The policy contains unsupported constraints")
-    errors.extend(validate_workflow(candidate.get("workflow", {}), openapi, policy))
+        try:
+            compile_policy_contract(policy, sources, openapi)
+        except PolicyContractError as exc:
+            errors.extend(getattr(exc, "errors", [str(exc)]))
+    errors.extend(validate_workflow(candidate.get("workflow", {}), openapi, policy if isinstance(policy, dict) else None))
     return errors
 
 
 def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace) -> str | None:
+    policy = candidate.get("policy")
+    if policy is None:
+        return None
+    contract = compile_policy_contract(policy, sources, openapi)
+    _write_json(run_dir / "policy.json", policy)
+    _write_json(run_dir / "policy.contract.json", contract)
+    trace.emit("policy_contract", sha256=contract["sha256"], sources=len(contract["sources"]),
+               active_rules=len(contract["active_rules"]), permitted_operations=len(contract["permitted_operations"]))
+    return contract["sha256"]
 
 
 def _known_secrets() -> tuple[str, ...]:
@@ -249,11 +277,11 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     run_dir.mkdir()
     secret_values = _known_secrets()
     trace = Trace(run_dir / "trace.jsonl", secrets=secret_values)
-    mode = "validate-only" if args.validate_only else "offline-fixture" if args.offline else "generate-only" if args.generate_only else "live"
-    trace.emit("start", mode=mode, model=args.model if mode in {"live", "generate-only"} else None)
+    mode = "extract-policy-only" if args.extract_policy_only else "validate-only" if args.validate_only else "offline-fixture" if args.offline else "generate-only" if args.generate_only else "live"
+    trace.emit("start", mode=mode, model=args.model if mode in {"live", "generate-only", "extract-policy-only"} else None)
     try:
-        if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only)) > 1:
-            raise ValueError("offline, validate-only, and generate-only modes are mutually exclusive")
+        if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
+            raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
         if (args.offline or args.validate_only) and not args.workflow_file:
             raise ValueError("Offline and validate-only modes require --workflow-file; no fabricated scaffold is generated")
         if args.workflow_file and not (args.offline or args.validate_only):
@@ -275,11 +303,11 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             if errors:
                 raise ValueError("Candidate validation failed: " + "; ".join(errors))
             _write_json(run_dir / "workflow.json", candidate["workflow"])
-            if candidate.get("policy"):
-                _write_json(run_dir / "policy.json", candidate["policy"])
+            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace)
             manifest = {"mode": mode, "status": "validated", "sources": source_manifest,
                         "tool_api_sha256": digest(openapi), "workflow_sha256": digest(candidate["workflow"]),
                         "policy_provenance_checked": candidate.get("policy") is not None,
+                        "policy_contract_sha256": contract_sha256,
                         "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT))}
             _write_json(run_dir / "manifest.json", manifest)
             trace.emit("end", status="validated", hosted_behavior_verified=False)
@@ -287,6 +315,33 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
 
         generator = generator or CodexGenerator(run_dir, trace, deadline, executable=args.codex, model=args.model,
                                                 reasoning_effort=args.reasoning_effort)
+        if mode == "extract-policy-only":
+            repair = None
+            for attempt in range(MAX_REPAIRS + 1):
+                deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+                extracted = generator.generate(make_policy_prompt(sources, openapi, repair), purpose="Extract banking policy and source/API bindings")
+                policy = extracted.get("policy")
+                try:
+                    assert_no_secrets(policy, forbidden_values=secret_values)
+                    compiled = compile_policy_contract(policy, sources, openapi)
+                except (PolicyContractError, ValueError) as exc:
+                    errors = getattr(exc, "errors", [str(exc)])
+                    _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
+                        {"policy": policy, "validation_errors": errors}, secrets=secret_values))
+                    trace.emit("policy_validation", passed=False, errors=errors)
+                    if attempt == MAX_REPAIRS:
+                        raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
+                    repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secret_values)}
+                    continue
+                contract_sha256 = _write_policy_artifacts(run_dir, {"policy": policy}, sources, openapi, trace)
+                manifest = {"mode": mode, "status": "policy_extracted", "sources": source_manifest,
+                            "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
+                            "repairs": attempt, "policy_contract_sha256": contract_sha256,
+                            "policy_provenance_checked": True, "workflow_created": False, "hosted_behavior_verified": False,
+                            "run_directory": str(run_dir.relative_to(PROJECT))}
+                _write_json(run_dir / "manifest.json", manifest)
+                trace.emit("end", status="policy_extracted", remaining_seconds=deadline.remaining())
+                return manifest
         client = None
         repair = None
         tests = None
@@ -297,6 +352,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             candidate = generator.generate(make_prompt(sources, openapi, repair))
             errors = candidate_errors(candidate, sources, openapi, require_policy=True)
             if errors:
+                _write_json(run_dir / f"candidate.rejected-{repairs + 1}.json", sanitize(
+                    {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
                 trace.emit("validation", passed=False, errors=errors)
                 if repairs >= MAX_REPAIRS:
                     raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
@@ -304,13 +361,14 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 repair = {"validation_errors": errors, "previous_candidate": sanitize(candidate, secrets=secret_values)}
                 continue
             trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]))
-            _write_json(run_dir / "policy.json", candidate["policy"])
+            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace)
             _write_json(run_dir / "workflow.json", candidate["workflow"])
             if mode == "generate-only":
                 manifest = {"mode": mode, "status": "generated_validated", "sources": source_manifest,
                             "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
                             "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
                             "policy_provenance_checked": True, "hosted_behavior_verified": False,
+                            "policy_contract_sha256": contract_sha256,
                             "run_directory": str(run_dir.relative_to(PROJECT))}
                 _write_json(run_dir / "manifest.json", manifest)
                 trace.emit("end", status="generated_validated", remaining_seconds=deadline.remaining())
@@ -363,6 +421,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
                     "authored_workflow_sha256": digest(candidate["workflow"]), "export_sha256": digest(exported),
+                    "policy_contract_sha256": contract_sha256,
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "run_directory": str(run_dir.relative_to(PROJECT))}
         _write_json(run_dir / "manifest.json", sanitize(manifest, secrets=secret_values))

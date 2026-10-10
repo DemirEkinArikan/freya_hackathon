@@ -63,6 +63,12 @@ its policy, workflow, manifest and redacted start/end trace under `artifacts/`.
 Generated definitions omit `agent_config`; the adapter preserves the event
 model, verifies publication and rejects platform stripping of authored fields.
 
+Use `--extract-policy-only` to exercise brief interpretation independently of
+workflow generation. It emits a strict source/API contract with a recorded hash,
+creates no workflow and initializes no Freya client. Every accepted candidate
+with policy writes that same contract artifact. See [policy contract boundary](docs/POLICY-CONTRACT.md)
+for source coverage, explicit amendments and the limits of these checks.
+
 ## Benchmarks and evidence
 
 ```sh

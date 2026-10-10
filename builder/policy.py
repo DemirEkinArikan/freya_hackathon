@@ -12,7 +12,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
 
-from .safety import digest
+from .safety import canonical_json, digest
 
 
 class RuleSource(TypedDict):
@@ -85,22 +85,32 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
     return [] if valid else [f"policy rule {kind} has an invalid structured value"]
 
 
-def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None) -> list[str]:
-    """Validate IR/provenance; optional documents enable exact quotation checks."""
+def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None,
+                    *, strict: bool = False) -> list[str]:
+    """Check IR/provenance, never semantic correctness of quoted rules.
+
+    ``strict`` rejects legacy/untyped shapes and top-level rule-value bypasses.
+    Full controller source inventory and coverage belong to contract compilation.
+    Pure helper profiles are intentionally supported by ``rule_value`` separately.
+    """
     errors: list[str] = []
     if not isinstance(policy, dict):
         return ["policy must be an object"]
-    if policy.get("version", 1) != 1:
+    if type(policy.get("version", 1)) is not int or policy.get("version", 1) != 1 or (strict and "version" not in policy):
         errors.append("policy.version must be 1")
+    if strict and set(policy) - {"version", "goal", "allowed_actions", "sources", "rules", "unsupported_constraints"}:
+        errors.append("policy contains unsupported top-level fields; rule values belong in rules")
     if not isinstance(policy.get("goal"), str) or not policy["goal"].strip():
         errors.append("policy.goal must be a nonempty string")
     actions = policy.get("allowed_actions")
     if not isinstance(actions, list) or any(not isinstance(a, str) or not a for a in actions):
         errors.append("policy.allowed_actions must be a list of action names")
+    elif len(set(actions)) != len(actions):
+        errors.append("policy.allowed_actions must be unique")
     sources = policy.get("sources", [])
     source_ids: set[str] = set()
     source_files: set[str] = set()
-    if not isinstance(sources, list):
+    if not isinstance(sources, list) or (strict and not sources):
         errors.append("policy.sources must be a list")
         sources = []
     for i, source in enumerate(sources):
@@ -114,6 +124,8 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
             errors.append(f"policy.sources[{i}] requires file")
         else:
             source_files.add(source["file"])
+        if strict and "sha256" not in source:
+            errors.append(f"policy.sources[{i}] requires sha256")
         if "sha256" in source and (not isinstance(source["sha256"], str)
                                     or len(source["sha256"]) != 64
                                     or any(c not in "0123456789abcdef" for c in source["sha256"])):
@@ -141,13 +153,17 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
         else:
             ids.add(ident)
             by_id[ident] = rule
+        if strict and set(rule) - {"id", "kind", "value", "source", "overrides"}:
+            errors.append(prefix + " contains unsupported rule fields")
         if "kind" in rule:
             if not isinstance(rule["kind"], str) or not rule["kind"]:
                 errors.append(prefix + ".kind must be nonempty")
             if "value" not in rule:
                 errors.append(prefix + " requires value")
-        elif not isinstance(rule.get("text"), str) or not rule.get("text"):
+        elif strict or not isinstance(rule.get("text"), str) or not rule.get("text"):
             errors.append(prefix + " requires kind/value or text")
+        if strict and "source" not in rule:
+            errors.append(prefix + " requires typed source provenance")
         provenance = [rule["source"]] if "source" in rule else rule.get("sources", [])
         if not isinstance(provenance, list) or not provenance:
             errors.append(prefix + " requires source provenance")
@@ -173,26 +189,43 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
             continue
         if any(x not in ids or x == ident for x in overrides):
             errors.append(f"rule {ident} has an unknown or self override")
-    def cycle(ident: str, active: set[str], done: set[str]) -> bool:
-        if ident in active:
-            return True
-        if ident in done:
-            return False
-        active.add(ident)
-        children = by_id.get(ident, {}).get("overrides", [])
-        if isinstance(children, list):
-            for child in children:
-                if isinstance(child, str) and cycle(child, active, done):
-                    return True
-        active.remove(ident)
-        done.add(ident)
-        return False
-    if any(cycle(ident, set(), set()) for ident in by_id):
+        if len(set(overrides)) != len(overrides):
+            errors.append(f"rule {ident} repeats an override")
+        if any(x in by_id and by_id[x].get("kind") != rule.get("kind") for x in overrides):
+            errors.append(f"rule {ident} has a cross-kind override; semantic replacement is unsupported")
+    successors = {ident: [child for child in rule.get("overrides", [])
+                          if isinstance(child, str) and child in by_id]
+                  if isinstance(rule.get("overrides", []), list) else []
+                  for ident, rule in by_id.items()}
+    indegree = {ident: 0 for ident in by_id}
+    for children in successors.values():
+        for child in children:
+            indegree[child] += 1
+    ready = [ident for ident, count in indegree.items() if count == 0]
+    visited = 0
+    while ready:
+        ident = ready.pop()
+        visited += 1
+        for child in successors[ident]:
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                ready.append(child)
+    if visited != len(by_id):
         errors.append("policy override graph contains a cycle")
-    for kind in sorted(_PROFILE_KINDS):
+    kinds = {rule["kind"] for rule in by_id.values() if isinstance(rule.get("kind"), str) and rule.get("kind")}
+    if kinds & set(policy):
+        errors.append("policy top-level values cannot shadow quoted rule kinds")
+    # Resolve every extension kind, not only built-in helper concepts. JSON typed
+    # equality distinguishes true/1, null/missing, and other Python coercions.
+    active_by_kind = _active_rules(policy)
+    for kind in sorted(kinds):
         try:
-            value = rule_value(policy, kind)
-            if value is not None:
+            active = active_by_kind.get(kind, [])
+            values = [canonical_json(rule["value"]) for rule in active if "value" in rule]
+            if len(set(values)) > 1:
+                errors.append(f"policy rules for {kind} have conflicting active values")
+            if active and kind in _PROFILE_KINDS:
+                value = active[0].get("value")
                 errors.extend(_profile_errors(kind, value))
         except (PolicyError, TypeError, ValueError):
             errors.append(f"policy rules for {kind} are conflicting or malformed")
@@ -200,10 +233,22 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
     if not isinstance(unsupported, list) or any(not isinstance(x, str) for x in unsupported):
         errors.append("policy.unsupported_constraints must be a string list")
     try:
-        json.dumps(policy, allow_nan=False)
+        canonical_json(policy)
     except (TypeError, ValueError):
         errors.append("policy must contain finite JSON values")
     return errors
+
+
+def _active_rules(policy: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    """Select retained active rules; callers validate override graphs first."""
+    rules = [rule for rule in policy.get("rules", []) if isinstance(rule, dict)]
+    overridden = {ident for rule in rules for ident in rule.get("overrides", [])
+                  if isinstance(ident, str)} if all(isinstance(rule.get("overrides", []), list) for rule in rules) else set()
+    active: dict[str, list[dict[str, Any]]] = {}
+    for rule in rules:
+        if isinstance(rule.get("kind"), str) and isinstance(rule.get("id"), str) and rule["id"] not in overridden:
+            active.setdefault(rule["kind"], []).append(rule)
+    return active
 
 
 def rule_value(policy: Mapping[str, Any], kind: str, default: Any = None) -> Any:
@@ -216,7 +261,7 @@ def rule_value(policy: Mapping[str, Any], kind: str, default: Any = None) -> Any
     values = [r.get("value") for r in rules if r.get("kind") == kind and r.get("id") not in overridden]
     if not values:
         return default
-    if any(value != values[0] for value in values[1:]):
+    if any(canonical_json(value) != canonical_json(values[0]) for value in values[1:]):
         raise PolicyError(f"conflicting active policy rules for {kind}")
     return values[0]
 

@@ -22,6 +22,9 @@ BOARD = ROOT / "docs" / "github-board.json"
 MARKER = "<!-- freya-task-board:v1 -->"
 HANDOFF = re.compile(r"<!-- freya-handoff: (\{.*?\}) -->")
 STATE_LABELS = {"state:ready", "state:blocked", "state:in-progress", "state:done"}
+COMPLETION_PROTOCOL = """After the deliverable and checks are complete, open a PR targeting `main` and
+merge it directly without a separate review step. Record completion only after
+that same-repository PR is merged and its head matches the pushed commit."""
 
 
 def utcnow():
@@ -129,9 +132,7 @@ may reclaim Demir's task after an announced absence or 30 minutes without an
 update, after checking branch activity. Checkpoint every 15 minutes and push
 work. Record branch, commit, verification, remaining work, blockers, deployment
 IDs and running simulations. Check the latest claim before resuming.
-After the deliverable and checks are complete, open a PR targeting `main` and
-merge it directly without a separate review step. Record completion only after
-that same-repository PR is merged and its head matches the pushed commit.
+{COMPLETION_PROTOCOL}
 
 ```text
 python3.11 tools/cowork.py claim {task['id']} --branch {task['branch']} --commit <pushed-sha>
@@ -223,6 +224,39 @@ def sync(gh, manifest, parent, found):
             if not gh.dry_run:
                 found[task["id"]] = updated
     gh.api("PATCH", gh.repo(f"issues/{parent['number']}"), {"body": parent_body(manifest, found)})
+
+
+def completion_protocol_body(body, task_id):
+    """Update only the known template fragments, preserving all other issue text."""
+    old = f'python3.11 tools/cowork.py complete {task_id} --commit <pushed-sha> --checks "command and result"'
+    new = f'python3.11 tools/cowork.py complete {task_id} --commit <pushed-sha> --pr <merged-pr-number-or-url> --checks "command and result"'
+    if not isinstance(body, str) or body.count(old) + body.count(new) != 1:
+        raise RuntimeError(f"{task_id} completion template is not recognized; review its description before syncing")
+    body = body.replace(old, new)
+    if COMPLETION_PROTOCOL not in body:
+        anchor = "IDs and running simulations. Check the latest claim before resuming.\n"
+        if body.count(anchor) != 1:
+            raise RuntimeError(f"{task_id} ownership template is not recognized; review its description before syncing")
+        body = body.replace(anchor, anchor + COMPLETION_PROTOCOL + "\n")
+    return body
+
+
+def sync_protocol(gh, manifest, found):
+    # Preflight the whole batch before writing, then check each live body again so
+    # stale list responses do not replace descriptions edited by another worker.
+    plans = []
+    for task in manifest["tasks"]:
+        issue = gh.api("GET", gh.repo(f"issues/{found[task['id']]['number']}"))
+        before = issue.get("body")
+        after = completion_protocol_body(before, task["id"])
+        if after != before:
+            plans.append((task["id"], issue["number"], before, after))
+    for task_id, number, before, after in plans:
+        path = gh.repo(f"issues/{number}")
+        if gh.api("GET", path).get("body") != before:
+            raise RuntimeError(f"{task_id} description changed during protocol sync; retry from current issue bodies")
+        gh.api("PATCH", path, {"body": after})
+    return [{"task": task_id, "issue": number, "changed": True} for task_id, number, _, _ in plans]
 
 
 def create_board(gh, manifest):
@@ -377,6 +411,7 @@ def main(argv=None):
     sub.add_parser("create-board")
     sub.add_parser("status")
     sub.add_parser("sync")
+    sub.add_parser("sync-protocol", help="Update known completion instructions only; preserve task state and handoffs")
     cp = sub.add_parser("claim"); cp.add_argument("task"); cp.add_argument("--branch", required=True); cp.add_argument("--commit", required=True); cp.add_argument("--takeover", action="store_true")
     hp = sub.add_parser("checkpoint"); hp.add_argument("task"); hp.add_argument("--branch", required=True); hp.add_argument("--commit", required=True); hp.add_argument("--done", required=True); hp.add_argument("--remaining", required=True); hp.add_argument("--blocker", default="none"); hp.add_argument("--offline", action="store_true")
     dp = sub.add_parser("complete"); dp.add_argument("task"); dp.add_argument("--commit", required=True); dp.add_argument("--checks", required=True); dp.add_argument("--pr", required=True)
@@ -397,6 +432,8 @@ def main(argv=None):
         return 0
     if args.action == "sync":
         sync(gh, manifest, parent, found); return 0
+    if args.action == "sync-protocol":
+        print(json.dumps({"dry_run": gh.dry_run, "updates": sync_protocol(gh, manifest, found)})); return 0
     actor = gh.api("GET", "user")["login"]
     if actor not in manifest["collaborators"].values():
         raise RuntimeError("Only the two registered collaborators can use ownership commands")

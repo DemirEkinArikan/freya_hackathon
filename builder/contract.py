@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .policy import _active_rules, validate_policy
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
+from .policy_conflicts import ConditionalConflictError, compile_conditional_conflicts
 
 
 class PolicyContractError(ValueError):
@@ -185,14 +186,18 @@ def _superseded_ids(rules: list[dict[str, Any]], by_id: dict[str, dict[str, Any]
     return sorted(ancestors)
 
 
-def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
+def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditional_mode: str = "reject") -> dict[str, Any]:
     """Return a deep-copied, deterministic contract or raise PolicyContractError.
 
     No rule has implicit precedence from source or array order. Conflicting active
     values require explicit acyclic overrides of the same semantic kind. Removing
     a constraint or replacing it with another kind is unsupported; represent the
     unresolved requirement explicitly rather than silently erasing a constraint.
+    Conditional inspection validates partial scope without granting runtime
+    enforcement. Default compilation rejects those conditions until integrated.
     """
+    if type(conditional_mode) is not str or conditional_mode not in {"reject", "inspect"}:
+        raise PolicyContractError(["conditional conflict mode must be reject or inspect"])
     manifest, documents, errors = _source_inventory(sources)
     errors.extend(validate_policy(policy, documents, strict=True))
     if isinstance(policy, dict):
@@ -219,5 +224,13 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str
                 "permitted_operations": catalogue, "sources": copy.deepcopy(manifest),
                 "provenance_is_operative": False,
                 "semantic_correctness_verified": False}
+    try:
+        conditional = compile_conditional_conflicts(active, manifest)
+    except ConditionalConflictError as exc:
+        raise PolicyContractError(exc.errors) from exc
+    if conditional is not None:
+        if conditional_mode != "inspect":
+            raise PolicyContractError(["conditional policy conflicts require runtime enforcement; only inspection is currently supported"])
+        contract["conditional_conflicts"] = conditional
     contract["sha256"] = digest(contract)
     return contract

@@ -45,17 +45,19 @@ _RESULTS = {"verify_identity": ("ok", "verified", "wrong_answers_left", "hint", 
             "transfer_to_agent": ("ok", "error"), "close_call": ("ok", "error")}
 _REQUIRED = {
     "verify_identity": {"identity_fields", "identity_wrong_limit"},
-    "get_account": {"identity_fields", "identity_wrong_limit"},
+    "get_account": {"identity_fields", "identity_wrong_limit", "product_order", "resolve_all_products"},
     "stage_promise": {"identity_fields", "identity_wrong_limit", "band_ranges", "deadline_days",
                       "floor_fields", "holidays", "business_weekdays", "require_confirmation",
-                      "promise_failure_limit"},
+                      "promise_failure_limit", "product_order", "resolve_all_products"},
     # Absent API nonpersistence guarantees authorize no retry. An absent failure
     # disposition stays uncertain/quarantined; it never supplies a bank reason.
-    "commit_promises": {"require_confirmation", "confirmation_scope", "promise_failure_limit", "promise_readback"},
-    "stage_note": {"note_reasons", "record_notes"}, "finalize_notes": {"note_reasons", "record_notes"},
+    "commit_promises": {"require_confirmation", "confirmation_scope", "promise_failure_limit", "promise_readback",
+                        "product_order", "resolve_all_products"},
+    "stage_note": {"note_reasons", "record_notes", "product_order", "resolve_all_products"},
+    "finalize_notes": {"note_reasons", "record_notes", "product_order", "resolve_all_products"},
     "stage_transfer": {"transfer_reasons", "transfer_prerequisites"}, "commit_transfer": {"transfer_reasons", "transfer_prerequisites"},
     "schedule_callback": {"callback_window", "holidays", "business_weekdays"},
-    "close_call": {"close_reasons", "record_notes", "close_precedence", "identity_close", "product_order", "resolve_all_products"},
+    "close_call": {"close_reasons", "record_notes", "identity_close"},
 }
 
 
@@ -286,6 +288,10 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
+    # Absence grants no priority: the kernel accepts only a unique protected
+    # fact or a sourced identity disposition, and rejects ambiguous facts.
+    # This detached runtime representation is not a frozen policy rule.
+    result.setdefault("close_precedence", [])
     if result.get("policy_applicability") == {"products": "single"}:
         # Conservative kernel invariant: the sole product must be resolved.
         # This is not an invented cross-product policy rule or sort order;

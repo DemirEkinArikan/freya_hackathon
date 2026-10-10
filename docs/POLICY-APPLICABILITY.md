@@ -19,6 +19,21 @@ Policies with multiple products, or without typed scope, retain the explicit
 ordering and resolution requirements. A new amendment must explicitly override
 the previous applicability rule; document order alone grants no precedence.
 
+Ordering and all-product resolution are dependencies of account lookup, promise
+staging/commit and disposition staging/finalization. A goal that selects only
+identity, callback, pre-account transfer and closing roles does not consume
+account products, so it need not declare product scope or invent collection
+dimensions. Any independently supplied dimensions remain frozen and validated.
+Every account consumer retains the requirements, including when its selected
+action set omits account lookup; the existing explicit singleton waiver applies.
+
+Closing priority is optional when the source supplies no ranking. The frozen
+policy remains unchanged; the detached runtime profile represents absence as
+an empty ranking. The existing kernel accepts a fixed identity disposition or
+one eligible protected fact, and rejects ambiguous multiple unranked facts.
+An explicitly supplied ranking still requires its exact nonempty typed value;
+it cannot be discarded or replaced by the absence representation.
+
 An optional source-backed `product_count_bounds` rule retains explicit account
 cardinality separately: a nonempty object with `min`, `max`, or both, containing
 nonnegative integers. When both are supplied the minimum cannot exceed the

@@ -164,7 +164,7 @@ class ExecutionRequirementsTests(unittest.TestCase):
 
     def test_singleton_waiver_requires_active_sourced_scope(self):
         for scope in (None, "multiple", "single"):
-            policy, sources, api = packet(["close_call"], narrow=True)
+            policy, sources, api = packet(["get_account", "close_call"], narrow=True)
             policy["rules"] = [item for item in policy["rules"]
                                if item["kind"] not in {"product_order", "resolve_all_products"}]
             if scope is not None:
@@ -173,7 +173,7 @@ class ExecutionRequirementsTests(unittest.TestCase):
                 rule(policy, "policy_applicability")["source"]["quote"] = "not an approved scope witness"
             with self.subTest(scope=scope), self.assertRaises(ExecutionRequirementsError):
                 compile_execution_requirements(policy, sources, api)
-        policy, sources, api = packet(["close_call"], narrow=True)
+        policy, sources, api = packet(["get_account", "close_call"], narrow=True)
         policy["rules"] = [item for item in policy["rules"]
                            if item["kind"] not in {"product_order", "resolve_all_products"}]
         add_rule(policy, "policy_applicability", {"products": "single"})

@@ -25,6 +25,14 @@ clock, mock lease and stubbed requests: polling exhausts its deadline while
 holding the shared lease, and iteration retrieval fetches 101 runs over two pages
 and refuses an incomplete total. No network operation is used by these tests.
 
+The builder's explicit test hook also passes a 300-second reserve to the hosted
+bank adapter. Every practice-session and ledger request checks the shared
+deadline before opening the connection and caps its timeout at the remaining
+time minus that reserve. Standalone hosted evaluation keeps a zero reserve and
+the existing 20-second request cap. These are local allocation checks; an HTTP
+socket timeout alone does not establish a hard wall-clock cancellation of a
+remote request or simulation. No live compatibility is claimed by this fix.
+
 Verification on 10 October 2026:
 
 - `python3.11 -m unittest discover -s tests -p 'test_hosted_runner.py' -v`: 15 passed.

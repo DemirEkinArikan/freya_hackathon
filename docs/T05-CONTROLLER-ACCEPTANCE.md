@@ -142,3 +142,38 @@ template bindings and final guarded-call termination.
 A subsequent fresh complete build from checked merged source, independent
 approved-source review and actual publication/readback/export remains required.
 No generated policy or workflow is patched to obtain acceptance.
+
+## Bodyless guaranteed failure compatibility
+
+Independent source reviews of checked `10960cdd0ff2f5a4c27ba4e03f8354406fa1c47a`
+found another material incompatibility. A permitted API failure response can
+guarantee nonpersistence without specifying a response body. The compiled
+response hook loses its actual transport status when the body is absent, and
+the promise-result guard requires an explicit negative payload flag even when
+the exact error status has a sourced unconditional nonpersistence guarantee.
+Two reviewers reproduced both paths using invented, renamed API operations
+and in-memory guard/hook execution, without evaluator fixtures or live calls.
+
+The fresh run `20261010T215022779723Z` remains unchanged and cannot establish
+T05 acceptance while this source incompatibility remains. Its isolated
+generation subprocess was stopped at `2026-10-10T21:58:25.652179Z`, after
+482.872 seconds measured from the controller's global remaining-time event.
+The controller retained a failed manifest and end trace; policy repair had not
+frozen a policy, and no deployment, export or simulation occurred. A separate source
+repair must transport actual envelope status for genuinely empty bodies and
+qualify only proof-scoped, noncontradictory error responses for replay. It must
+preserve strict negative payload qualification on successful transport,
+immutable request bodies, confirmation, retry limits, uncertain-persistence
+quarantine and the sourced exhaustion disposition. After checked source lands,
+another fresh complete build and actual publication/readback/export are needed.
+
+The same source review found supplied call symbols could not be used in authored
+opening templates unless falsely declared as extracted conversation values.
+An optional `runtime_inputs` rule now declares only names literally present in
+its active source quotes. It supplies no values, defaults or inferred data
+types. The frozen profile permits those names in text, rejects authored
+extraction that shadows them, and checks actual call values before the first
+dialogue. Missing, null or empty-text values take the quarantine terminal;
+zero and false remain valid supplied values. Existing protected-value privacy
+and write restrictions still apply. Input amendments replace the active
+declaration, and the contract/profile hashes seal its exact names.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, TypedDict
@@ -45,7 +46,7 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "promise_failure_limit", "tool_aliases", "persuasion_limits", "identity_hint_exemptions",
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
-_PROFILE_KINDS.update({"wire_codes", "policy_applicability"})
+_PROFILE_KINDS.update({"wire_codes", "policy_applicability", "runtime_inputs"})
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
@@ -54,6 +55,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
+    "runtime_inputs": "a nonempty unique array of safe identifier strings naming read-only call inputs, each literally named in active source quotes; no values, types or defaults",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
@@ -149,11 +151,32 @@ def _structured_error(kind: str, value: Any, domain: str) -> str:
     return message
 
 
+def runtime_input_errors(names: Any, *, operation_names=(), source_quotes=None) -> list[str]:
+    """Authorize declared symbols only; quoted names do not prove supplied values."""
+    if (not isinstance(names, list) or not names
+            or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) for name in names)
+            or len(set(names)) != len(names)):
+        return ["runtime_inputs requires a nonempty unique array of identifier strings"]
+    errors = []
+    for name in names:
+        if (name.casefold().startswith("bg_") or name.casefold() == "bank_token"
+                or re.search(r"(?:^|_)(?:token|secret|password|credentials?|api_key|access_key|authorization)(?:_|$)", name, re.I)
+                or any(name.startswith(operation + "_") for operation in operation_names)):
+            errors.append("runtime_inputs cannot declare protected, credential or API-result symbols")
+        if source_quotes is not None and not any(
+                isinstance(quote, str) and re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])", quote)
+                for quote in source_quotes):
+            errors.append("runtime_inputs name is absent from its active literal source quotes")
+    return sorted(set(errors))
+
+
 def _profile_errors(kind: str, value: Any) -> list[str]:
     def strings(item: Any, *, empty: bool = False) -> bool:
         return isinstance(item, list) and (empty or bool(item)) and all(isinstance(x, str) and x for x in item)
     valid = True
-    if kind == "policy_applicability":
+    if kind == "runtime_inputs":
+        valid = not runtime_input_errors(value)
+    elif kind == "policy_applicability":
         valid = (isinstance(value, dict) and set(value) == {"products"}
                  and isinstance(value["products"], str) and value["products"] in {"single", "multiple"})
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:

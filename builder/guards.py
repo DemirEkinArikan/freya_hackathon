@@ -10,7 +10,7 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
+from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS, runtime_input_errors
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -271,6 +271,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     or not isinstance(value.get("value_labels", {}), dict)
                     or any(not isinstance(labels, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in labels.items()) for labels in value.get("value_labels", {}).values())):
                 errors.append("promise_readback needs human product fields and optional field value labels, excluding internal IDs")
+    if "runtime_inputs" in profile:
+        runtime = contract.get("active_rules", {}).get("runtime_inputs", {})
+        operations = set(_FIELDS) | {row["name"] for row in contract.get("permitted_operations", [])}
+        errors.extend(runtime_input_errors(profile["runtime_inputs"], operation_names=operations,
+                                           source_quotes=[item["quote"] for item in runtime.get("provenance", [])]))
+        declared_inputs = {name for name in profile["runtime_inputs"] if isinstance(name, str)} if isinstance(profile["runtime_inputs"], list) else set()
+        if any(field.get("name") in declared_inputs for node in plan.get("nodes", {}).values()
+               for field in node.get("extraction_schema", []) if isinstance(field, dict)):
+            errors.append("authored extraction cannot overwrite frozen runtime_inputs")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -409,7 +418,8 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 valid = kind == "string"
             if not valid:
                 raise GuardCompileError([name + ": unsupported trusted result schema for " + semantic])
-        catalog[name] = {"name": actual_name, "request_schema": copy.deepcopy(request), "fields": fields,
+        catalog[name] = {"name": actual_name, "path": op["path"], "method": op["method"],
+                         "request_schema": copy.deepcopy(request), "fields": fields,
                          "results": results, "tool": copy.deepcopy(tools[actual_name])}
         if name == "get_account":
             product_schema = response["properties"][results["products"]].get("items", {})
@@ -1097,10 +1107,37 @@ def guard_result(state, data, profile, catalog, expected_action):
             state['consent'] = ''
             return state, 'closed', dict(), ''
         return state, 'failure', dict(), ''
-    nonpersistent = any(type(status) is int and status == case['http_status'] and
-                        ('error' not in case or data.get('error') == case['error'])
-                        for case in profile.get('nonpersistent_failures', dict()).get(tx['operation'], list()))
+    matching_failures = [case for case in profile.get('nonpersistent_failures', dict()).get(tx['operation'], list())
+                        if type(status) is int and status == case['http_status'] and
+                        ('error' not in case or data.get('error') == case['error'])]
+    nonpersistent = bool(matching_failures)
     negative_ok = ok is False or type(ok) is str and ok in ('false', 'False')
+    # The controller has already checked the literal API quotation. Bodyless
+    # failures additionally require that witness's exact operation response
+    # scope; the kernel never interprets prose or guesses from a URL suffix.
+    sourced_failure = False
+    for case in matching_failures:
+        witness = case.get('api_source')
+        if (not isinstance(witness, dict) or set(witness) != set(('pointer', 'quote'))
+                or type(witness.get('pointer')) is not str or type(witness.get('quote')) is not str
+                or not witness['quote'].strip()):
+            continue
+        pointer = witness['pointer']
+        if pointer.startswith('#/'):
+            pointer = pointer[1:]
+        if not pointer.startswith('/'):
+            continue
+        encoded = pointer[1:].split('/')
+        if any('~' in part.replace('~0', '').replace('~1', '') for part in encoded):
+            continue
+        parts = [part.replace('~1', '/').replace('~0', '~') for part in encoded]
+        operation = catalog.get(tx['operation'], dict())
+        if (len(parts) >= 6 and parts[0] == 'paths' and parts[1] == operation.get('path')
+                and parts[2].upper() == operation.get('method') and parts[3] == 'responses'
+                and parts[4] == str(status)):
+            sourced_failure = True
+    bodyless_failure = (type(status) is int and 400 <= status <= 599 and sourced_failure
+                        and ('ok' not in data or type(ok) is str and ok == ''))
     # Every close result is terminal, including malformed or negative evidence.
     # Attempting a close does not establish that the bank recorded it.
     if action == 'close_call':
@@ -1111,7 +1148,14 @@ def guard_result(state, data, profile, catalog, expected_action):
         state['quarantined'] = not state['closed']
         state['attempts'][tx['key']]['status'] = 'recorded' if state['closed'] else 'unknown_persistence'
         return state, 'closed', dict(), ''
-    if action == 'commit_promises' and nonpersistent and negative_ok:
+    if (action == 'commit_promises' and not guard_true(ok) and 'promise_id' in data
+            and not (type(data['promise_id']) is str and data['promise_id'] == '')):
+        # A record identity contradicts rejection/no-body evidence. Null and
+        # malformed IDs are also uncertain, rather than permission to replay.
+        state['quarantined'] = True
+        state['attempts'][tx['key']]['status'] = 'unknown_persistence'
+        return state, 'failure', dict(), ''
+    if action == 'commit_promises' and nonpersistent and (negative_ok or bodyless_failure):
         state['inflight'] = dict()
         state['attempts'][tx['key']]['status'] = 'nonpersistent_failed'
         pid = tx['semantic']['product_id']
@@ -1228,7 +1272,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
-        tail += "    previous_state = None\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
+        tail += "    previous_state = None\n    for name in spec['profile'].get('runtime_inputs', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required runtime input is absent')\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
     else:
         tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
         if phase == "prepare":
@@ -1370,7 +1414,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         # Transport only the actual immutable HTTP envelope status. The kit
         # documents hooks before response_mapping; API pre_action automatic
         # result-key naming is insufficiently explicit to use as evidence.
-        tool["post_process_code"] = "try:\n    if isinstance(result, dict) and isinstance(result.get('data'), dict):\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
+        tool["post_process_code"] = "try:\n    if isinstance(result, dict):\n        if 'data' not in result or result['data'] is None or type(result['data']) is str and result['data'] == '':\n            result['data'] = dict()\n        if isinstance(result.get('data'), dict):\n            result['data'].pop('bg_http_status', None)\n            if 'status_code' in result:\n                result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}

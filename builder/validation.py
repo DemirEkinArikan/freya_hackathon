@@ -13,7 +13,7 @@ from collections import deque
 from typing import Any, Mapping
 from urllib.parse import urlsplit
 
-from .policy import rule_value, validate_policy
+from .policy import rule_value, validate_policy, _active_rules, runtime_input_errors
 from .safety import assert_no_secrets
 
 NODE_TYPES = {"conversation", "api_request", "code", "end_call", "transfer_call",
@@ -516,7 +516,23 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     all_nodes = {**nodes, **globals_}
     # Public data bindings are declarations, not evidence of runtime persistence.
     # Exact trusted recompilation separately seals all protected code and state.
+    operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
     declared = {"customer_id", "now", "BANK_TOKEN"}
+    if isinstance(policy, Mapping) and ("runtime_inputs" in policy or any(
+            isinstance(rule, dict) and rule.get("kind") == "runtime_inputs" for rule in policy.get("rules", []))):
+        if validate_policy(policy):
+            errors.append("runtime_inputs requires a valid source-quoted policy")
+        else:
+            from .guards import execution_action_catalogue
+            active_inputs = _active_rules(policy).get("runtime_inputs", [])
+            names = rule_value(policy, "runtime_inputs", [])
+            input_operations = operation_names | {entry["operation_role"] for entry in execution_action_catalogue().values()}
+            input_errors = runtime_input_errors(names, operation_names=input_operations,
+                                                source_quotes=[rule["source"]["quote"] for rule in active_inputs])
+            if input_errors:
+                errors.extend(input_errors)
+            else:
+                declared.update(names)
     declared.update(_obj(workflow.get("test_variables")))
     if any(name.startswith("bg_") for name in _obj(workflow.get("test_variables"))):
         errors.append("workflow.test_variables cannot override protected guard values")
@@ -543,7 +559,6 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if isinstance(fn.get("name"), str):
             # Documented engine result bindings, not invented static defaults.
             declared.update(fn["name"] + suffix for suffix in ("_status_code", "_result", "_args"))
-    operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
     def text_bindings(value: Any, path: str, *, spoken: bool = False, readback: bool = False) -> None:
         if isinstance(value, str):
             stripped = re.sub(r"\{\{[^{}]+\}\}", "", value)

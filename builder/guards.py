@@ -319,6 +319,18 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             {key: decode("outcomes" if key == "outcome" else "reasons", value)
              if key in {"outcome", "reason"} else value for key, value in choice.items()}
             for choice in choices] for scope, choices in result["identity_close_choices"].items()}
+    disclosure = result.get("account_disclosure_fields")
+    if isinstance(disclosure, dict):
+        # This is a frozen sourced code map, not a guessed product taxonomy.
+        # The disclosure compiler additionally binds every selected wire code
+        # to the exact get_account product-type schema.
+        codes = result.get("wire_codes", {}).get("product_types", {})
+        if any(kind in codes.values() and codes.get(kind, kind) != kind for kind in disclosure["by_product_type"]):
+            raise GuardCompileError(["account disclosure key is ambiguous between semantic and wire product types"])
+        selected = {codes.get(kind, kind): fields for kind, fields in disclosure["by_product_type"].items()}
+        if len(selected) != len(disclosure["by_product_type"]):
+            raise GuardCompileError(["account disclosure product-type keys collide through frozen code bindings"])
+        result["account_disclosure_fields"]["by_product_type"] = selected
     if "promise_failure_disposition" in result:
         result["promise_failure_disposition"]["reason"] = decode("reasons", decode("notes", result["promise_failure_disposition"]["reason"]))
         commits = any(node.get("action") == "commit_promises" for node in plan["nodes"].values())
@@ -491,10 +503,9 @@ def _disclosure_schema(contract: dict, profile: dict, catalog: dict) -> dict:
     selected = profile.get("account_disclosure_fields")
     if selected is None or isinstance(selected, list) and not selected:
         return {}
-    if (not isinstance(selected, list) or not selected
-            or any(not isinstance(field, str) or not field for field in selected)
-            or len(set(selected)) != len(selected)):
-        raise GuardCompileError(["account_disclosure_fields requires unique nonempty exact field names"])
+    conditional = isinstance(selected, dict)
+    if _profile_errors("account_disclosure_fields", selected):
+        raise GuardCompileError(["account_disclosure_fields requires exact unconditional or common/by_product_type field lists"])
     account = catalog.get("get_account")
     if not isinstance(account, dict):
         raise GuardCompileError(["account disclosure requires a permitted get_account operation"])
@@ -513,14 +524,34 @@ def _disclosure_schema(contract: dict, profile: dict, catalog: dict) -> dict:
     properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
     forbidden = {"customer_id", "product_id", account["product_fields"]["product_id"]}
     forbidden.update(op["fields"].get("customer_id", "") for op in catalog.values())
-    if any(field in forbidden for field in selected):
+    fields = (selected["common"] + [field for branch in selected["by_product_type"].values() for field in branch]
+              if conditional else selected)
+    if any(field in forbidden for field in fields):
         raise GuardCompileError(["account_disclosure_fields cannot expose internal/customer identifier aliases"])
     approved = {}
-    for field in selected:
+    for field in fields:
         leaf = properties.get(field)
         if not isinstance(leaf, dict) or leaf.get("type") not in {"string", "number", "integer", "boolean"}:
             raise GuardCompileError(["account disclosure field is missing or is not a supported scalar: " + field])
         approved[field] = copy.deepcopy(leaf)
+    if conditional:
+        type_field = account["product_fields"]["type"]
+        if type_field in forbidden:
+            raise GuardCompileError(["conditional account disclosure cannot classify products through an internal/customer identifier alias"])
+        type_schema = properties.get(type_field)
+        if not isinstance(type_schema, dict) or type_schema.get("type") != "string":
+            raise GuardCompileError(["conditional account disclosure requires an exact string product-type schema"])
+        enum = type_schema.get("enum")
+        sourced = contract["active_rules"]["account_disclosure_fields"]["value"]["by_product_type"]
+        codes = profile.get("wire_codes", {}).get("product_types", {})
+        if enum is not None and any(kind in enum and codes.get(kind, kind) != kind for kind in sourced):
+            raise GuardCompileError(["account disclosure semantic product-type key shadows a supplied API code"])
+        if enum is not None and any(kind not in enum for kind in selected["by_product_type"]):
+            raise GuardCompileError(["account disclosure product-type key is outside the supplied API enum"])
+        return {"mode": "by_product_type", "type_schema": copy.deepcopy(type_schema),
+                "common": {field: approved[field] for field in selected["common"]},
+                "by_product_type": {kind: {field: approved[field] for field in branch}
+                                    for kind, branch in selected["by_product_type"].items()}}
     return approved
 
 
@@ -888,7 +919,15 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
                                    confirmed_write_failures=state['promise_failures'].get(pid, 0)))
         if disclosed:
             display = dict()
-            for field, schema in disclosed.items():
+            selected = disclosed
+            if disclosed.get('mode') == 'by_product_type':
+                kind = product['type']
+                if not isinstance(kind, str) or not kind:
+                    raise ValueError('conditional account fact lacks an exact product type')
+                guard_schema(kind, disclosed['type_schema'])
+                selected = dict(disclosed['common'])
+                selected.update(disclosed['by_product_type'].get(kind, dict()))
+            for field, schema in selected.items():
                 if field not in product or not readable(product[field]):
                     raise ValueError('approved account fact is missing or contains an internal identifier')
                 value = product[field]

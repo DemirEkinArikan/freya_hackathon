@@ -1,0 +1,91 @@
+{
+  "nodes": {
+    "start": {
+      "name": "start",
+      "tools": [],
+      "on_enter": {
+        "text": "Platform smoke beta. Please say ready.",
+        "type": "tts"
+      },
+      "node_type": "conversation",
+      "assertions": [],
+      "passthrough": false,
+      "pre_actions": [],
+      "transitions": [
+        {
+          "condition": {
+            "mode": "exact",
+            "operator": "always"
+          },
+          "description": "After any caller response end the smoke test.",
+          "target_node": "finish"
+        }
+      ],
+      "role_message": "",
+      "task_message": "This is a harmless platform readiness test. No tool call is allowed. Acknowledge the caller briefly.",
+      "interruptible": true,
+      "max_node_turns": 1,
+      "response_mapping": [],
+      "extraction_schema": [],
+      "max_turn_transition": "finish",
+      "truncation_strategy": "keep_all",
+      "suppress_tool_results": false,
+      "truncation_window_size": 10,
+      "on_enter_first_entry_only": false,
+      "disable_inactivity_monitor": false,
+      "passthrough_default_transition": null,
+      "return_to_previous_on_interrupt": false
+    },
+    "finish": {
+      "name": "finish",
+      "tools": [],
+      "on_enter": {
+        "type": "silent"
+      },
+      "terminal": {
+        "type": "function",
+        "function": {
+          "name": "platform_smoke_end",
+          "handler": "__function__:end_call",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "message_mode": {
+                "type": "string",
+                "default": "custom"
+              },
+              "spoken_message": {
+                "type": "string",
+                "default": "Platform smoke complete. Goodbye."
+              }
+            }
+          },
+          "description": ""
+        }
+      },
+      "node_type": "end_call",
+      "assertions": [],
+      "passthrough": false,
+      "pre_actions": [],
+      "transitions": [],
+      "role_message": "",
+      "task_message": "",
+      "interruptible": true,
+      "max_node_turns": null,
+      "response_mapping": [],
+      "extraction_schema": [],
+      "max_turn_transition": null,
+      "truncation_strategy": "keep_all",
+      "suppress_tool_results": false,
+      "truncation_window_size": 10,
+      "on_enter_first_entry_only": false,
+      "disable_inactivity_monitor": true,
+      "passthrough_default_transition": null,
+      "return_to_previous_on_interrupt": false
+    }
+  },
+  "global_nodes": {},
+  "initial_node": "start",
+  "system_prompt": "You are a synthetic platform readiness assistant. Speak English. No bank operation or tool call is allowed. Never ask for personal, account, credential or payment information.",
+  "test_variables": {}
+}

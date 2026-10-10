@@ -1,0 +1,220 @@
+{
+  "nodes": {
+    "finish": {
+      "name": "finish",
+      "tools": [],
+      "on_enter": {
+        "type": "silent"
+      },
+      "terminal": {
+        "type": "function",
+        "function": {
+          "name": "serializer_probe_end",
+          "handler": "__function__:end_call",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "message_mode": {
+                "type": "string",
+                "default": "none"
+              }
+            }
+          },
+          "description": ""
+        }
+      },
+      "node_type": "end_call",
+      "assertions": [],
+      "passthrough": false,
+      "pre_actions": [],
+      "transitions": [],
+      "role_message": "",
+      "task_message": "",
+      "interruptible": true,
+      "max_node_turns": null,
+      "response_mapping": [],
+      "extraction_schema": [],
+      "max_turn_transition": null,
+      "truncation_strategy": "keep_all",
+      "suppress_tool_results": false,
+      "truncation_window_size": 10,
+      "on_enter_first_entry_only": false,
+      "disable_inactivity_monitor": true,
+      "passthrough_default_transition": null,
+      "return_to_previous_on_interrupt": false
+    },
+    "api_probe": {
+      "name": "api_probe",
+      "tools": [],
+      "on_enter": {
+        "type": "silent"
+      },
+      "node_type": "api_request",
+      "assertions": [],
+      "passthrough": true,
+      "pre_actions": [
+        {
+          "type": "function",
+          "config": {
+            "timeoutMs": 10000,
+            "maxRetries": 0
+          },
+          "function": {
+            "name": "verify_identity",
+            "handler": "__function__:api_call",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "default": "https://freya-bank-mock.freyavoice.workers.dev/v1/verify_identity"
+                },
+                "body": {
+                  "type": "object",
+                  "required": [
+                    "customer_id",
+                    "field",
+                    "answer"
+                  ],
+                  "properties": {
+                    "field": {
+                      "enum": [
+                        "date_of_birth",
+                        "phone_last4"
+                      ],
+                      "type": "string",
+                      "description": "Supply field from the verified conversation and permitted contract"
+                    },
+                    "answer": {
+                      "type": "string",
+                      "description": "For date_of_birth: the date as YYYY-MM-DD. Callers say dates in words, the agent converts. An unreadable value is rejected with ok=false and is not counted as a wrong answer. For phone_last4: four digits."
+                    },
+                    "customer_id": {
+                      "type": "string",
+                      "default": "{{customer_id}}"
+                    }
+                  }
+                },
+                "method": {
+                  "type": "string",
+                  "default": "POST"
+                },
+                "headers": {
+                  "type": "object",
+                  "properties": {
+                    "Content-Type": {
+                      "type": "string",
+                      "default": "application/json"
+                    }
+                  }
+                },
+                "connect_retries": {
+                  "type": "number",
+                  "default": 0
+                }
+              }
+            },
+            "description": "Check one security answer. Three wrong answers in total end the check."
+          },
+          "pre_process_code": "config = dict(config)",
+          "post_process_code": "result = dict(result)"
+        }
+      ],
+      "transitions": [
+        {
+          "condition": {
+            "mode": "exact",
+            "operator": "always"
+          },
+          "description": "Always finish the inactive probe branch.",
+          "target_node": "finish"
+        }
+      ],
+      "role_message": "",
+      "task_message": "",
+      "interruptible": true,
+      "max_node_turns": null,
+      "response_mapping": [
+        {
+          "path": "data.ok",
+          "variable": "serializer_probe_ok",
+          "description": ""
+        }
+      ],
+      "extraction_schema": [],
+      "max_turn_transition": null,
+      "truncation_strategy": "keep_all",
+      "suppress_tool_results": true,
+      "truncation_window_size": 10,
+      "on_enter_first_entry_only": false,
+      "disable_inactivity_monitor": false,
+      "passthrough_default_transition": "finish",
+      "return_to_previous_on_interrupt": false
+    },
+    "code_probe": {
+      "name": "code_probe",
+      "tools": [],
+      "on_enter": {
+        "type": "silent"
+      },
+      "node_type": "code",
+      "assertions": [],
+      "passthrough": true,
+      "pre_actions": [
+        {
+          "type": "function",
+          "config": {
+            "timeoutMs": 10000,
+            "maxRetries": 0
+          },
+          "function": {
+            "name": "code_exec",
+            "handler": "__function__:code_exec",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "default": "vars['serializer_probe'] = 'ready'"
+                },
+                "timeout_ms": {
+                  "type": "number",
+                  "default": 10000
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      ],
+      "transitions": [
+        {
+          "condition": {
+            "mode": "exact",
+            "operator": "always"
+          },
+          "description": "Always finish the inactive probe branch.",
+          "target_node": "finish"
+        }
+      ],
+      "role_message": "",
+      "task_message": "",
+      "interruptible": true,
+      "max_node_turns": null,
+      "response_mapping": [],
+      "extraction_schema": [],
+      "max_turn_transition": null,
+      "truncation_strategy": "keep_all",
+      "suppress_tool_results": false,
+      "truncation_window_size": 10,
+      "on_enter_first_entry_only": false,
+      "disable_inactivity_monitor": false,
+      "passthrough_default_transition": "finish",
+      "return_to_previous_on_interrupt": false
+    }
+  },
+  "global_nodes": {},
+  "initial_node": "finish",
+  "system_prompt": "Inactive serializer diagnostics. End immediately. Do not call bank tools.",
+  "test_variables": {}
+}

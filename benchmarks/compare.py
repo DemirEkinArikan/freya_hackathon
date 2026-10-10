@@ -5,6 +5,7 @@ import argparse
 from datetime import datetime
 from decimal import Decimal, DecimalException
 import json
+import math
 from pathlib import Path
 import re
 
@@ -203,6 +204,48 @@ def _trial(value, conditions, brief):
             "report_sha256": digest(report)}
 
 
+def _build_provenance(value, manifest, conditions, build_start, build_end):
+    """Check the original invocation record without consulting current source files."""
+    binding = value.get("build_provenance")
+    _require(isinstance(binding, dict) and type(binding.get("version")) is int
+             and binding["version"] == 1, "build_source_provenance_absent")
+    snapshot = binding.get("source_snapshot")
+    _require(isinstance(snapshot, dict) and type(snapshot.get("version")) is int
+             and snapshot["version"] == 1, "build_source_snapshot_invalid")
+    files, config = snapshot.get("files"), snapshot.get("resolved_config")
+    _require(isinstance(files, dict) and bool(files)
+             and all(isinstance(path, str) and "\\" not in path and ":" not in path
+                     and all(ord(character) >= 32 and not 127 <= ord(character) <= 159 for character in path)
+                     and all(part not in ("", ".", "..") for part in path.split("/"))
+                     and _sha(fingerprint) for path, fingerprint in files.items())
+             and isinstance(config, dict), "build_source_snapshot_invalid")
+    fingerprint = digest({key: snapshot[key] for key in ("version", "files", "resolved_config")})
+    _require(all(record.get("builder_source_sha256") == fingerprint
+                 for record in (value, manifest, binding, snapshot))
+             and binding.get("builder_source_record_sha256") == digest(snapshot)
+             and manifest.get("builder_source_record_sha256") == digest(snapshot)
+             and binding.get("build_manifest_sha256") == digest(manifest)
+             and _sha(binding.get("trace_sha256")), "build_source_provenance_mismatch")
+    deadline, reserve = config.get("deadline_seconds"), config.get("export_reserve_seconds")
+    _require(config.get("mode") == "live" and config.get("model") == conditions["builder_model"]
+             and config.get("reasoning_effort") == conditions["reasoning_effort"]
+             and config.get("controller_dependency_injection") is False
+             and type(deadline) in (int, float) and math.isfinite(deadline) and 0 < deadline <= 1800
+             and type(reserve) in (int, float) and math.isfinite(reserve) and 300 <= reserve <= deadline,
+             "build_source_config_mismatch")
+    _require((build_end - build_start).total_seconds() <= deadline, "build_recorded_deadline_exceeded")
+    elapsed = manifest.get("elapsed_seconds")
+    _require(type(elapsed) in (int, float) and 0 <= elapsed <= deadline and math.isfinite(elapsed),
+             "build_elapsed_evidence_invalid")
+    try:
+        captured = datetime.fromisoformat(snapshot.get("captured_at"))
+        _require(captured.utcoffset() is not None and build_start <= captured <= build_end,
+                 "build_source_capture_mismatch")
+    except (TypeError, ValueError):
+        raise ComparisonError("build_source_capture_mismatch") from None
+    return max((build_end - build_start).total_seconds(), elapsed)
+
+
 def _bundle(value):
     _require(isinstance(value, dict) and value.get("version") == 1 and type(value.get("version")) is int,
              "comparison_bundle_invalid")
@@ -237,7 +280,7 @@ def _bundle(value):
     _require(isinstance(deployment, dict) and deployment.get("published") is True
              and type(deployment.get("version_number")) is int and deployment["version_number"] > 0,
              "build_deployment_unverified")
-    _, build_end, build_seconds = _period(value.get("build"))
+    build_start, build_end, build_seconds = _period(value.get("build"))
     _require(build_seconds <= 1800, "build_budget_exceeded")
     trials = value.get("trials")
     _require(isinstance(trials, dict) and set(trials) == {"train", "validation"}, "development_splits_incomplete")
@@ -252,8 +295,12 @@ def _bundle(value):
     _require(digest(checked["train"]["pin"]) == digest(checked["validation"]["pin"]), "candidate_changed_between_splits")
     for field in ("fixtures", "calls", "sessions", "simulations", "iterations"):
         _require(not checked["train"][field].intersection(checked["validation"][field]), "split_evidence_reused")
+    build_seconds = _build_provenance(value, manifest, conditions, build_start, build_end)
+    build_config = value["build_provenance"]["source_snapshot"]["resolved_config"]
     return {"brief": value["brief"], "source": value["source_sha256"], "conditions": conditions,
-            "builder_source": value["builder_source_sha256"], "build_seconds": build_seconds, "trials": checked}
+            "builder_source": value["builder_source_sha256"], "build_seconds": build_seconds,
+            "build_budget": {key: build_config[key] for key in ("deadline_seconds", "export_reserve_seconds")},
+            "trials": checked}
 
 
 def compare(baseline, structured):
@@ -265,6 +312,7 @@ def compare(baseline, structured):
         left, right = _bundle(baseline), _bundle(structured)
         _require(left["brief"] == right["brief"] and left["source"] == right["source"], "source_parity_absent")
         _require(digest(left["conditions"]) == digest(right["conditions"]), "condition_parity_absent")
+        _require(digest(left["build_budget"]) == digest(right["build_budget"]), "build_budget_parity_absent")
         for field in ("calls", "sessions", "simulations", "iterations"):
             a_ids = set().union(*(trial[field] for trial in left["trials"].values()))
             b_ids = set().union(*(trial[field] for trial in right["trials"].values()))

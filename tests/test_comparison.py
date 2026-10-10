@@ -11,6 +11,7 @@ from unittest.mock import patch
 from benchmarks.compare import compare, load_bundle, main
 from builder.platform import AGENT_LLM, SIM_LLM, STAGING
 from builder.safety import digest
+from builder.source_provenance import bind_run_provenance
 
 
 def bundle(candidate):
@@ -51,15 +52,28 @@ def bundle(candidate):
                                    "iteration_id": candidate + "-" + split + "-iteration-" + str(repetition)} for repetition in range(1, 4)]}
         trials[split] = {"report": report, "case_manifest_sha256": digest(split + "-case-source"),
                          "started_at": "2032-04-07T" + hour + ":00:00+03:00", "ended_at": "2032-04-07T" + hour + ":05:00+03:00"}
-    return {"version": 1, "brief": "A", "source_sha256": digest({"brief_sha256": [sources[0]["sha256"]], "tool_api_sha256": api_hash}),
+    value = {"version": 1, "brief": "A", "source_sha256": digest({"brief_sha256": [sources[0]["sha256"]], "tool_api_sha256": api_hash}),
             "builder_source_sha256": digest(candidate + "-synthetic-builder-source"),
             "conditions": {"builder_model": model, "reasoning_effort": effort, "reps": 3, "concurrency": 5, "budget_seconds": 1800,
                            "agent_llm": AGENT_LLM, "persona_llm": SIM_LLM, "analysis_llm": SIM_LLM,
                            "platform_base_url": STAGING, "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev", "calendar_sha256": digest("same supplied call calendar")},
             "build": {"started_at": "2032-04-07T08:00:00+03:00", "ended_at": "2032-04-07T08:10:00+03:00"},
             "build_manifest": {"mode": "live", "status": "exported", "model": model, "reasoning_effort": effort,
-                               "sources": sources, "tool_api_sha256": api_hash, "export_sha256": digest(exported), "deployment": pin},
+                               "sources": sources, "tool_api_sha256": api_hash, "export_sha256": digest(exported),
+                               "deployment": pin, "elapsed_seconds": 600},
             "workflow_export": exported, "trials": trials}
+    snapshot = {"version": 1, "files": {"builder/synthetic.py": digest(candidate + "-synthetic-builder-source")},
+                "resolved_config": {"mode": "live", "model": model, "reasoning_effort": effort,
+                                    "controller_dependency_injection": False, "deadline_seconds": 1800.0,
+                                    "export_reserve_seconds": 300},
+                "captured_at": "2032-04-07T08:00:01+03:00"}
+    snapshot["builder_source_sha256"] = digest({key: snapshot[key] for key in ("version", "files", "resolved_config")})
+    value["builder_source_sha256"] = snapshot["builder_source_sha256"]
+    value["build_manifest"].update({"builder_source_sha256": snapshot["builder_source_sha256"],
+                                    "builder_source_record_sha256": digest(snapshot)})
+    value["build_provenance"] = bind_run_provenance(snapshot, value["build_manifest"],
+                                                 [{"event": "synthetic-comparison-fixture"}])
+    return value
 
 
 def behavior_failure(value, split="train", row_index=0):
@@ -199,6 +213,8 @@ class ComparisonTests(unittest.TestCase):
         baseline, other = bundle("baseline"), bundle("structured")
         behavior_failure(other)
         other["build"]["ended_at"] = "2032-04-07T08:00:01+03:00"
+        other["build_manifest"]["elapsed_seconds"] = 1
+        other["build_provenance"]["build_manifest_sha256"] = digest(other["build_manifest"])
         for row in other["trials"]["train"]["report"]["rows"]:
             row["ledger"]["promises"][0]["amount"] = "999999.00"
             row["ledger"]["calls"][3]["args"]["amount"] = "999999.00"

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from builder.safety import digest
+from builder.source_provenance import capture_source_provenance, bind_run_provenance
 from tools import package_submission as package
 
 
@@ -17,9 +18,11 @@ class PackageTests(unittest.TestCase):
         self.root = Path(self.temp.name).resolve()
         self.root_patch = patch.object(package, "ROOT", self.root)
         self.root_patch.start()
+        self.origin_patch = patch.object(package, 'repository_url', return_value='https://github.com/test/example')
+        self.origin_patch.start()
 
     def tearDown(self):
-        self.root_patch.stop(); self.temp.cleanup()
+        self.origin_patch.stop(); self.root_patch.stop(); self.temp.cleanup()
 
     def test_allowlist_excludes_private_notes_env_and_generated_data(self):
         for name in ("README.md", ".env", "kickoff_email.txt", "meeting.md", "builder/build.py", "artifacts/raw.json", "benchmarks/holdout/private.json", "tools/.env.production.json", "builder/.env.local.txt"):
@@ -43,34 +46,76 @@ class PackageTests(unittest.TestCase):
         self.assertEqual({path.relative_to(self.root).as_posix() for path in package.source_files()}, {'tools/diagnostic.sh'})
 
     def evidence(self, status="exported", mode="live"):
-        wf = {"workflow_id": "w", "agent_id": "a", "workflow": {"initial_node": "finish", "nodes": {}}}
-        (self.root / 'brief.md').write_text('Synthetic policy input')
+        # This is fabricated consistency evidence. It never establishes a live build.
+        (self.root / 'builder').mkdir(exist_ok=True)
+        (self.root / 'benchmarks').mkdir(exist_ok=True)
+        (self.root / 'builder/build.py').write_text('# Synthetic runtime fixture\n')
+        config = {'mode': mode, 'model': 'synthetic-test-model', 'reasoning_effort': 'high',
+                  'codex_executable': 'codex', 'deadline_seconds': 1800, 'export_reserve_seconds': 300,
+                  'max_repairs': 2, 'controller_dependency_injection': False}
         (self.root / 'api.json').write_text('{}')
-        sources = [{'id': 'brief-1', 'file': 'brief.md', 'sha256': digest('Synthetic policy input')}]
-        deployment = {'workflow_id': 'w', 'agent_id': 'a', 'version_id': 'v1', 'version_number': 1, 'published': True}
         for name in ("hidden-1", "hidden-2"):
+            brief_name = 'brief.md' if name == 'hidden-1' else 'brief-2.md'
+            brief_text = 'Synthetic policy input ' + name
+            (self.root / brief_name).write_text(brief_text)
+            sources = [{'id': 'brief-1', 'file': brief_name, 'sha256': digest(brief_text)}]
+            wf = {'workflow_id': 'w-' + name, 'agent_id': 'a-' + name,
+                  'workflow': {'initial_node': 'finish', 'nodes': {},
+                               'agent_config': {'llmConfig': {'provider': 'experimental-5', 'model': 'experimental-5'}}}}
+            deployment = {'workflow_id': wf['workflow_id'], 'agent_id': wf['agent_id'],
+                          'version_id': 'v1-' + name, 'version_number': 1, 'published': True}
+            policy = {'synthetic': name}
+            contract = {'version': 1, 'sources': sources, 'synthetic': name}
+            contract['sha256'] = digest(contract)
+            plan = {'synthetic_plan': name}
+            bindings, execution = {'synthetic_bindings': name}, {'synthetic_execution': name}
+            guards = {'synthetic_guards': name}
+            source = capture_source_provenance(self.root, config)
+            source['captured_at'] = '2026-10-10T12:00:00Z'
             (self.root / (name + ".json")).write_text(json.dumps(wf))
             # Packaging checks the required organizer trace evidence. The old
             # untimed three-event fixture did not represent an eligible run.
-            events = [{"event": "start", "mode": mode, "time": "2026-10-10T12:00:00Z"},
+            events = [{"event": "start", "mode": mode, 'model': config['model'], "time": "2026-10-10T12:00:00Z"},
                       {'event': 'inputs', 'sources': sources, 'tool_api_sha256': digest({}), 'time': '2026-10-10T12:00:00Z'},
+                      {'event': 'builder_source_snapshot', 'builder_source_sha256': source['builder_source_sha256'],
+                       'builder_source_record_sha256': digest(source), 'resolved_config': source['resolved_config'], 'time': '2026-10-10T12:00:00Z'},
+                      {'event': 'model_call', 'model': config['model'], 'reasoning_effort': 'high',
+                       'purpose': 'Audit generation tools/context with synthetic isolation canaries', 'time': '2026-10-10T12:00:00Z'},
+                      self.audit_event(),
                       {"event": "model_call", "model": "synthetic-test-model", "purpose": "Synthetic offline trace fixture",
-                       "prompt_characters": 100,
+                       "prompt_characters": 100, 'reasoning_effort': 'high',
                        "time": "2026-10-10T12:00:01Z"},
-                      {"event": "deployment", "workflow_id": "w", "agent_id": "a", "version_id": "v1", "version_number": 1,
-                       "published": True, 'attempt': 1, "time": "2026-10-10T12:00:02Z"},
+                      {'event': 'generation_model_catalog', **self.catalog(), 'time': '2026-10-10T12:00:01Z'},
+                      {'event': 'action_guard_compilation', 'verified': True, 'plan_sha256': digest(plan),
+                       'guard_manifest_sha256': digest(guards), 'time': '2026-10-10T12:00:01Z'},
+                      {'event': 'deployment', **deployment, 'attempt': 1, "time": "2026-10-10T12:00:02Z"},
                       {"event": "end", "status": status, "export_sha256": digest(wf), 'remaining_seconds': 1797, "time": "2026-10-10T12:00:03Z"}]
             (self.root / (name + ".jsonl")).write_text("\n".join(json.dumps(e) for e in events))
             run = {'mode': mode, 'status': status, 'sources': sources, 'tool_api_sha256': digest({}),
-                   'policy_contract_sha256': 'b' * 64, 'selected_attempt': 1, 'selected_attempt_directory': 'attempts/plan-001',
+                   'policy_contract_sha256': contract['sha256'], 'selected_attempt': 1, 'selected_attempt_directory': 'attempts/plan-001',
                    'deployment': deployment, 'export_sha256': digest(wf), 'elapsed_seconds': 3, 'tests': None,
                    'hosted_behavior_verified': False}
+            run.update(model=config['model'], reasoning_effort='high', builder_source_sha256=source['builder_source_sha256'],
+                       builder_source_record_sha256=digest(source))
+            run.update(action_guard_compilation_verified=True, plan_sha256=digest(plan),
+                       guard_manifest_sha256=digest(guards), authored_workflow_sha256=digest(wf['workflow']))
             attempt = {'number': 1, 'directory': 'attempts/plan-001', 'phase': 'complete', 'status': status,
-                       'export_sha256': digest(wf), 'tool_api_sha256': digest({}), 'policy_contract_sha256': 'b' * 64}
+                       'export_sha256': digest(wf), 'tool_api_sha256': digest({}), 'policy_contract_sha256': contract['sha256'],
+                       'policy_sha256': digest(policy), 'plan_sha256': digest(plan), 'workflow_sha256': digest(wf['workflow'])}
             run_path = self.root / name
             attempt_path = run_path / 'attempts/plan-001'
             attempt_path.mkdir(parents=True, exist_ok=True)
             (run_path / 'manifest.json').write_text(json.dumps(run))
+            (run_path / 'builder-source.json').write_text(json.dumps(source))
+            (run_path / 'build-provenance.json').write_text(json.dumps(bind_run_provenance(source, run, events)))
+            (run_path / 'policy.json').write_text(json.dumps(policy))
+            (run_path / 'policy.contract.json').write_text(json.dumps(contract))
+            artifacts = {'plan.json': plan, 'action-bindings.json': bindings, 'execution-policy.json': execution,
+                         'guard-manifest.json': guards, 'workflow.json': wf['workflow'],
+                         'proposal.json': {'plan': plan, 'contract_sha256': contract['sha256']},
+                         'guard-context.json': {'plan': plan, 'contract': contract, 'bindings': bindings, 'execution_policy': execution}}
+            for filename, value in artifacts.items():
+                (attempt_path / filename).write_text(json.dumps(value))
             for filename, value in [('attempt.json', attempt), ('deployment.json', {**deployment, 'workflow': wf['workflow']}), ('export.json', wf)]:
                 (attempt_path / filename).write_text(json.dumps(value))
         return {"team": "synthetic", "repo": "https://github.com/test/example", "commit": "a" * 40,
@@ -78,11 +123,34 @@ class PackageTests(unittest.TestCase):
                 "workflows": {n: n + ".json" for n in ("hidden-1", "hidden-2")},
                 "traces": {n: n + ".jsonl" for n in ("hidden-1", "hidden-2")},
                 'runs': {n: n + '/manifest.json' for n in ('hidden-1', 'hidden-2')},
-                'inputs': {n: {'briefs': ['brief.md'], 'tool_api': 'api.json'} for n in ('hidden-1', 'hidden-2')}}
+                'inputs': {n: {'briefs': ['brief.md' if n == 'hidden-1' else 'brief-2.md'], 'tool_api': 'api.json'} for n in ('hidden-1', 'hidden-2')}}
+
+    @staticmethod
+    def audit_event():
+        return {'event': 'generation_isolation_audit', 'time': '2026-10-10T12:00:00Z',
+                'status': 'pass', 'failures': [], 'canary_exposure': [], 'response_valid': True,
+                'model_reported_tools': [], 'model_reported_tool_count': 0, 'unrecognized_tool_name_count': 0,
+                'omitted_skill_count': 0, 'returncode': 0, 'completed_turn_count': 1,
+                'observed_item_types': ['agent_message'], 'model_catalog': PackageTests.catalog()}
+
+    @staticmethod
+    def catalog():
+        return {'source': 'installed_cli_bundled', 'model': 'synthetic-test-model',
+                'source_model_sha256': 'c' * 64, 'generation_catalog_sha256': 'd' * 64,
+                'restricted_capabilities': {'shell_type': 'disabled', 'apply_patch_tool_type': None,
+                    'experimental_supported_tools': [], 'node_repl_disabled': True,
+                    'tool_mode': 'direct', 'supports_search_tool': False}}
+
+    def rebind_provenance(self, name='hidden-1'):
+        run_path = self.root / name
+        source = json.loads((run_path / 'builder-source.json').read_text())
+        run = json.loads((run_path / 'manifest.json').read_text())
+        events = [json.loads(line) for line in (self.root / (name + '.jsonl')).read_text().splitlines()]
+        (run_path / 'build-provenance.json').write_text(json.dumps(bind_run_provenance(source, run, events)))
 
     def test_export_and_trace_must_match_and_failed_run_is_not_ready(self):
         with patch.object(subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40)):
-            self.assertEqual(len(package.check_manifest(self.evidence())), 16)
+            self.assertEqual(len(package.check_manifest(self.evidence())), 38)
             with self.assertRaisesRegex(ValueError, "failed traces"):
                 package.check_manifest(self.evidence(status="failed"))
             with self.assertRaisesRegex(ValueError, "generated-only"):
@@ -180,18 +248,32 @@ class PackageTests(unittest.TestCase):
             for mutation in ('none', 'attempt', 'directory', 'result', 'claim', 'boolean_count'):
                 data = self.evidence()
                 workflow, rows = evidence(True)
+                workflow['workflow']['agent_config'] = {'llmConfig': {'provider': 'experimental-5', 'model': 'experimental-5'}}
+                rows[-1]['export_sha256'] = digest(workflow)
+                for checked in (rows[-2]['result']['deployment_pin']['before'], rows[-2]['result']['deployment_pin']['after']):
+                    checked['graph_sha256'] = digest(workflow['workflow'])
                 run_path = self.root / 'hidden-1/manifest.json'
                 run = json.loads(run_path.read_text())
                 rows.insert(1, {'event': 'inputs', 'time': rows[0]['time'], 'sources': run['sources'], 'tool_api_sha256': run['tool_api_sha256']})
+                original = [json.loads(line) for line in (self.root / 'hidden-1.jsonl').read_text().splitlines()]
+                rows[2:2] = original[2:5]
+                rows[6:6] = [{**original[6], 'time': rows[5]['time']}, {**original[7], 'time': rows[5]['time']}]
+                rows[0]['model'] = run['model']
+                for row in rows:
+                    if row.get('event') == 'model_call':
+                        row.update(model=run['model'], reasoning_effort='high')
                 rows[-1]['remaining_seconds'] = 1796
                 rows[-2].update(attempt=1, attempt_directory='attempts/plan-001')
                 rows[-3]['attempt'] = 1
                 deployment = {key: rows[-3][key] for key in ('workflow_id', 'agent_id', 'version_id', 'version_number', 'published')}
                 run.update(deployment=deployment, export_sha256=digest(workflow), tests=rows[-2]['result'], hosted_behavior_verified=True)
+                run['authored_workflow_sha256'] = digest(workflow['workflow'])
                 attempt_path = self.root / 'hidden-1/attempts/plan-001'
                 attempt = json.loads((attempt_path / 'attempt.json').read_text())
                 attempt['export_sha256'] = digest(workflow)
+                attempt['workflow_sha256'] = digest(workflow['workflow'])
                 (attempt_path / 'attempt.json').write_text(json.dumps(attempt))
+                (attempt_path / 'workflow.json').write_text(json.dumps(workflow['workflow']))
                 (attempt_path / 'export.json').write_text(json.dumps(workflow))
                 (attempt_path / 'deployment.json').write_text(json.dumps({**deployment, 'workflow': workflow['workflow']}))
                 (self.root / 'hidden-1.json').write_text(json.dumps(workflow))
@@ -204,6 +286,7 @@ class PackageTests(unittest.TestCase):
                 if mutation == 'result': tests['status'] = 'failed'
                 if mutation == 'boolean_count': tests['passed'] = True
                 (attempt_path / 'tests.json').write_text(json.dumps(tests))
+                self.rebind_provenance()
                 with self.subTest(mutation=mutation):
                     if mutation == 'none':
                         package.check_manifest(data)

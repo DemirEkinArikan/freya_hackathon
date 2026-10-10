@@ -43,16 +43,17 @@ checks cover reached actions; they do not establish complete dialogue meaning,
 persuasion compliance, eventual successful close or hosted platform behavior.
 See [the frozen pipeline](FROZEN-PIPELINE.md) and [action guards](ACTION-GUARDS.md).
 
-T02 remains the first blocker. This computer passes Python/sign-in/capability
-checks. Documented hardening removed omitted skill instructions, but both checked
-model candidates fail the unchanged synthetic isolation gate: GPT-6.1-sol reports
-residual tools and an unknown diagnostic; GPT-5.5 reports tools and loaded context.
-No canary exposure or tool event occurred. Those absences do not establish
-isolation. Substantive generation audits first and remains disabled after failure.
-An already-installed older alpha CLI is an untested option, not an accepted
-runtime. No collaborator identity, account-ownership or second-computer
-verification is required. See
-[runtime evidence and setup](RUNTIME.md).
+The active T02 environment now passes: Python 3.11.15, Codex 0.162.1,
+existing ChatGPT authentication and `gpt-6.1-sol` / high reasoning. A per-process
+restricted model catalog removes model-owned tools while preserving the model,
+instructions and existing isolation gate. The live audit reports zero tools,
+canary exposure, omitted skills and unknown diagnostics. Synthetic policy and
+plan calls both pass with the same catalog fingerprint. All 589 local tests,
+the 16-file kit check and source packaging pass. See
+[runtime setup and reviewed acceptance evidence](RUNTIME.md#accepted-active-runtime--10-october-2026-1916-istanbul).
+Earlier failed probes remain historical evidence. This result requires neither
+a second computer nor a new paid API provider. Each real builder instance must
+still pass its own audit; OS file denial and full banking behavior are unproved.
 
 Older successful policy extractions demonstrate source/provenance work only; they
 predate the new typed execution interfaces and isolation acceptance. Revalidate

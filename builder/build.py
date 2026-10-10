@@ -46,6 +46,8 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--brief", type=Path, action="append", required=True, help="Explicit banking source; repeat for amendments")
     out.add_argument("--tool-api", type=Path, required=True, help="This brief's OpenAPI JSON")
     out.add_argument("--output-dir", type=Path, default=Path("artifacts"))
+    out.add_argument("--simulation-lease", type=Path,
+                     help="Shared controller-only simulation lock path; defaults to output-dir/.simulation.lock")
     out.add_argument("--slot", help="Persistent workflow slot; defaults to first brief filename")
     out.add_argument("--adopt-workflow", help="Explicit existing workflow ID to bind to this slot after workspace ownership verification")
     out.add_argument("--offline", action="store_true", help="Validate an explicit fixture, with no model or network")
@@ -544,7 +546,9 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                      status="generated_validated", remaining_seconds=deadline.remaining())
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             if client is None:
-                client = client_factory(deadline=deadline, reserve=EXPORT_RESERVE, lease_path=output_dir / ".simulation.lock")
+                lease_path = getattr(args, "simulation_lease", None)
+                client = client_factory(deadline=deadline, reserve=EXPORT_RESERVE,
+                                        lease_path=lease_path.resolve() if lease_path else output_dir / ".simulation.lock")
             if args.adopt_workflow and not adopted:
                 binding = client.adopt_workflow(args.slot or args.brief[0].stem, args.adopt_workflow, output_dir / ".freya-slots.json")
                 trace.emit("workflow_adopted", **binding)

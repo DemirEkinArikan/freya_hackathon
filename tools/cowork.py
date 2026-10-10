@@ -129,11 +129,14 @@ may reclaim Demir's task after an announced absence or 30 minutes without an
 update, after checking branch activity. Checkpoint every 15 minutes and push
 work. Record branch, commit, verification, remaining work, blockers, deployment
 IDs and running simulations. Check the latest claim before resuming.
+After the deliverable and checks are complete, open a PR targeting `main` and
+merge it directly without a separate review step. Record completion only after
+that same-repository PR is merged and its head matches the pushed commit.
 
 ```text
 python3.11 tools/cowork.py claim {task['id']} --branch {task['branch']} --commit <pushed-sha>
 python3.11 tools/cowork.py checkpoint {task['id']} --branch <branch> --commit <pushed-sha> --done "..." --remaining "..."
-python3.11 tools/cowork.py complete {task['id']} --commit <pushed-sha> --checks "command and result"
+python3.11 tools/cowork.py complete {task['id']} --commit <pushed-sha> --pr <merged-pr-number-or-url> --checks "command and result"
 ```
 
 Keep credentials, private product prompts, raw events and client data outside
@@ -178,7 +181,8 @@ a native sub-issue with individually editable assignment and dependencies.
 - Checkpoint at least every 15 minutes. Naci can reclaim Demir's work after an announced absence or 30 minutes without an update.
 - Check recent branch activity before takeover; preserve the original branch and continue from the latest pushed checkpoint.
 - Returning workers check current ownership before resuming. No force-push of another worker's branch.
-- Completion records a pushed commit and verification evidence, then unblocks dependent tasks.
+- Finish checks, open a PR into `main`, and merge directly without a separate review step.
+- Completion verifies the merged same-repository PR's head against the pushed commit, records evidence, then unblocks dependent tasks.
 - Keep one simulation lease with owner, workflow/agent/version, IDs and start time. Actual server status controls stale-lease replacement.
 
 ## Evidence gates
@@ -235,7 +239,7 @@ def create_board(gh, manifest):
              "state:ready": ("0E8A16", "Dependencies complete; available to either collaborator"),
              "state:blocked": ("D4C5F9", "Waiting for dependencies or required evidence"),
              "state:in-progress": ("FBCA04", "Single active owner; checkpoint every 15 minutes"),
-             "state:done": ("0075CA", "Completed with pushed commit and verification")}
+             "state:done": ("0075CA", "Completed with verified main merge, pushed commit and checks")}
     for phase in {t["phase"] for t in manifest["tasks"]}:
         specs[f"phase:{phase}"] = ("C2E0C6", f"{phase} phase")
     for name, (color, description) in specs.items():
@@ -293,6 +297,36 @@ def require_pushed_commit(gh, value):
     return gh.api("GET", gh.repo(f"commits/{value}"))["sha"]
 
 
+def require_merged_pr(gh, value, commit):
+    """Verify explicit same-repository merge evidence before any completion write."""
+    value = value.strip() if isinstance(value, str) else ""
+    if re.fullmatch(r"[1-9][0-9]*", value):
+        number = int(value)
+    else:
+        match = re.fullmatch(r"https://github\.com/([^/?#]+)/([^/?#]+)/pull/([1-9][0-9]*)/?", value, re.IGNORECASE)
+        if not match or f"{match[1]}/{match[2]}".casefold() != gh.repository.casefold():
+            raise RuntimeError("Use a PR number or HTTPS pull-request URL from this repository")
+        number = int(match[3])
+    pr = gh.api("GET", gh.repo(f"pulls/{number}"))
+    if not isinstance(pr, dict) or pr.get("number") != number:
+        raise RuntimeError("GitHub did not return the requested completion PR")
+    base, head = pr.get("base"), pr.get("head")
+    if not isinstance(base, dict) or not isinstance(head, dict):
+        raise RuntimeError("Completion PR lacks base or head metadata")
+    base_repo = base["repo"].get("full_name", "") if isinstance(base.get("repo"), dict) else ""
+    head_repo = head["repo"].get("full_name", "") if isinstance(head.get("repo"), dict) else ""
+    if not isinstance(base_repo, str) or not isinstance(head_repo, str) or any(
+            name.casefold() != gh.repository.casefold() for name in (base_repo, head_repo)):
+        raise RuntimeError("Completion PR base and head must belong to this repository")
+    if base.get("ref") != "main":
+        raise RuntimeError("Completion PR must target main")
+    if pr.get("merged") is not True or pr.get("state") != "closed" or not pr.get("merged_at"):
+        raise RuntimeError("Completion PR must already be merged into main")
+    if not isinstance(head.get("sha"), str) or head["sha"].casefold() != commit.casefold():
+        raise RuntimeError("Completion PR head does not match the pushed completion commit")
+    return f"https://github.com/{gh.repository}/pull/{number}"
+
+
 def record(gh, issue, actor, action, **values):
     meta = {"actor": actor, "action": action, **values}
     body = "<!-- freya-handoff: " + json.dumps(meta, separators=(",", ":")) + " -->\n"
@@ -345,7 +379,7 @@ def main(argv=None):
     sub.add_parser("sync")
     cp = sub.add_parser("claim"); cp.add_argument("task"); cp.add_argument("--branch", required=True); cp.add_argument("--commit", required=True); cp.add_argument("--takeover", action="store_true")
     hp = sub.add_parser("checkpoint"); hp.add_argument("task"); hp.add_argument("--branch", required=True); hp.add_argument("--commit", required=True); hp.add_argument("--done", required=True); hp.add_argument("--remaining", required=True); hp.add_argument("--blocker", default="none"); hp.add_argument("--offline", action="store_true")
-    dp = sub.add_parser("complete"); dp.add_argument("task"); dp.add_argument("--commit", required=True); dp.add_argument("--checks", required=True); dp.add_argument("--pr", default="none")
+    dp = sub.add_parser("complete"); dp.add_argument("task"); dp.add_argument("--commit", required=True); dp.add_argument("--checks", required=True); dp.add_argument("--pr", required=True)
     args = ap.parse_args(argv)
     manifest = json.loads(TASKS.read_text()); gh = GitHub(manifest["repository"], args.dry_run)
     if args.action == "create-board":
@@ -380,7 +414,8 @@ def main(argv=None):
             record(gh, issue, actor, "checkpoint", branch=args.branch, commit=sha,
                    done=args.done, remaining=args.remaining, blocker=args.blocker, offline=args.offline)
         else:
-            record(gh, issue, actor, "complete", commit=sha, checks=args.checks, pr=args.pr)
+            pr = require_merged_pr(gh, args.pr, sha)
+            record(gh, issue, actor, "complete", commit=sha, checks=args.checks, pr=pr, merged_into="main")
             gh.api("PATCH", gh.repo(f"issues/{issue['number']}"), {"state": "closed", "state_reason": "completed"})
             parent, found = find_issues(gh, manifest); sync(gh, manifest, parent, found)
     print("Updated", issue["html_url"])

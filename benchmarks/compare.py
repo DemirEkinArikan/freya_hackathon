@@ -11,7 +11,7 @@ import re
 from builder.platform import AGENT_LLM, SIM_LLM, STAGING
 from builder.safety import assert_no_secrets, digest, read_json, sanitize
 from .paths import PROJECT, output_path
-from .scoring import cents
+from .scoring import cents, score_ledger
 from .hosted import attribute_version
 
 CRITICAL_CATEGORIES = ("security", "policy", "honesty")
@@ -71,7 +71,7 @@ def _pin(report, conditions):
     return before
 
 
-def _trial(value, conditions):
+def _trial(value, conditions, brief):
     _require(isinstance(value, dict) and _sha(value.get("case_manifest_sha256")), "case_source_absent")
     start, end, elapsed = _period(value)
     _require(elapsed <= conditions["budget_seconds"], "trial_budget_exceeded")
@@ -103,7 +103,8 @@ def _trial(value, conditions):
         _require(all(isinstance(failure, dict) and isinstance(failure.get("category"), str) and failure["category"] in
                      {"behavior", "conversation", "honesty", "policy", "security"} for failure in row["failures"]),
                  "row_infrastructure_or_unknown_failure")
-        _require(not row.get("missing_evidence") and row["pass"] == (not row["failures"]), "row_verdict_inconsistent")
+        _require(("missing_evidence" not in row or isinstance(row["missing_evidence"], list)
+                  and not row["missing_evidence"]) and row["pass"] == (not row["failures"]), "row_verdict_inconsistent")
         call_id, session = row.get("call_id"), row.get("session_fingerprint")
         _require(_identifier(call_id) and call_id not in calls and isinstance(session, str)
                  and re.fullmatch(r"[0-9a-f]{16,64}", session) is not None and session not in sessions,
@@ -126,6 +127,13 @@ def _trial(value, conditions):
             recorded_amounts[pair] = sum(values)
         except (KeyError, TypeError, ValueError, DecimalException):
             raise ComparisonError("promise_amount_evidence_invalid") from None
+        # This rechecks tool evidence and invariant behavior, not the independent
+        # fixture oracle or conversation. A failure with complete evidence may
+        # be compared; contradictory/missing evidence cannot be ranked.
+        internal = score_ledger(ledger, ledger, brief=brief)
+        _require(not internal["missing_evidence"] and not any(failure["category"] in
+                 ("infrastructure", "evidence") for failure in internal["failures"]), "ledger_evidence_incomplete")
+        _require(not row["pass"] or internal["pass"], "row_ledger_verdict_inconsistent")
         _require(isinstance(judge, dict) and judge.get("callId") == call_id and judge.get("outcome") in ("pass", "fail"),
                  "judge_evidence_absent")
         _require(isinstance(transcript, dict) and isinstance(transcript.get("messages"), list)
@@ -133,13 +141,19 @@ def _trial(value, conditions):
                      and message.get("role") in ("user", "assistant", "system")
                      and _identifier(message.get("message", message.get("content"))) for message in transcript["messages"]),
                  "transcript_evidence_absent")
-        _require(all(transcript[field] == call_id for field in ("id", "callId") if field in transcript),
+        _require(any(field in transcript for field in ("id", "callId"))
+                 and all(transcript[field] == call_id for field in ("id", "callId") if field in transcript),
                  "transcript_call_mismatch")
+        _require(all(evidence[field] == pin[pin_field] for evidence in (judge, transcript)
+                     for field, pin_field in (("agentId", "agent_id"), ("workflowId", "workflow_id"))
+                     if field in evidence), "per_call_deployment_mismatch")
         inferred, attribution_failures = attribute_version(judge, transcript, pin["version_number"])
         attribution = row.get("version_attribution")
         _require(not attribution_failures and inferred["verified"] and isinstance(attribution, dict)
                  and digest(attribution) == digest(inferred), "per_call_version_unattributed")
         _require(not row["pass"] or judge["outcome"] == "pass", "judge_verdict_inconsistent")
+        _require(judge["outcome"] != "fail" or any(failure["category"] == "conversation"
+                 for failure in row["failures"]), "judge_verdict_inconsistent")
         by_fixture[pair[0]].append(row)
         failures.extend(row["failures"])
         failure_runs += bool(row["failures"])
@@ -227,7 +241,7 @@ def _bundle(value):
     _require(build_seconds <= 1800, "build_budget_exceeded")
     trials = value.get("trials")
     _require(isinstance(trials, dict) and set(trials) == {"train", "validation"}, "development_splits_incomplete")
-    checked = {split: _trial(trials[split], conditions) for split in ("train", "validation")}
+    checked = {split: _trial(trials[split], conditions, value["brief"]) for split in ("train", "validation")}
     _require(build_end <= checked["train"]["start"], "trial_preceded_selected_build")
     for trial in checked.values():
         _require(all(deployment.get(key) == trial["pin"][key] for key in

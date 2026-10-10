@@ -90,3 +90,14 @@ With seed audit dependency `ecad689` applied locally, all seven integration
 checks, 15 hosted runner checks and the full 360-test suite pass under Python
 3.11. `git diff --check` passes. T12's development style allocation remains
 separate work, and these checks do not establish actual persona-model behavior.
+
+## Alternate environment connectivity checkpoint
+
+The [10 October connectivity investigation](T11-CONNECTIVITY-2026-10-10.md)
+reproduced the bank ClientHello timeout in a disposable Linux/OpenSSL container,
+while a separate Cloudflare control completed verified TLS 1.3. Docker shares
+the macOS host's upstream network, so an independent egress test is still needed
+to distinguish an origin problem from a shared network-path problem. No
+application defect was confirmed, PUB-01 session created, ledger retrieved,
+credentials sent, or simulation started. The adapter was not edited. All 612
+current Python 3.11 tests passed; T11 remains open pending live evidence.

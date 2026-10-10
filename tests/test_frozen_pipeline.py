@@ -45,7 +45,7 @@ class FrozenPipelineTests(unittest.TestCase):
     def test_missing_execution_rules_exhaust_extraction_repairs_before_freeze(self):
         extracted = fixture()
         extracted["policy"]["rules"] = [rule for rule in extracted["policy"]["rules"]
-                                         if rule["kind"] not in {"record_notes", "identity_close"}]
+                                         if rule["kind"] not in {"record_notes", "close_reasons"}]
         generator = self.generator()
         generator.generate.return_value = extracted
         with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs"):
@@ -58,7 +58,7 @@ class FrozenPipelineTests(unittest.TestCase):
         for attempt in range(1, MAX_REPAIRS + 2):
             rejected = json.loads((run / f"policy.rejected-{attempt}.json").read_text())
             self.assertEqual(rejected["policy"], extracted["policy"])
-            for kind in ("record_notes", "identity_close"):
+            for kind in ("record_notes", "close_reasons"):
                 self.assertTrue(any(kind in error for error in rejected["validation_errors"]))
         for name in ("policy.json", "policy.contract.json", "execution-requirements.json", "plan.json", "workflow.json", "attempts"):
             self.assertFalse((run / name).exists(), name)

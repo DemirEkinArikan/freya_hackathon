@@ -12,6 +12,7 @@ from typing import Any, Callable
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 from .runtime import Deadline, FileLock
 from .safety import sanitize
@@ -201,7 +202,11 @@ class FreyaClient:
                 "updated_at": readback.get("updatedAt")}
 
     def validate_workflow(self, name: str, workflow: dict) -> dict:
-        return self.request("POST", "/api/v2/workflow", {"name": name, "workflow": workflow}, params={"dryRun": "true"})
+        # Freya applies name uniqueness before dry-run validation. A stable
+        # slot name is therefore unsuitable after its first real save. This
+        # ephemeral name is never persisted and does not change save slots.
+        validation_name = "builder-validation-" + uuid.uuid4().hex
+        return self.request("POST", "/api/v2/workflow", {"name": validation_name, "workflow": workflow}, params={"dryRun": "true"})
 
     def adopt_workflow(self, slot: str, workflow_id: str, state_file: Path = Path("artifacts/.freya-slots.json")) -> dict:
         """Bind an explicit existing ID; never discover or select a workflow by name."""

@@ -284,8 +284,10 @@ class GuardExecutionTests(unittest.TestCase):
         self.assertEqual(route, "confirm")
         self.assertEqual(body, {})
         self.assertIn("37.25", readback)
+        self.assertEqual(self.advance("confirm", inputs={"consent": "no"})[1], "blocked")
         with self.assertRaises(ValueError):
-            self.step("confirm", inputs={"consent": "no"})
+            self.step("confirm", inputs={"consent": "yes"})
+        self.advance("prepare", "commit_promises")
         _, route, body, _ = self.advance("confirm", inputs={"consent": "yes"})
         self.assertEqual(route, "allow")
         self.assertEqual(body["product_id"], "stable-a")

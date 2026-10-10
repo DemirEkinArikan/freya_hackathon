@@ -6,8 +6,8 @@ hackathon implementation: fresh prompts, orchestration and domain logic, with
 no Launchway runtime, private prompts, clients or integrations imported.
 
 **Shared work:** [parent issue and 18 task issues](https://github.com/DemirEkinArikan/freya_hackathon/issues/1).
-Demir (`DemirEkinArikan`) currently continues alone; Naci (`burhan-launchway`)
-can join later. Collaborator participation and identity are not prerequisites.
+Anyone can work on any issue at any time. Assignees are informational; no
+named worker, separate computer or timed handoff is required.
 See [current evidence and remaining readiness gates](docs/READINESS.md) before
 claiming that the builder is ready for competition.
 
@@ -122,17 +122,19 @@ python3.11 tools/cowork.py complete T04 --commit <pushed-sha> \
   --pr <merged-pr-number-or-url> --checks 'command and result'
 ```
 
-Any repository user authorized by GitHub can claim ready tasks. Actor names,
+Any repository user authorized by GitHub can claim open tasks. Actor names,
 assignees and previous claims are recorded metadata, with no collaborator
 whitelist, person-specific takeover or timed handoff. Check current branch
 activity to avoid concurrent edits. Checkpoint and push every 15 minutes.
-Claims require pushed commits. When a task's deliverable and checks are complete,
+Claims require pushed commits. Dependencies govern completion, so independent
+work and checkpoints can proceed while prerequisites remain open.
+When a task's deliverable and checks are complete,
 push the work, open a PR targeting `main`, and merge it directly without a separate
 review step. Then run `complete --pr` with the merged PR number or its HTTPS URL.
 The command verifies that the PR's base and head belong to this repository, it
 was merged into `main`, and its head matches the pushed completion commit before
 posting evidence or closing the task. It does not merge PRs. Completion unblocks
-dependencies; returning workers check ownership before resuming. Preserve another
+dependencies; returning workers check branch activity before resuming. Preserve another
 worker's branch.
 
 Record workflow/agent/version and running simulation IDs in the task handoff.

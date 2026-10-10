@@ -1,10 +1,6 @@
 # Parallel implementation handoff — 10 October 2026
 
-The latest user instruction keeps Demir working alone while Naci is unavailable.
-The earlier **17:36:47 Europe/Istanbul** handoff is superseded; it does not block
-or reassign work. Collaborator identity, account ownership and second-computer
-reports are not prerequisites. All work below is merged into main. No branch
-was force-pushed.
+Anyone may work on any issue at any time. Assignments and names are informational; no named-worker or timed-handoff requirement applies. Technical dependencies and acceptance checks govern completion. Generation isolation and banking customer verification remain required.
 
 | Contribution | Merged evidence |
 |---|---|

@@ -349,9 +349,9 @@
     }
   ],
   "active_work": {
-    "mode": "single_operator",
+    "mode": "open_contribution",
     "default_assignee": "DemirEkinArikan",
     "authorized_by": "user",
-    "description": "Demir continues alone. Collaborator names, separate computers, account ownership attestations and timed handoffs are not prerequisites. Assignments are coordination metadata; GitHub permissions govern writes."
+    "description": "Anyone may work on any issue at any time. Assignments and names are informational; no named worker, separate computer, account-ownership attestation or timed handoff is required. Dependencies and technical evidence govern completion, not starting work."
   }
 }

@@ -144,11 +144,12 @@ class CoworkTests(unittest.TestCase):
                      SimpleNamespace(branch="task/t01-naci", commit="abcdef0", takeover=False), "burhan-launchway")
         self.assertEqual(self.gh.issues[found["T01"]["number"]]["assignees"], [{"login": "burhan-launchway"}])
 
-    def test_blocked_task_cannot_be_claimed(self):
+    def test_dependency_blocked_task_can_be_claimed_for_independent_work(self):
         _, found = self.make_board(); task = self.manifest["tasks"][1]
-        with self.assertRaisesRegex(RuntimeError, "Dependencies"):
-            cowork.claim(self.gh, self.manifest, task, found["T02"], found,
-                         SimpleNamespace(branch="task/t02", commit="abcdef0", takeover=False), "burhan-launchway")
+        cowork.claim(self.gh, self.manifest, task, found["T02"], found,
+                     SimpleNamespace(branch="task/t02", commit="abcdef0", takeover=False), "new-authorized-worker")
+        self.assertEqual(self.gh.issues[found["T02"]["number"]]["assignees"], [{"login": "new-authorized-worker"}])
+        self.assertIn("state:in-progress", cowork.labels(self.gh.issues[found["T02"]["number"]]))
 
     def owner_checkpoint(self, found, minutes, offline=False, actor="DemirEkinArikan"):
         issue = self.gh.issues[found["T01"]["number"]]
@@ -208,12 +209,12 @@ class CoworkTests(unittest.TestCase):
                              SimpleNamespace(branch="task/new-work", commit="abcdef0", takeover=False), self.gh.actor)
                 self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": self.gh.actor}])
 
-    def test_legacy_window_does_not_bypass_dependencies(self):
+    def test_legacy_window_does_not_prevent_starting_dependency_blocked_work(self):
         _, found = self.make_board()
         self.manifest["ownership_window"] = "ignored"
         args = SimpleNamespace(branch="task/t02-next", commit="abcdef0", takeover=True)
-        with self.assertRaisesRegex(RuntimeError, "Dependencies"):
-            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][1], found["T02"], found, args, "authorized-new-worker")
+        cowork.claim(self.gh, self.manifest, self.manifest["tasks"][1], found["T02"], found, args, "authorized-new-worker")
+        self.assertFalse(cowork.is_ready(self.manifest["tasks"][1], found))
 
     def test_parent_and_task_templates_show_metadata_without_timed_assignment(self):
         parent, found = self.make_board()
@@ -221,19 +222,19 @@ class CoworkTests(unittest.TestCase):
         found["T02"]["assignees"] = [{"login": "authorized-new-worker"}]
         body = cowork.parent_body(self.manifest, found)
         self.assertIn("Reproducible runtime — @authorized-new-worker", body)
-        self.assertIn("Assignees and actor names describe coordination, not permissions", body)
+        self.assertIn("Assignees and actor names are informational metadata, not permissions or locks", body)
         self.assertNotIn("User-authorized ownership window", body)
         self.assertNotIn("Naci can reclaim", body)
         self.assertNotIn("continues afterwards", body)
         self.assertIn(cowork.COORDINATION_PROTOCOL, cowork.task_body(self.manifest["tasks"][0], found, parent))
 
-    def test_single_operator_preference_is_informational_and_sets_parent_metadata(self):
+    def test_old_single_operator_preference_cannot_restrict_open_contribution(self):
         self.manifest["active_work"] = {"mode": "single_operator", "default_assignee": "unknown-preferred-worker"}
         parent, found = self.make_board()
         self.assertEqual(parent["assignees"], [{"login": "unknown-preferred-worker"}])
         body = cowork.parent_body(self.manifest, found)
-        self.assertIn("@unknown-preferred-worker continues", body)
-        self.assertIn("does not restrict who may claim", body)
+        self.assertIn("Anyone may work on any issue at any time", body)
+        self.assertNotIn("single operator", body)
         self.gh.actor = "different-authorized-worker"
         cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], found["T01"], found,
                      SimpleNamespace(branch="task/independent-work", commit="abcdef0", takeover=False), self.gh.actor)
@@ -254,6 +255,24 @@ class CoworkTests(unittest.TestCase):
         self.assertEqual(self.run_completion(), 0)
         self.assertEqual(issue["state"], "closed")
         self.assertEqual(cowork.handoff_comments(self.gh, issue)[-1]["actor"], "authorized-new-worker")
+
+    def test_unclaimed_dependency_blocked_task_accepts_checkpoint_but_not_completion(self):
+        _, found = self.make_board()
+        self.gh.actor = "new-authorized-worker"
+        issue = self.gh.issues[found["T02"]["number"]]
+        original_assignees = copy.deepcopy(issue["assignees"])
+        self.assertNotIn("state:in-progress", cowork.labels(issue))
+        self.assertEqual(self.run_action(["checkpoint", "T02", "--branch", "task/independent-work", "--commit", "abcdef0",
+                                          "--done", "prepared isolated implementation", "--remaining", "dependency evidence"]), 0)
+        self.assertEqual(issue["assignees"], original_assignees)
+        self.assertEqual(cowork.handoff_comments(self.gh, issue)[-1]["actor"], self.gh.actor)
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "Dependencies"):
+            self.run_action(["complete", "T02", "--commit", "abcdef0", "--pr", "23", "--checks", "local checks"])
+        self.assertEqual(self.gh.mutations, [])
+        self.gh.issues[found["T01"]["number"]]["state"] = "closed"
+        self.assertEqual(self.run_action(["complete", "T02", "--commit", "abcdef0", "--pr", "23", "--checks", "local checks"]), 0)
+        self.assertEqual(issue["state"], "closed")
 
     def test_checkpoint_and_completion_are_independent_of_demir_naci_assignment_direction(self):
         for assigned, actor in (("DemirEkinArikan", "burhan-launchway"), ("burhan-launchway", "DemirEkinArikan")):
@@ -336,7 +355,7 @@ class CoworkTests(unittest.TestCase):
             cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
                          SimpleNamespace(branch="task/handoff", commit="abcdef0", takeover=False), self.gh.actor)
 
-    def test_completion_still_requires_ready_dependencies_and_active_lifecycle(self):
+    def test_completion_still_requires_ready_dependencies_and_open_task(self):
         _, found = self.make_board()
         self.gh.actor = "authorized-new-worker"
         issue = self.gh.issues[found["T02"]["number"]]
@@ -347,7 +366,7 @@ class CoworkTests(unittest.TestCase):
         self.assertEqual(self.gh.mutations, [])
         closed = self.gh.issues[found["T01"]["number"]]
         closed["state"] = "closed"
-        with self.assertRaisesRegex(RuntimeError, "open task"):
+        with self.assertRaisesRegex(RuntimeError, "must be open"):
             self.run_action(["checkpoint", "T01", "--branch", "task/handoff", "--commit", "abcdef0",
                              "--done", "local changes", "--remaining", "none"])
 
@@ -362,6 +381,15 @@ class CoworkTests(unittest.TestCase):
         self.assertNotIn(cowork.LEGACY_COORDINATION, issue["body"])
         self.assertIn("Custom context.", issue["body"])
         self.assertEqual(self.gh.comments, before)
+
+    def test_protocol_sync_rejects_mixed_coordination_versions_before_writing(self):
+        _, found = self.make_board()
+        issue = self.gh.issues[found["T18"]["number"]]
+        issue["body"] = issue["body"].replace(cowork.COORDINATION_PROTOCOL, cowork.LEGACY_COORDINATION) + cowork.PREVIOUS_COORDINATION
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "not unique"):
+            cowork.sync_protocol(self.gh, self.manifest, found)
+        self.assertEqual(self.gh.mutations, [])
 
     def test_completion_unblocks_dependencies_without_changing_other_claims(self):
         parent, found = self.make_board()

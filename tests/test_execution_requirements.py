@@ -17,6 +17,13 @@ def packet(actions=None, *, local=False, narrow=False):
     selected = list(actions if actions is not None else catalogue)
     profile = context["execution_policy"]["profile"]
     profile["record_notes"] = not local
+    for operation, failures in profile.get("nonpersistent_failures", {}).items():
+        for failure in failures:
+            status = str(failure["http_status"])
+            quote = "Invented service rejection persists no write."
+            context["openapi"]["paths"]["/" + operation]["post"]["responses"].setdefault(status, {})["description"] = quote
+            failure["api_source"] = {"pointer": "/paths/~1" + operation + "/post/responses/" + status + "/description",
+                                     "quote": quote}
     profile["wire_codes"] = {
         "reasons": {"refused": "refused", "dispute": "dispute", "service_error": "service_error",
                     "hardship": "hardship", "failed": "identity_failed"},

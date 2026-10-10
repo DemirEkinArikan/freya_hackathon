@@ -30,3 +30,20 @@ annotation, not a shared status from another operation. Quarantine uncertain
 persistence. When a sourced promise_failure_disposition is supported, also supply
 its sourced reason vocabulary. Interface shapes do not authorize invented values.
 Unsupported or contradictory requirements remain explicit failures.
+
+Every operative nonpersistent_failures matcher must include api_source with
+pointer and quote. The pointer is a local OpenAPI JSON pointer scoped through
+the actual operation's response status; quote is a literal excerpt of that
+annotation justifying nonpersistence. A quote from another operation or status
+never grants a retry. Inspect both successful transport with negative payload
+and error responses; encode all source-required qualified failures in operative
+matchers. Reconcile any promise_failure_resolution.api_annotations with those
+matchers; descriptive extensions cannot substitute for executable semantics.
+Do not invent a transport status or nonpersistence guarantee without the supplied
+API witness. This witness records provenance; semantic interpretation must still
+be faithful to the approved brief/API.
+
+close_precedence encodes only source-supported priorities among overlapping
+protected outcomes. Unique eligible protected facts need no invented ranking;
+multiple facts without a declared applicable priority remain ambiguous. Preserve
+all source-backed closing outcomes and their exact reason vocabularies.

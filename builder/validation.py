@@ -522,6 +522,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     all_nodes = {**nodes, **globals_}
     # Public data bindings are declarations, not evidence of runtime persistence.
     # Exact trusted recompilation separately seals all protected code and state.
+    operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
     declared = {"customer_id", "now", "BANK_TOKEN"}
     declared.update(readonly_call_inputs)
     declared.update(_obj(workflow.get("test_variables")))
@@ -550,7 +551,6 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if isinstance(fn.get("name"), str):
             # Documented engine result bindings, not invented static defaults.
             declared.update(fn["name"] + suffix for suffix in ("_status_code", "_result", "_args"))
-    operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
     def text_bindings(value: Any, path: str, *, spoken: bool = False, readback: bool = False) -> None:
         if isinstance(value, str):
             stripped = re.sub(r"\{\{[^{}]+\}\}", "", value)

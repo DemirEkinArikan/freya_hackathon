@@ -26,13 +26,15 @@ def _default(path: tuple, key: str, parent: dict) -> tuple[bool, object]:
     if not path:
         return key in _TOP_DEFAULTS, _TOP_DEFAULTS.get(key)
     if len(path) == 2 and path[0] == "nodes":
-        if key == "max_node_turns" and parent.get("node_type") == "end_call":
+        if key == "max_node_turns" and parent.get("node_type") in {"end_call", "code", "api_request"}:
             return True, None
         return key in _NODE_DEFAULTS, _NODE_DEFAULTS.get(key)
     if (len(path) == 5 and path[0] == "nodes" and path[2] == "transitions"
             and type(path[3]) is int and path[4] == "condition" and key == "mode"):
         return True, "exact"
     if key == "description" and path[0] == "nodes":
+        if len(path) == 4 and path[2] == "response_mapping" and type(path[3]) is int:
+            return True, ""
         if len(path) == 4 and path[2:] == ("terminal", "function"):
             return True, ""
         if (len(path) == 5 and path[2] in {"tools", "pre_actions"}

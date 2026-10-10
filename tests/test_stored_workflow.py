@@ -18,6 +18,30 @@ class StoredWorkflowTests(unittest.TestCase):
         self.assertEqual(self.stored, before)
         assert_equivalent_stored_workflow(self.authored, self.authored)
 
+    def test_live_code_and_api_serializer_defaults_preserve_actions(self):
+        fixtures = Path(__file__).parent / "fixtures/platform-readback"
+        authored = json.loads((fixtures / "actions-authored.json").read_text())
+        stored = json.loads((fixtures / "actions-stored.json").read_text())
+        assert_equivalent_stored_workflow(stored, authored)
+        for name, node in stored["nodes"].items():
+            if node["node_type"] in {"code", "api_request"}:
+                mutated = copy.deepcopy(stored)
+                mutated["nodes"][name]["max_node_turns"] = 10
+                with self.assertRaises(ValueError):
+                    assert_equivalent_stored_workflow(mutated, authored)
+                action_mutation = copy.deepcopy(stored)
+                action_mutation["nodes"][name]["pre_actions"] = []
+                with self.assertRaises(ValueError):
+                    assert_equivalent_stored_workflow(action_mutation, authored)
+
+    def test_conversation_turn_cap_defaults_require_explicit_authored_value(self):
+        authored = copy.deepcopy(self.authored)
+        del authored["nodes"]["start"]["max_node_turns"]
+        stored = copy.deepcopy(self.stored)
+        stored["nodes"]["start"]["max_node_turns"] = None
+        with self.assertRaises(ValueError):
+            assert_equivalent_stored_workflow(stored, authored)
+
     def test_unknown_addition_is_rejected_even_when_empty(self):
         for obj in (self.stored, self.stored["nodes"]["start"],
                     self.stored["nodes"]["start"]["on_enter"]):

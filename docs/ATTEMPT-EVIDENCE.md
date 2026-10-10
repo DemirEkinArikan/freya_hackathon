@@ -49,3 +49,14 @@ server transformations are harmless.
 Local mock regressions verify retention and controller decisions. They do not
 establish model quality, a successful live Freya build, or the hackathon's runtime
 acceptance requirements.
+
+The allowlist is grounded in two synthetic staging readbacks: conversation/end
+nodes, then code/API nodes without execution. Optional node fields receive
+empty collections/strings, specific booleans, and history defaults. Non-dialogue
+code/API/end nodes may receive a null turn cap; conversation turn limits must
+remain explicitly authored. Transition conditions may receive `mode: exact`,
+function and node response-mapping descriptions may receive an empty string.
+These allowances apply only at their matching structural paths. Private model
+configuration is checked by the adapter separately; code, API schemas, headers,
+hooks, ordered actions and authored values cannot change. The v2 synthetic call
+and v3 serializer probe are diagnostic platform evidence, not banking tests.

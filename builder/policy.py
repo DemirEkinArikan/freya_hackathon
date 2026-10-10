@@ -32,6 +32,13 @@ class PolicyError(ValueError):
     pass
 
 
+class MissingExecutionRules(PolicyError):
+    """Required policy inputs are absent; changing dialogue cannot supply them."""
+    def __init__(self, kinds):
+        self.missing_kinds = tuple(sorted(set(kinds)))
+        super().__init__("required execution rule is missing: " + ", ".join(self.missing_kinds))
+
+
 _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "business_weekdays",
                   "band_ranges", "deadline_days", "floor_fields", "callback_window",
                   "note_reasons", "close_reasons", "transfer_reasons", "require_confirmation",
@@ -42,7 +49,7 @@ _PROFILE_KINDS.add("wire_codes")
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices"}
 
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
@@ -115,7 +122,10 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item)
-    if kind in {"record_notes", "resolve_all_products"}:
+    if kind == "account_disclosure_fields":
+        valid = (isinstance(value, list) and all(text(item) for item in value)
+                 and len(set(value)) == len(value) and not set(value) & {"customer_id", "product_id"})
+    elif kind in {"record_notes", "resolve_all_products"}:
         valid = type(value) is bool
     elif kind in {"confirmation_actions", "close_precedence"}:
         valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))
@@ -127,6 +137,15 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  or (set(value) == {"field", "direction", "tie_breaker"}
                      and text(value["field"]) and value["direction"] in ("ascending", "descending")
                      and value["tie_breaker"] == "account_order")))
+    elif kind == "identity_close_choices":
+        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"unreached", "incomplete"}
+                 and all(isinstance(choices, list) and bool(choices) for choices in value.values()))
+        if valid:
+            valid = all(isinstance(choice, dict) and set(choice) <= {"outcome", "reason", "requires"}
+                        and text(choice.get("outcome"))
+                        and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                        and ("reason" not in choice or text(choice["reason"]))
+                        for choices in value.values() for choice in choices)
     elif kind == "identity_close":
         valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
                  and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}
@@ -556,17 +575,20 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
     if not isinstance(required_kinds, (list, tuple)) or any(not isinstance(kind, str) or kind not in kinds for kind in required_kinds):
         raise PolicyError("requested execution rule kind is unsupported")
     profile = {}
+    missing = []
     absent = object()
     for kind in sorted(kinds):
         value = rule_value(policy, kind, absent)
         if value is absent:
             if kind in required_kinds:
-                raise PolicyError("required execution rule is missing: " + kind)
+                missing.append(kind)
             continue
         errors = _execution_errors(kind, value)
         if errors:
             raise PolicyError("; ".join(errors))
         profile[kind] = copy.deepcopy(value)
+    if missing:
+        raise MissingExecutionRules(missing)
     if "band_ranges" in profile:
         bands = {band["name"] for band in profile["band_ranges"]}
         for kind in ("deadline_days", "persuasion_limits"):

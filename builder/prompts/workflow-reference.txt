@@ -3,7 +3,7 @@ Root: initial_node, nodes (object keyed by name), optional system_prompt.
 Every node has matching name and node_type. Public names begin with a letter or
 underscore and contain letters/digits/underscores; bg_* is reserved.
 
-conversation fields: name,node_type,task_message,on_enter,
+conversation fields: name,node_type,task_message,routing_prompt,on_enter,
 on_enter_first_entry_only,extraction_schema,transitions,max_node_turns,
 max_turn_transition. No other fields. on_enter is {type:llm}, {type:tts,text:...}
 or {type:silent}. Transitions may target public plan nodes only.
@@ -41,3 +41,29 @@ A guarded close_call is required; authored end_call nodes are forbidden.
 The compiler owns protected bg_state/bg_route values and all internal nodes. A
 compiler success route means observed API success or completed local staging as
 appropriate. Blocked/failure routes do not establish that any bank write occurred.
+
+Read-only runtime view: use {{bg_facts}} in model task/system instructions for
+current identity progress, next factor, immediate-result hint, routing/action
+status and recorded-action counts. Every guard step refreshes this protected JSON;
+no authored extraction may write it. Raw bg_state/bg_body/result variables,
+customer_id and automatic operation-result variables cannot be templated. now
+may be read. Never place bg_facts in authored on_enter speech/TTS.
+Raw protected values also cannot appear in condition.variable reads. The string
+routing_prompt may read {{bg_facts}} explicitly; task_message is not visible to
+the routing model, so put needed routing context in routing_prompt/transitions.
+
+internal_action_references.products contains product_ref IDs needed for proposed
+action inputs; these are internal and must never be spoken. position is policy
+processing order; returned_position is original account order. product_states
+uses positions and distinguishes staged from recorded writes. Internal refs may
+also carry proposal_constraints (normalized type, band, floor/cap cents and the
+policy business deadline), resolution_status and remaining_failure_attempts.
+Use only available constraints to propose terms; blocked/unavailable constraints
+never authorize a write. These internal fields are not narration permission and
+contain no assertion of persuasion attempts remaining. Account narration
+is blocked unless active account_disclosure_fields explicitly declares approved
+returned scalar fields. Then account.products contains only those fields and
+positions. Use approved displays for human wording; never expose internal IDs or
+API extras. Quarantined/unavailable views cannot authorize further bank actions
+or imply unknown writes succeeded. Conditional disclosure permissions remain
+unsupported by this unconditional field list.

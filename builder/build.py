@@ -22,13 +22,17 @@ from .safety import assert_no_secrets, canonical_json, digest, read_json, saniti
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
 from .action_bindings import compile_action_bindings
-from .policy import compile_execution_policy, PolicyError
+from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
 EXPORT_RESERVE = 300
 MAX_REPAIRS = 2
+
+
+class FrozenPolicyContractError(ValueError):
+    """The fixed policy lacks executable semantics; plan repair is unjustified."""
 
 
 class HostedTestInfrastructureError(RuntimeError):
@@ -149,6 +153,9 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
             compiled = compile_policy_contract(policy, sources, openapi)
+            # Execution-shape errors belong to bounded extraction repairs,
+            # before the policy is frozen; plans cannot repair bank rules.
+            compile_execution_policy(policy, compile_action_bindings(policy, openapi))
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
@@ -367,6 +374,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
             compiled = compile_policy_contract(policy, sources, openapi)
+            compile_execution_policy(policy, compile_action_bindings(policy, openapi))
             policy_repairs = 0
             policy_origin = "provided_and_revalidated"
         else:
@@ -424,6 +432,12 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": guard_bundle["workflow"]}
                 errors = validate_workflow(candidate["workflow"], openapi, frozen_policy,
                                            guard_context=guard_context)
+            except MissingExecutionRules as exc:
+                trace.emit("frozen_contract_failure", missing_kinds=list(exc.missing_kinds),
+                           policy_preserved=True, plan_repair_attempted=False)
+                raise FrozenPolicyContractError(
+                    "Frozen policy lacks required execution rules; no plan repair was attempted: "
+                    + ", ".join(exc.missing_kinds)) from exc
             except (GuardCompileError, PolicyError, ValueError) as exc:
                 errors = getattr(exc, "errors", [str(exc)])
                 candidate = {"policy": copy.deepcopy(frozen_policy), "plan": plan}
@@ -511,6 +525,9 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         client.reserve = 0
         deadline.require()
         exported = client.export_workflow(deployment, run_dir / "submission.workflow.json")
+        # An export response can arrive after its allocation. Preserve it as
+        # evidence, but never report a build exceeding the global limit as done.
+        deadline.require()
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
@@ -527,7 +544,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         return manifest
     except Exception as exc:
         _write_json(run_dir / "manifest.json", sanitize({"mode": mode, "status": "failed", "error": str(exc),
-                                                         "failure_kind": "test_infrastructure" if isinstance(exc, HostedTestInfrastructureError) else "builder",
+                                                         "failure_kind": "test_infrastructure" if isinstance(exc, HostedTestInfrastructureError)
+                                                         else "frozen_policy_contract" if isinstance(exc, FrozenPolicyContractError) else "builder",
                                                          "hosted_behavior_verified": False,
                                                          "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
         trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining())

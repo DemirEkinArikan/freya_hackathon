@@ -63,6 +63,9 @@ defines that concept. They are interface names, not predetermined banking rules:
   to exact opaque API values, only when the supplied documents define the meanings.
 - action_fields/result_fields: operation-to-semantic-field maps for renamed API fields.
 - product_fields: semantic product fields mapped to returned account field names.
+- account_disclosure_fields: explicit list of returned product fields permitted
+  for account narration. Preserve conditional disclosure constraints separately;
+  a field list cannot encode permission limited to a particular product/state.
 - record_notes/resolve_all_products: explicit booleans for note writes and whether
   every returned product must be resolved before final close.
 - confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array
@@ -70,6 +73,15 @@ defines that concept. They are interface names, not predetermined banking rules:
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.
 - close_precedence: ordered semantic outcome array derived from the final selection rule.
 - identity_close: failed/incomplete/unreached records with outcome and optional reason.
+
+- identity_close_choices: optional unreached/incomplete arrays of
+  {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.
+  Use when the supplied policy has several language-derived dispositions in an
+  identity scope. Each option keeps that scope's declared outcome; callback
+  success needs actual recorded-callback evidence, never merely a caller claim.
+  Preserve the fixed exhausted-identity disposition. Missing proposal/evidence
+  must not silently select another reason. All option values come from sources.
+
 - transfer_prerequisites: exact queue-to-none/identity/account prerequisite map.
 - promise_readback: {product_fields:[...],value_labels?:{field:{value:spoken_label}}},
   using only human-readable returned fields, excluding customer/internal product IDs.

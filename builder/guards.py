@@ -84,7 +84,7 @@ def _hash_checked(value: Any, label: str) -> None:
         raise GuardCompileError([label + " has a missing or stale deterministic hash"])
 
 
-def _plan_errors(plan: Any) -> list[str]:
+def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = ()) -> list[str]:
     errors = []
     if not isinstance(plan, dict) or set(plan) - {"initial_node", "nodes", "system_prompt"}:
         return ["plan supports only initial_node, nodes and system_prompt"]
@@ -93,10 +93,34 @@ def _plan_errors(plan: Any) -> list[str]:
         return ["plan.nodes must be a nonempty object"]
     if not isinstance(plan.get("initial_node"), str) or plan.get("initial_node") not in nodes:
         errors.append("plan.initial_node is unknown")
+    protected_operations = set(_FIELDS) | set(operation_names)
+    def protected_read(name: Any) -> bool:
+        return isinstance(name, str) and (name == "customer_id"
+            or name.startswith(PREFIX) and name != "bg_facts"
+            or any(name.startswith(operation + "_") for operation in protected_operations))
+    def templates(value: Any, path: str, spoken: bool = False) -> None:
+        if isinstance(value, str):
+            for match in re.finditer(r"\{\{([^{}]+)\}\}", value):
+                names = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", match.group(1))
+                if any(protected_read(name) for name in names) or any(
+                       re.search(r"(?<![A-Za-z0-9_])" + re.escape(op) + r"_[A-Za-z0-9_]", match.group(1))
+                       for op in protected_operations):
+                    errors.append(path + ": authored templates cannot read raw protected engine values")
+                if spoken and "bg_facts" in names:
+                    errors.append(path + ": authored speech cannot template facts containing internal action references")
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                if key == "variable" and protected_read(item):
+                    errors.append(path + ".variable: authored conditions cannot read raw protected engine values")
+                templates(item, path + "." + str(key), spoken or key == "on_enter")
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                templates(item, path + "[" + str(index) + "]", spoken)
+    templates(plan, "plan")
     def variable(name: Any) -> bool:
         return (isinstance(name, str) and bool(_NAME.fullmatch(name)) and not name.startswith(PREFIX)
                 and name not in {"customer_id", "now"}
-                and not any(name.startswith(operation + "_") for operation in _FIELDS))
+                and not any(name.startswith(operation + "_") for operation in protected_operations))
     for name, node in nodes.items():
         if not isinstance(name, str) or not _NAME.fullmatch(name) or name.startswith(PREFIX):
             errors.append("plan node names must be public identifiers")
@@ -120,12 +144,14 @@ def _plan_errors(plan: Any) -> list[str]:
                 if node.get(field) not in nodes:
                     errors.append(name + ": unknown " + field)
         elif kind == "conversation":
-            allowed = {"name", "node_type", "task_message", "on_enter", "on_enter_first_entry_only",
+            allowed = {"name", "node_type", "task_message", "routing_prompt", "on_enter", "on_enter_first_entry_only",
                        "extraction_schema", "transitions", "max_node_turns", "max_turn_transition"}
             if set(node) - allowed:
                 errors.append(name + ": dialogue nodes cannot contain executable or unsupported fields")
             if not isinstance(node.get("task_message", ""), str):
                 errors.append(name + ": task_message must be text")
+            if "routing_prompt" in node and not isinstance(node["routing_prompt"], str):
+                errors.append(name + ": routing_prompt must be text")
             extraction = node.get("extraction_schema", [])
             transitions = node.get("transitions", [])
             if not isinstance(extraction, list) or not isinstance(transitions, list):
@@ -187,6 +213,20 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         elif kind == "identity_close":
             if not isinstance(value, dict) or set(value) != {"failed", "incomplete", "unreached"} or any(not isinstance(p, dict) or set(p) - {"outcome", "reason"} or not isinstance(p.get("outcome"), str) or ("reason" in p and not isinstance(p["reason"], str)) for p in value.values()):
                 errors.append("identity_close requires failed, incomplete and unreached outcome/reason records")
+        elif kind == "identity_close_choices":
+            if not isinstance(value, dict) or not value or set(value) - {"unreached", "incomplete"}:
+                errors.append("identity_close_choices requires a nonempty subset of unreached/incomplete scopes")
+            else:
+                for scope, choices in value.items():
+                    if not isinstance(choices, list) or not choices:
+                        errors.append("identity_close_choices scopes require nonempty choice arrays")
+                        continue
+                    for choice in choices:
+                        if (not isinstance(choice, dict) or set(choice) - {"outcome", "reason", "requires"}
+                                or not isinstance(choice.get("outcome"), str) or not choice["outcome"]
+                                or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback")
+                                or "reason" in choice and (not isinstance(choice["reason"], str) or not choice["reason"])):
+                            errors.append("identity_close_choices require outcome, optional nonempty reason and supported evidence")
         elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account"} for k, v in value.items())):
             errors.append("transfer_prerequisites requires queue-to-none/identity/account mapping")
         elif kind == "promise_readback":
@@ -216,6 +256,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if "identity_close" in result:
         result["identity_close"] = {k: {field: decode("outcomes" if field == "outcome" else "reasons", value)
                                       for field, value in proposal.items()} for k, proposal in result["identity_close"].items()}
+    if "identity_close_choices" in result:
+        result["identity_close_choices"] = {scope: [
+            {key: decode("outcomes" if key == "outcome" else "reasons", value)
+             if key in {"outcome", "reason"} else value for key, value in choice.items()}
+            for choice in choices] for scope, choices in result["identity_close_choices"].items()}
     if "promise_failure_disposition" in result:
         result["promise_failure_disposition"]["reason"] = decode("reasons", decode("notes", result["promise_failure_disposition"]["reason"]))
     if set(result.get("confirmation_actions", [])) - {"commit_promises", "commit_transfer", "schedule_callback"}:
@@ -228,6 +273,23 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed is None or (allowed and proposal.get("reason") not in allowed) or (not allowed and proposal.get("reason")):
             raise GuardCompileError(["identity_close disposition conflicts with allowed closing outcomes/reasons"])
+    for scope, choices in result.get("identity_close_choices", {}).items():
+        fixed = result.get("identity_close", {}).get(scope)
+        seen = set()
+        for choice in choices:
+            if fixed is None or choice["outcome"] != fixed["outcome"]:
+                raise GuardCompileError(["identity closing choice outcome must match its fixed scope"])
+            allowed = result.get("close_reasons", {}).get(choice["outcome"])
+            reason = choice.get("reason", "")
+            if allowed is None or (allowed and reason not in allowed) or (not allowed and reason):
+                raise GuardCompileError(["identity closing choice conflicts with allowed closing reasons"])
+            if reason in seen:
+                raise GuardCompileError(["identity closing choices have duplicate decoded reasons"])
+            seen.add(reason)
+            if reason == "callback" and choice["requires"] != "recorded_callback":
+                raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
+            if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
+                raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
     return result
 
 
@@ -241,11 +303,24 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
     action_fields = rules.get("action_fields", {}).get("value", {})
     result_fields = rules.get("result_fields", {}).get("value", {})
     product_fields = rules.get("product_fields", {}).get("value", {})
+    aliases = rules.get("tool_aliases", {}).get("value", {})
+    if (not isinstance(aliases, dict) or set(aliases) - set(_FIELDS)
+            or any(not isinstance(actual, str) or not actual for actual in aliases.values())):
+        raise GuardCompileError(["tool_aliases must map supported canonical roles to actual API operation IDs"])
+    permitted = {op["name"]: op for op in contract["permitted_operations"]}
+    if set(aliases.values()) - set(permitted):
+        raise GuardCompileError(["tool_aliases references an unknown or nonpermitted API operation"])
+    resolved = {role: aliases.get(role, role) for role in _FIELDS
+                if aliases.get(role, role) in permitted}
+    if len(set(resolved.values())) != len(resolved):
+        raise GuardCompileError(["tool_aliases must resolve semantic roles injectively, including canonical defaults"])
+    if set(permitted) - set(resolved.values()):
+        raise GuardCompileError(["renamed API operations require explicit unambiguous tool_aliases"])
+    role_for_actual = {actual: role for role, actual in resolved.items()}
     for op in contract["permitted_operations"]:
-        name = op["name"]
-        if name not in _FIELDS:
-            raise GuardCompileError(["unsupported bank operation semantic role: " + name])
-        if name not in tools or tools[name]["function"]["parameters"]["properties"]["url"]["default"] != op["url"]:
+        actual_name = op["name"]
+        name = role_for_actual[actual_name]
+        if actual_name not in tools or tools[actual_name]["function"]["parameters"]["properties"]["url"]["default"] != op["url"]:
             raise GuardCompileError(["OpenAPI differs from frozen operation catalogue"])
         request = op["request_schema"]
         response = next((s for media in op["response_schemas"].values() for s in media.values()
@@ -291,8 +366,8 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 valid = kind == "string"
             if not valid:
                 raise GuardCompileError([name + ": unsupported trusted result schema for " + semantic])
-        catalog[name] = {"request_schema": copy.deepcopy(request), "fields": fields,
-                         "results": results, "tool": copy.deepcopy(tools[name])}
+        catalog[name] = {"name": actual_name, "request_schema": copy.deepcopy(request), "fields": fields,
+                         "results": results, "tool": copy.deepcopy(tools[actual_name])}
         if name == "get_account":
             product_schema = response["properties"][results["products"]].get("items", {})
             keys = product_schema.get("properties", {})
@@ -300,19 +375,91 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
             if any(field not in keys for field in mapping.values()):
                 raise GuardCompileError(["get_account: product field aliases require explicit active product_fields"])
             catalog[name]["product_fields"] = mapping
+            catalog[name]["product_schema"] = copy.deepcopy(product_schema)
     if bindings:
         _hash_checked(bindings, "action bindings")
-        for category in bindings.get("categories", {}).values():
-            op = category.get("operation", {}).get("name")
+        category_roles = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
+                          "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
+        for category_name, category in bindings.get("categories", {}).items():
+            if category_name == "notes" and rules.get("record_notes", {}).get("value") is False:
+                if (not isinstance(category, dict) or set(category) != {"binding_kind", "semantic_to_wire", "wire_to_semantic"}
+                        or category.get("binding_kind") != "local_disposition"):
+                    raise GuardCompileError(["local-only notes require exact policy disposition binding shape"])
+                forward = category["semantic_to_wire"]
+                reverse = category["wire_to_semantic"]
+                allowed_meanings = {"refused", "hardship", "dispute", "paid", "service_error"}
+                declared = rules.get("wire_codes", {}).get("value", {}).get("notes")
+                values = rules.get("note_reasons", {}).get("value", [])
+                if declared is None:
+                    declared = {value: value for value in values} if set(values) <= allowed_meanings else {}
+                if (forward != declared or not forward or set(forward) - allowed_meanings
+                        or len(set(forward.values())) != len(forward) or {v: k for k, v in forward.items()} != reverse
+                        or not set(values) <= set(forward.values())):
+                    raise GuardCompileError(["local disposition meanings must match the exact frozen injective policy mapping"])
+                continue
+            if not isinstance(category, dict) or set(category) != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}:
+                raise GuardCompileError(["API action bindings require exact enum constraint descriptor shape"])
+            actual_op = category.get("operation", {}).get("name")
+            op = role_for_actual.get(actual_op)
             field = category.get("field")
             if op not in catalog or field not in catalog[op]["request_schema"].get("properties", {}):
                 raise GuardCompileError(["action binding references an unknown operation or request field"])
-            enum = catalog[op]["request_schema"]["properties"][field].get("enum", [])
+            if (category_name not in category_roles or op != category_roles[category_name][0]
+                    or field != catalog[op]["fields"].get(category_roles[category_name][1])):
+                raise GuardCompileError(["action binding category does not match its canonical semantic operation/field"])
+            expected_operation = permitted[actual_op]
+            if category.get("operation") != {key: expected_operation[key] for key in ("name", "method", "url")}:
+                raise GuardCompileError(["action binding operation differs from exact frozen API identity"])
+            leaf = catalog[op]["request_schema"]["properties"][field]
+            constrained = "enum" in leaf
+            enum = leaf.get("enum", [])
+            if (type(category.get("api_enum_constrained")) is not bool
+                    or category["api_enum_constrained"] != constrained or category.get("api_enum") != enum
+                    or constrained and (not isinstance(enum, list) or not enum or any(not isinstance(v, str) or not v for v in enum) or len(set(enum)) != len(enum))):
+                raise GuardCompileError(["action binding enum constraint differs from exact frozen string schema"])
             forward = category.get("semantic_to_wire", {})
             reverse = category.get("wire_to_semantic", {})
-            if {v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or any(v not in enum for v in forward.values()):
+            if {v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or constrained and any(v not in enum for v in forward.values()):
                 raise GuardCompileError(["action binding vocabulary differs from supplied API enum"])
     return catalog
+
+
+def _disclosure_schema(contract: dict, profile: dict, catalog: dict) -> dict:
+    """Approve only explicitly sourced scalar account fields for dialogue."""
+    selected = profile.get("account_disclosure_fields")
+    if selected is None or isinstance(selected, list) and not selected:
+        return {}
+    if (not isinstance(selected, list) or not selected
+            or any(not isinstance(field, str) or not field for field in selected)
+            or len(set(selected)) != len(selected)):
+        raise GuardCompileError(["account_disclosure_fields requires unique nonempty exact field names"])
+    account = catalog.get("get_account")
+    if not isinstance(account, dict):
+        raise GuardCompileError(["account disclosure requires a permitted get_account operation"])
+    schema = account.get("product_schema")
+    if schema is None:
+        # Older catalogues omit the raw item schema. Resolve it from the same
+        # frozen operation/result aliases, never from caller-proposed names.
+        aliases = contract["active_rules"].get("tool_aliases", {}).get("value", {})
+        operation = next((op for op in contract["permitted_operations"]
+                          if op["name"] == aliases.get("get_account", "get_account")), None)
+        if operation is None:
+            raise GuardCompileError(["account disclosure lacks a frozen account schema"])
+        response = next((value for media in operation["response_schemas"].values() for value in media.values()
+                         if isinstance(value, dict) and "properties" in value), {})
+        schema = response.get("properties", {}).get(account["results"]["products"], {}).get("items", {})
+    properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+    forbidden = {"customer_id", "product_id", account["product_fields"]["product_id"]}
+    forbidden.update(op["fields"].get("customer_id", "") for op in catalog.values())
+    if any(field in forbidden for field in selected):
+        raise GuardCompileError(["account_disclosure_fields cannot expose internal/customer identifier aliases"])
+    approved = {}
+    for field in selected:
+        leaf = properties.get(field)
+        if not isinstance(leaf, dict) or leaf.get("type") not in {"string", "number", "integer", "boolean"}:
+            raise GuardCompileError(["account disclosure field is missing or is not a supported scalar: " + field])
+        approved[field] = copy.deepcopy(leaf)
+    return approved
 
 
 # This same source runs in local tests and is embedded verbatim in Freya code
@@ -475,12 +622,29 @@ def guard_close(state, proposed, profile, maps):
             facts['no_promise'] = dict(outcome='no_promise', reason=reason)
     proposal = next((facts[outcome] for outcome in profile['close_precedence'] if outcome in facts), None)
     if proposal is None:
-        outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
         table = profile['identity_close']
         if state['identity_status'] == 'failed' and not state['account_loaded']:
             proposal = dict(table['failed'])
         elif state['identity_status'] != 'verified' and not state['account_loaded']:
-            proposal = dict(table['unreached'] if outcome == table['unreached']['outcome'] and not state['verified_fields'] else table['incomplete'])
+            if not isinstance(proposed.get('outcome', ''), str):
+                raise ValueError('identity closing outcome proposal must be text')
+            outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
+            scope = 'unreached' if outcome == table['unreached']['outcome'] and not state['verified_fields'] else 'incomplete'
+            choices = profile.get('identity_close_choices', dict()).get(scope)
+            if choices is None:
+                proposal = dict(table[scope])
+            else:
+                if not isinstance(proposed.get('reason', ''), str):
+                    raise ValueError('identity closing reason proposal must be text')
+                reason = guard_decode('reasons', proposed.get('reason', ''), maps)
+                matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]
+                if len(matching) != 1:
+                    raise ValueError('identity closing proposal lacks one declared eligible choice')
+                choice = matching[0]
+                requirement = choice['requires']
+                if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
+                    raise ValueError('identity closing proposal lacks required callback evidence')
+                proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
         else:
             raise ValueError('closing lacks protected evidence')
     reasons = profile['close_reasons']
@@ -489,13 +653,166 @@ def guard_close(state, proposed, profile, maps):
     allowed = reasons[proposal['outcome']]
     if (allowed and proposal.get('reason') not in allowed) or (not allowed and proposal.get('reason')):
         raise ValueError('closing reason outside policy')
+    if proposal.get('reason') == 'callback' and not state['callbacks']:
+        raise ValueError('callback-success closing requires a recorded callback')
+    if proposal.get('reason') == 'no_callback' and state['callbacks']:
+        raise ValueError('no_callback closing cannot hide a recorded callback')
     return proposal
+
+def guard_known_counts(state):
+    if (not isinstance(state.get('recorded_promises'), dict) or not isinstance(state.get('recorded_notes'), dict)
+            or not isinstance(state.get('callbacks'), list) or not isinstance(state.get('transfer'), dict)
+            or type(state.get('closed')) is not bool):
+        raise ValueError('recorded fact evidence is malformed')
+    return dict(promises=len(state['recorded_promises']), notes=len(state['recorded_notes']),
+                callbacks=len(state['callbacks']), transfer=state['transfer'].get('status') == 'recorded',
+                close=state['closed'])
+
+def guard_failed_facts(state, action, route):
+    return dict(version=1, route=route, call_status='quarantined', recorded_counts=guard_known_counts(state),
+                latest_action=dict(action=action, status='fact_projection_failed'))
+
+def guard_projection_quarantine(state):
+    # Raw account items may themselves contain a nonfinite/unserializable value.
+    # Remove that untrusted display material while retaining reconciled records,
+    # attempted-write evidence and any uncertain pending transaction.
+    out = dict(state)
+    out['quarantined'] = True
+    out['products'] = list()
+    out['account_loaded'] = False
+    return out
+
+def guard_facts(state, phase, action, route, data, profile, catalog, previous=None):
+    # Explicit view only. The protected state and raw result are never copied.
+    facts = dict(version=1, route=route, call_status='active')
+    counts = guard_known_counts(state)
+    facts['recorded_counts'] = counts
+    identifiers = [state.get('customer_id', '')] + [p.get('product_id', '') for p in state.get('products', list())]
+    def readable(value):
+        return not isinstance(value, str) or not any(identifier and identifier in value for identifier in identifiers)
+    if state.get('quarantined') is True:
+        facts['call_status'] = 'quarantined'
+        facts['latest_action'] = dict(action=action, status='unknown_or_malformed_evidence')
+        if phase == 'result' and (data.get('ok') is False or type(data.get('ok')) is str and data['ok'] in ('false', 'False')):
+            facts['latest_action']['response_status'] = 'rejected_persistence_unresolved'
+        error = data.get('error')
+        if phase == 'result' and isinstance(error, str) and error and readable(error):
+            facts['latest_action']['error'] = error
+        guard_json(facts)
+        return facts
+    if state.get('closed') is True:
+        facts['call_status'] = 'closed'
+    fields = profile.get('identity_fields', list())
+    verified = state.get('verified_fields', list())
+    wrong = state.get('wrong_answers', 0)
+    limit = profile.get('identity_wrong_limit')
+    if (not isinstance(verified, list) or any(field not in fields for field in verified)
+            or len(set(verified)) != len(verified) or type(wrong) is not int or wrong < 0
+            or type(limit) is int and wrong > limit):
+        raise ValueError('identity fact state is malformed')
+    identity = dict(status=state.get('identity_status', 'pending'), verified_factor_count=len(verified),
+                    wrong_answers=wrong, next_factor='')
+    if type(limit) is int:
+        identity['wrong_answers_left'] = max(0, limit - wrong)
+    if identity['status'] == 'pending':
+        identity['next_factor'] = next((field for field in fields if field not in verified), '')
+    facts['identity'] = identity
+    status = 'initialized' if phase == 'init' else 'sent' if route == 'allow' else 'awaiting_confirmation' if route == 'confirm' else 'blocked' if route == 'blocked' else 'completed_local_step'
+    if phase == 'result':
+        status = 'recorded' if action in ('commit_promises', 'finalize_notes', 'commit_transfer', 'schedule_callback', 'close_call') and route in ('done', 'closed') else 'loaded' if action == 'get_account' and state.get('account_loaded') else 'identity_checked' if action == 'verify_identity' and route == 'done' else 'rejected'
+        if route == 'allow':
+            status = 'continuing_batch' if guard_true(data.get('ok')) else 'retrying_nonpersistent_rejection'
+    facts['latest_action'] = dict(action=action, status=status)
+    if phase == 'result':
+        for key in ('error', 'hint'):
+            value = data.get(key, '')
+            if value is not None and not isinstance(value, str):
+                raise ValueError('fact result text has an unsupported type')
+            if value and readable(value):
+                if key == 'hint' and action == 'verify_identity' and route == 'done' and not guard_true(data.get('verified')):
+                    identity['latest_hint'] = value
+                elif key == 'error':
+                    facts['latest_action']['error'] = value
+        if action == 'verify_identity' and route == 'done':
+            identity['latest_check'] = dict(field=(previous or dict()).get('inflight', dict()).get('semantic', dict()).get('field', ''),
+                                            verified=guard_true(data.get('verified')))
+    account = dict(loaded=state.get('account_loaded') is True,
+                   narration_status='blocked_until_policy_declares_fields', products=list())
+    facts['account'] = account
+    if account['loaded'] and state.get('identity_status') != 'verified':
+        raise ValueError('account facts lack protected verified identity')
+    references = list()
+    product_states = list()
+    ordered = guard_order(state, profile) if account['loaded'] else list()
+    disclosed = catalog.get('get_account', dict()).get('disclosure_fields', dict())
+    for position, product in enumerate(ordered, 1):
+        pid = product['product_id']
+        returned_position = next(i for i, item in enumerate(state['products'], 1) if item['product_id'] == pid)
+        promise = 'recorded' if pid in state['recorded_promises'] else 'staged' if pid in state['pending_promises'] else 'none'
+        note = 'recorded' if pid in state['recorded_notes'] else 'staged' if pid in state['pending_notes'] else 'none'
+        resolution = 'recorded_promise' if promise == 'recorded' else 'recorded_note' if note == 'recorded' else 'local_disposition_finalized' if note == 'staged' and state['notes_finalized'] and profile.get('record_notes') is False else 'pending' if promise == 'staged' or note == 'staged' else 'unresolved'
+        reference = dict(position=position, returned_position=returned_position, product_ref=pid,
+                         promise_status=promise, note_status=note, resolution_status=resolution,
+                         proposal_constraints_status='unavailable')
+        limit = profile.get('promise_failure_limit')
+        failures = state['promise_failures'].get(pid, 0)
+        if type(limit) is int and type(failures) is int and 0 <= failures <= limit:
+            reference['remaining_failure_attempts'] = limit - failures
+        try:
+            product_type = product['type']
+            if not isinstance(product_type, str) or not product_type or type(product['days_late']) is not int:
+                raise ValueError('proposal product type or band is unavailable')
+            bands = [band['name'] for band in profile['band_ranges'] if band['min'] <= product['days_late'] <= band['max']]
+            if len(bands) != 1:
+                raise ValueError('proposal band is unavailable')
+            floor = guard_cents(product[profile['floor_fields'][product_type]])
+            cap = guard_cents(product['past_due'])
+            deadline = guard_deadline(guard_date(state['now']), profile['deadline_days'][bands[0]], profile).isoformat()
+            if floor < 0 or cap <= 0 or floor > cap or type(limit) is not int or type(failures) is not int or not 0 <= failures <= limit:
+                raise ValueError('proposal amount or failure budget is unavailable')
+            reference['proposal_constraints'] = dict(product_type=product_type, band=bands[0],
+                floor_amount_cents=floor, past_due_cap_cents=cap, business_deadline=deadline,
+                positive_amount_required=True)
+            try:
+                guard_product_turn(state, pid, profile)
+                reference['proposal_turn_available'] = True
+            except ValueError:
+                reference['proposal_turn_available'] = False
+            sealed = state['closed'] or state['notes_finalized'] or bool(state['transfer']) or bool(state['inflight']) or promise == 'recorded' or note == 'recorded' or failures >= limit or not reference['proposal_turn_available']
+            reference['proposal_constraints_status'] = 'blocked' if sealed else 'available'
+        except (KeyError, ValueError, TypeError):
+            pass
+        references.append(reference)
+        product_states.append(dict(position=position, promise=promise, note=note,
+                                   confirmed_write_failures=state['promise_failures'].get(pid, 0)))
+        if disclosed:
+            display = dict()
+            for field, schema in disclosed.items():
+                if field not in product or not readable(product[field]):
+                    raise ValueError('approved account fact is missing or contains an internal identifier')
+                value = product[field]
+                guard_schema(value, schema)
+                if type(value) not in (str, int, float, bool):
+                    raise ValueError('approved account fact is not scalar')
+                display[field] = value
+            account['products'].append(dict(position=position, fields=display))
+    if account['loaded'] and disclosed:
+        account['narration_status'] = 'approved_fields_only'
+    facts['internal_action_references'] = dict(products=references)
+    facts['product_states'] = product_states
+    transfer = state.get('transfer', dict())
+    facts['transfer'] = dict(status=transfer.get('status', 'none'))
+    facts['callbacks'] = [dict(date=value['date'], time=value['time']) for value in state.get('callbacks', list())]
+    facts['close'] = dict(status='recorded' if state.get('closed') is True else 'not_recorded')
+    guard_json(facts)  # Finite strict JSON; unknown selected values fail closed.
+    return facts
 
 def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
     if state['closed'] or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
-    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call'):
+    local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
+    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
         raise ValueError('the disposition phase is sealed')
     if state['transfer'] and action not in ('commit_transfer', 'close_call'):
         raise ValueError('a staged or recorded transfer permits only handoff and final close')
@@ -568,6 +885,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             state['transfer'] = dict(queue=queue, reason=profile['transfer_reasons'][queue], status='pending')
             state['pending_notes'] = dict()
             state['pending_promises'] = dict()
+            state['notes_finalized'] = False
             state['consent'] = ''
             state['batch'] = dict()
             return state, 'done', dict(), ''
@@ -802,25 +1120,25 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     spec = {"phase": phase, "action": action, "inputs": inputs, "profile": profile,
             "catalog": {k: {n: v for n, v in op.items() if n != "tool"} for k, op in catalog.items()},
             "maps": maps, "result_vars": result_vars}
-    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\n"
+    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
-        tail += "    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
+        tail += "    previous_state = None\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
     else:
-        tail += "    state = json.loads(str(vars.get('bg_state') or ''))\n"
+        tail += "    state = json.loads(str(vars.get('bg_state') or ''))\n    previous_state = state\n"
         if phase == "prepare":
             tail += "    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
         elif phase == "confirm":
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'])\n"
         else:
             tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'])\n"
-    tail += "    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n"
+    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('closed') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
-    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n"
+    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
     if phase != "prepare":
@@ -859,11 +1177,24 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     Inputs are controller-owned compilation context. Descriptive untyped policy
     is deliberately unsupported rather than converted into invented rules.
     """
-    errors = _plan_errors(plan)
+    errors = _plan_errors(plan, [operation["name"] for operation in contract.get("permitted_operations", [])])
     if errors:
         raise GuardCompileError(errors)
     profile = _profile(contract, execution_policy, plan, bindings)
     catalog = _catalogue(contract, openapi, bindings)
+    if "nonpersistent_failures" in profile:
+        failure_rules = profile["nonpersistent_failures"]
+        actual_operations = {op["name"] for op in catalog.values()}
+        if set(failure_rules) - actual_operations:
+            raise GuardCompileError(["nonpersistent_failures must name exact permitted API operation IDs"])
+        # The kernel uses semantic roles; source guarantees are bound to actual
+        # API IDs. Resolve through the same frozen injective alias map as calls.
+        profile["nonpersistent_failures"] = {
+            role: copy.deepcopy(failure_rules[op["name"]]) for role, op in catalog.items()
+            if op["name"] in failure_rules}
+    disclosure = _disclosure_schema(contract, profile, catalog)
+    if "get_account" in catalog:
+        catalog["get_account"]["disclosure_fields"] = disclosure
     display = profile.get("promise_readback")
     if display is not None:
         products = catalog.get("get_account", {}).get("product_fields", {})
@@ -947,6 +1278,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "openapi_sha256": digest(openapi), "execution_policy_sha256": execution_policy["sha256"],
                 "bindings_sha256": (bindings or {}).get("sha256", ""), "workflow_sha256": digest(workflow),
                 "public_action_entries": entries, "protected_variable_prefix": PREFIX,
+                "protected_fact_variable": "bg_facts", "fact_schema_version": 1,
                 "host_behavior_verified": False, "conversation_compliance_proven": False}
     manifest["sha256"] = digest(manifest)
     return {"workflow": workflow, "guard_manifest": manifest}

@@ -28,6 +28,13 @@ TARGETS = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "rea
            "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
 
 
+def _local_dispositions(policy: Mapping[str, Any]) -> bool:
+    flag = rule_value(policy, "record_notes")
+    if flag is not None and type(flag) is not bool:
+        raise ActionBindingError("record_notes must be an explicit boolean when supplied")
+    return flag is False
+
+
 def _vocab(policy: Mapping[str, Any]) -> dict[str, set[str]]:
     close = rule_value(policy, "close_reasons", {})
     transfer = rule_value(policy, "transfer_reasons", {})
@@ -80,7 +87,7 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> dict[str, dict[
     return maps
 
 
-def _api_field(operation: dict, semantic: str, policy: Mapping[str, Any], action: str) -> tuple[str, list[str]]:
+def _api_field(operation: dict, semantic: str, policy: Mapping[str, Any], action: str) -> tuple[str, list[str], bool]:
     fields = operation["body_schema"].get("properties", {})
     declared = rule_value(policy, "action_fields", {})
     if not isinstance(declared, dict):
@@ -99,11 +106,15 @@ def _api_field(operation: dict, semantic: str, policy: Mapping[str, Any], action
     field = matches[0]
     if not isinstance(fields[field], dict):
         raise ActionBindingError("API action field has an invalid schema")
-    enum = fields[field].get("enum")
-    if fields[field].get("type") != "string" or not isinstance(enum, list) or not enum or any(
+    if fields[field].get("type") != "string":
+        raise ActionBindingError("API action field requires a string schema: " + action + "." + semantic)
+    if "enum" not in fields[field]:
+        return field, [], False
+    enum = fields[field]["enum"]
+    if not isinstance(enum, list) or not enum or any(
             not isinstance(value, str) or not value for value in enum) or len(set(enum)) != len(enum):
         raise ActionBindingError("API action field requires a unique string enum: " + action + "." + semantic)
-    return field, enum
+    return field, enum, True
 
 
 def _finish(policy: Mapping[str, Any], categories: dict, api_hash: str, mode: str) -> dict:
@@ -123,18 +134,23 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
     if allowed is not None and (not isinstance(allowed, list) or any(not isinstance(name, str) for name in allowed)):
         raise ActionBindingError("allowed_actions must be operation names")
     categories = {}
+    local_notes = _local_dispositions(policy)
     for category, mapping in _maps(policy, canonical_only=False).items():
+        if category == "notes" and local_notes:
+            categories[category] = {"binding_kind": "local_disposition", "semantic_to_wire": deepcopy(mapping),
+                                    "wire_to_semantic": {wire: meaning for meaning, wire in mapping.items()}}
+            continue
         action, semantic_field = TARGETS[category]
         name = aliases.get(action, action)
         if not isinstance(name, str) or name not in catalogue or (allowed is not None and name not in allowed):
             raise ActionBindingError("policy action lacks a permitted API operation: " + action)
         operation = catalogue[name]
-        field, enum = _api_field(operation, semantic_field, policy, action)
-        if not set(mapping.values()) <= set(enum):
+        field, enum, constrained = _api_field(operation, semantic_field, policy, action)
+        if constrained and not set(mapping.values()) <= set(enum):
             raise ActionBindingError("policy semantic codes do not match the API enum for " + category)
         categories[category] = {"semantic_to_wire": mapping, "wire_to_semantic": {wire: meaning for meaning, wire in mapping.items()},
                                 "operation": {key: operation[key] for key in ("name", "method", "url")},
-                                "field": field, "api_enum": deepcopy(enum)}
+                                "field": field, "api_enum": deepcopy(enum), "api_enum_constrained": constrained}
     return _finish(policy, categories, digest(openapi), "api_validated")
 
 
@@ -150,16 +166,28 @@ def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = No
     if binding.get("policy_sha256") != digest(policy) or binding.get("sha256") != digest({k: v for k, v in binding.items() if k != "sha256"}):
         raise ActionBindingError("action bindings changed or belong to another policy")
     wanted = _maps(policy, canonical_only=False)
+    local_notes = _local_dispositions(policy)
     if not isinstance(binding.get("categories"), dict) or set(binding["categories"]) != set(wanted):
         raise ActionBindingError("action bindings do not cover the policy vocabularies")
     for category, mapping in wanted.items():
         data = binding["categories"][category]
+        if category == "notes" and local_notes:
+            if (not isinstance(data, dict) or set(data) != {"binding_kind", "semantic_to_wire", "wire_to_semantic"}
+                    or data.get("binding_kind") != "local_disposition" or data.get("semantic_to_wire") != mapping
+                    or data.get("wire_to_semantic") != {wire: meaning for meaning, wire in mapping.items()}):
+                raise ActionBindingError("local disposition bindings require exact policy-only note category")
+            continue
         enum = data.get("api_enum") if isinstance(data, dict) else None
+        constrained = data.get("api_enum_constrained") if isinstance(data, dict) else None
         operation = data.get("operation") if isinstance(data, dict) else None
-        if (not isinstance(data, dict) or data.get("semantic_to_wire") != mapping
+        if (not isinstance(data, dict) or set(data) != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}
+                or data.get("semantic_to_wire") != mapping
                 or data.get("wire_to_semantic") != {wire: meaning for meaning, wire in mapping.items()}
-                or not isinstance(enum, list) or not enum or any(not isinstance(value, str) or not value for value in enum)
-                or len(set(enum)) != len(enum) or not set(mapping.values()) <= set(enum)
+                or type(constrained) is not bool or not isinstance(enum, list)
+                or any(not isinstance(value, str) or not value for value in enum)
+                or len(set(enum)) != len(enum)
+                or constrained and (not enum or not set(mapping.values()) <= set(enum))
+                or not constrained and enum != []
                 or not isinstance(data.get("field"), str) or not data["field"]
                 or not isinstance(operation, dict) or set(operation) != {"name", "method", "url"}
                 or any(not isinstance(operation[key], str) or not operation[key] for key in operation)):

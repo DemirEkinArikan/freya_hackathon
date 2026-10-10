@@ -163,6 +163,49 @@ failure. No currently accepted Codex generation candidate has been established.
 After integrating main `815ea19`, the isolated capability checkpoint passed all
 279 local tests and `git diff --check`; the failed live audit status is unchanged.
 
+## Generation event completion
+
+Both policy and restricted-plan generation now require a valid JSONL lifecycle:
+one `thread.started` with a nonempty thread identifier, one `turn.started`, and
+exactly one `turn.completed` as the final event. A zero process exit is
+insufficient. Malformed JSON, duplicate keys, nonfinite values, unknown event
+types, repeated/out-of-order starts, incomplete turns, and events after
+completion fail closed. The precise host-discovery experimental warning remains
+accepted; unknown error diagnostics and all tool-action items remain rejected.
+
+Only the final completed agent message is parsed for the requested stage
+contract. Started/updated messages, earlier commentary, and earlier valid
+candidates cannot replace an incomplete or invalid final response. These checks
+preserve the strict policy/plan schemas, frozen contract fingerprint, process
+deadline and reserved export time. They do not authenticate arbitrary replayed
+event streams independently of the CLI; each invocation still uses a new
+ephemeral generation process and the mandatory isolation gate.
+
+This completion fix is verified with injected local event streams only. No
+additional model probe or Freya call was made, and the failed isolation evidence
+continues to block substantive generation.
+
+Each actual generation stage also rejects a precisely recognized skills-budget
+warning when its omitted-skill count is nonzero, matching the preflight audit.
+A cached passing audit cannot authorize loader discoveries in a later fresh CLI
+process. The trace retains the warning category and count. Count zero and the
+exact host-discovery experimental warning remain accepted; zero alone is not
+an exhaustive loader proof. A local regression exercises a successful first
+stage followed by a rejected second stage under the same cached audit.
+
+Generation and probes also explicitly disable the documented stable
+`unified_exec` feature alongside `shell_tool`, and require that capability to be
+recognized before any probe or brief is sent. This selects the PTY-backed exec
+tool off; it does not prove that all shell or patch tools disappear. The removed
+`apply_patch_freeform` flag is unchanged, and no model catalog metadata is patched.
+The fixed diagnostic-name allowlist now recognizes the public aliases
+`functions.exec_command`, `functions.shell_command`, `functions.apply_patch`,
+and `functions.write_stdin`. These names can be displayed in failure metadata;
+all nonempty reported tool lists and actual tool events still fail isolation.
+Unrecognized names and raw model response data remain excluded. This additive
+change is verified with local mocks only, with no additional live probe.
+The tool-free runtime remains unproved and substantive generation remains gated.
+
 ## Earlier parallel probe archive
 
 The parallel thread also recorded two synthetic-only failures before the later

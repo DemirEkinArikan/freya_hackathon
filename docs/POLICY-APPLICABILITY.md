@@ -25,6 +25,12 @@ authorize retries. Without a supplied disposition, the existing kernel retains
 uncertainty and quarantines rather than inventing a closing or note reason.
 Both rules remain mandatory in the execution profile whenever active in the
 frozen contract. Supplied constraints are never waived by applicability.
+When promise commits are selected, an active promise-failure disposition also
+requires its reason in the explicit `note_reasons` list, including when notes
+are local and no `add_note` operation is permitted. Without that dependency the
+exhaustion consumer cannot select the supplied consequence; compilation rejects
+it instead of losing the rule. Callback/identity-only plans preserve unused
+typed metadata without acquiring unrelated commitment dependencies.
 
 The independently authored applicability regressions exercise the actual
 compiled code, frozen profiles and source/amendment compilation. Existing

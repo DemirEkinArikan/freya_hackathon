@@ -1,0 +1,100 @@
+# T05 full controller acceptance
+
+T05 remains open until a fresh guarded banking build completes in at most
+1800 seconds and the actual stored, published workflow is exported. Local
+regressions and merged source establish implementation readiness only.
+
+## Preserved failed public build
+
+Source `b9903a58c6723e1b4f1f97ab81d60fe22754c28b`, run
+`20261010T202925576290Z`, failed safely after 1057.68 seconds. Its original
+rejected policy, both plans, failed manifest, sanitized trace and milestone
+remain under the separate `critical-path-public-A` worktree. The audit passed
+with zero reported tools; one policy repair and one plan repair did not yield
+a validated guarded workflow. No Freya mutation resulted from that run.
+
+The missing frozen kinds were `note_reasons`, `product_order`,
+`promise_failure_disposition`, `resolve_all_products` and
+`transfer_prerequisites`. A new model run must follow a checked generic
+pre-freeze completeness fix. Manually filling those generated policy fields
+or patching the generated graph is not acceptance.
+
+## Source and controller boundary checks
+
+`tests/test_controller_acceptance.py` exercises eight controller boundaries
+using synthetic policies, an injected model transport or a fake platform:
+
+- Real generator audit failure prevents any substantive model process, freeze
+  or platform initialization.
+- Repeated briefs retain supplied order, distinct source IDs and fingerprints,
+  including duplicate filenames; extraction receives only sources and API.
+- Resumed policy inputs are revalidated before plans or platform operations.
+- A plan cannot substitute the frozen contract fingerprint.
+- Policy and plan failures share the two-repair budget and retain attempts.
+- Generation cannot spend the export reserve and then enter deployment.
+- Deployment and export use the original global deadline; export alone releases
+  the 300-second reserve.
+- Credentials enter API nodes only after generation. Transport failure artifacts
+  are sanitized before persistence and model prompts contain no credentials.
+
+The source-only review of candidate
+`d9c983f99ec98c8ae2b280c8e90ca48556fbc8e1` confirms mandatory audit and event
+validation, ordered protected input checks, frozen hashes, bounded repairs,
+per-attempt retention, strict stored-equivalence checks, experimental-5
+publication and export read-back/version validation. It found two pre-live
+hooks: require executable semantics before freeze, including resumed policies;
+and use the canonical shared simulation lease across output directories.
+The primary integration thread owns those controller edits. This dedicated
+acceptance branch owns this document and its test module.
+
+Required integration regressions additionally cover pre-freeze missing-kind
+repair/exhaustion, disabled-operation applicability, local dispositions without
+`add_note` permission, API-bound replay guarantees, frozen descriptor context
+and identical shared lease paths across distinct output directories. Source
+coverage witnesses cannot prove correct natural-language interpretation.
+
+## Fresh live acceptance procedure
+
+1. Fetch the checked merged generic fix into this isolated branch. Review source
+   and contract provenance, run Python 3.11 regressions/full suite, kit
+   verification, source-package checks and `git diff --check`. Record the exact
+   checked head and runtime configuration.
+2. Coordinate with the primary thread and reconcile the canonical lease
+   `/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock`
+   and sibling `.simulation.json` under the lock against actual server status.
+   A local completed status alone is insufficient. Preserve pending/active IDs;
+   all worktrees use this lease. No trial may replace an active lease.
+3. Execute one fresh full builder invocation with approved public bank briefs
+   in order and their matching OpenAPI. Keep the default 1800-second deadline,
+   300-second export reserve, bounded repair, mandatory tool-free audit and
+   experimental-5 phone model. Do not resume or manually repair the old policy.
+4. Review original generated artifacts, source snapshot, contract/plan/guard
+   fingerprints, audit, immutable attempt evidence and trace. Verify actual
+   publication IDs/version, stored authored-value preservation and exported
+   server definition/hash. Record observed start/end and elapsed time. A failed
+   or late run remains failed evidence.
+5. Commit only reviewed sanitized metadata and acceptance documentation. Push
+   the checked head, open a focused PR into main and merge directly. Run
+   `tools/cowork.py complete T05 --commit <matching-head> --pr <merged-pr>`
+   only when the full deliverable and dependencies are complete.
+
+Staging and simulation are authorized. The procedure requires no purchase,
+private/sibling material, evaluator-to-generator data or held-out input.
+Conversation benchmarks and generalization remain separate evidence: an
+exported builder run without tests must report `hosted_behavior_verified=false`.
+The documented mock-bank TLS connectivity limitation affects banking trials;
+source checks or a synthetic platform smoke cannot substitute for them.
+
+## Current acceptance evidence
+
+At this checkpoint the eight dedicated regressions pass under Python 3.11.
+Under the canonical lock, read-only staging requests at
+`2026-10-10T20:58:28.754935+00:00` confirmed the recorded synthetic simulation
+`03229c8e-5d0c-41fd-8179-35a50c6cc43e` is actually `completed`, with matching
+workspace scope. No lease change or new simulation occurred. The data-free
+readback was shared with the primary thread; future simulation admission still
+rechecks server status under the same lock.
+The full source checks and focused PR head are recorded in the T05 issue
+checkpoint accompanying this document. No fresh model generation, deployment,
+simulation or banking acceptance is claimed by this branch. Required generic
+hooks and actual accepted fresh banking publication/export remain outstanding.

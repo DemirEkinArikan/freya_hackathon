@@ -217,6 +217,12 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if kind not in profile:
             errors.append("active execution rule omitted from profile: " + kind)
     singleton = profile.get("policy_applicability") == {"products": "single"}
+    count_bounds = profile.get("product_count_bounds", {})
+    loads_account = any(isinstance(node, dict) and node.get("action") == "get_account"
+                        for node in plan.get("nodes", {}).values())
+    if (loads_account and singleton and isinstance(count_bounds, dict)
+            and type(count_bounds.get("min")) is int and count_bounds["min"] > 1):
+        errors.append("product_count_bounds minimum exceeds supplied single-product scope")
     for kind in required_execution_kinds(plan):
         if kind not in profile and not (singleton and kind in {"product_order", "resolve_all_products"}):
             errors.append("missing typed execution kind: " + kind)
@@ -566,6 +572,11 @@ def guard_order(state, profile):
     singleton = profile.get('policy_applicability') == dict(products='single')
     if singleton and len(products) > 1:
         raise ValueError('account cardinality exceeds supplied single-product scope')
+    bounds = profile.get('product_count_bounds', dict())
+    if 'max' in bounds and len(products) > bounds['max']:
+        raise ValueError('account cardinality exceeds supplied product-count maximum')
+    if state.get('account_loaded') is True and 'min' in bounds and len(products) < bounds['min']:
+        raise ValueError('account cardinality is below supplied product-count minimum')
     order = profile.get('product_order')
     if order is None:
         if singleton:

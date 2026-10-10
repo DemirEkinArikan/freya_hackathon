@@ -29,6 +29,11 @@ class PolicyRule(TypedDict, total=False):
     overrides: list[str]
 
 
+class ProductCountBounds(TypedDict, total=False):
+    min: int
+    max: int
+
+
 class PolicyError(ValueError):
     pass
 
@@ -46,7 +51,7 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "promise_failure_limit", "tool_aliases", "persuasion_limits", "identity_hint_exemptions",
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
-_PROFILE_KINDS.update({"wire_codes", "policy_applicability"})
+_PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_bounds"})
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
@@ -57,6 +62,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
 _SHAPE_GUIDANCE = {
     "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
+    "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
     "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
@@ -158,6 +164,10 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
     if kind == "policy_applicability":
         valid = (isinstance(value, dict) and set(value) == {"products"}
                  and isinstance(value["products"], str) and value["products"] in {"single", "multiple"})
+    elif kind == "product_count_bounds":
+        valid = (isinstance(value, dict) and bool(value) and not set(value) - {"min", "max"}
+                 and all(type(bound) is int and bound >= 0 for bound in value.values())
+                 and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
     elif kind in {"identity_fields", "note_reasons"}:

@@ -174,7 +174,9 @@ git diff --check
 ```
 
 All commands must pass on the exact evidence HEAD. Record command/result/head and
-ZIP byte hash. Extract into a new empty directory with the checked T17 helper;
+ZIP byte hash. T17's extractor accepts source-only rehearsal archives; use it
+for that preparation, not a final ZIP containing submission evidence. For the
+final ZIP, verify and extract into a new empty directory with the command below;
 reject duplicate/unsafe member names and compare every extracted file's raw
 SHA-256 against `package-index.json` source/evidence inventories, with no unexpected
 members. Verify mapped workflow/trace/run/input paths resolve and the package has
@@ -187,6 +189,51 @@ file-byte hashes in the ZIP index with canonical JSON/controller digests.
 The packager checks archive-name collisions before `--check` succeeds, builds a
 temporary ZIP, verifies its payload hashes and replaces the destination only
 after success. A failed write preserves the previous package.
+
+Run this from the reviewed source checkout after final package validation. It
+checks the complete inventory, confined paths, file types, raw hashes and mapped
+submission paths before extraction. Replace the archive/destination paths only
+as required by the organizer's actual attachment instructions. The destination
+must be new; preserve a failed extraction and choose another name on retry.
+
+```sh
+python3.11 - <<'PY'
+from pathlib import Path, PurePosixPath
+import hashlib, json, stat, zipfile
+
+archive = Path('artifacts/submission/final.zip')
+destination = Path('artifacts/submission/verified-final')
+assert not destination.exists() and not destination.is_symlink()
+assert not any(parent.is_symlink() for parent in destination.parents)
+with zipfile.ZipFile(archive) as package:
+    entries = package.infolist()
+    names = [entry.filename for entry in entries]
+    folded = {name.casefold() for name in names}
+    assert len(names) == len(set(names)) == len(folded)
+    for entry in entries:
+        path = PurePosixPath(entry.filename)
+        assert path.parts and not path.is_absolute() and path.as_posix() == entry.filename
+        assert '\\' not in entry.filename and '..' not in path.parts
+        assert not entry.is_dir() and not entry.flag_bits & 1
+        assert stat.S_IFMT(entry.external_attr >> 16) in (0, stat.S_IFREG)
+        assert not any(parent.parts and parent.as_posix().casefold() in folded for parent in path.parents)
+    index = json.loads(package.read('package-index.json'))
+    assert index['source_only'] is False
+    assert not set(index['source_files']).intersection(index['evidence_files'])
+    hashes = {**index['source_files'], **index['evidence_files']}
+    assert set(names) == set(hashes) | {'package-index.json'}
+    assert all(hashlib.sha256(package.read(name)).hexdigest() == expected for name, expected in hashes.items())
+    submission = index['submission']
+    for kind in ('workflows', 'traces', 'runs', 'inputs'):
+        assert set(submission[kind]) == {'hidden-1', 'hidden-2'}
+    mapped = [path for kind in ('workflows', 'traces', 'runs') for path in submission[kind].values()]
+    mapped += [path for inputs in submission['inputs'].values() for path in [*inputs['briefs'], inputs['tool_api']]]
+    assert all(path in hashes for path in mapped)
+    package.extractall(destination)
+assert all(hashlib.sha256((destination / name).read_bytes()).hexdigest() == expected for name, expected in hashes.items())
+print(json.dumps({'verified_files': len(hashes), 'package_sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}))
+PY
+```
 
 Read supplied organizer instructions and select only their required attachments
 from this verified result. Preserve **19:45–20:00 UTC / 22:45–23:00 Istanbul** for

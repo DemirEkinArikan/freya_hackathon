@@ -15,21 +15,15 @@ behavioral failures. `test_infrastructure_failed(result)` identifies these;
 A failed or incomplete hosted test preserves its published candidate and original
 evidence. It must not consume a repair or start another generation.
 
-## Coordinated controller hook
+## Production controller integration
 
-T05 owns `builder/build.py`. Replace its existing mapper/gate implementation
-with these thin wrappers after merging this module:
+The coordinated T14 follow-up removes the old duplicated mapper and gate in
+`builder/build.py`. Its existing call sites now use the merged diagnostics module
+directly through these aliases:
 
 ```python
-from .repair_diagnostics import repair_test_summary, test_infrastructure_failed
-
-
-def _repair_test_summary(result, policy=None):
-    return repair_test_summary(result, policy)
-
-
-def _test_infrastructure_failed(result):
-    return test_infrastructure_failed(result)
+from .repair_diagnostics import repair_test_summary as _repair_test_summary
+from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 ```
 
 The controller must check infrastructure before its pass/fail branch and before
@@ -42,11 +36,25 @@ model and PR49 attempt snapshots. Each candidate is saved/published and checked
 against its stored read-back before testing. Export must finish inside the same
 deadline; no controller-owned or generated policy edits are permitted.
 
-The controller regressions temporarily substitute these two hooks in tests so
-this lane can verify its contract without editing T05's active controller. They
+The original controller regressions temporarily substituted these two hooks in
+tests so the module lane could verify its contract without editing T05's active controller. They
 exercise local injected infrastructure failure and behavioral repair, retained
 attempts, frozen policy, bounded shared repairs and the export reserve. These
 are local checks; they do not establish a live banking repair.
+
+`tests/test_repair_production_wiring.py` now exercises the actual production
+`execute` path without replacing either diagnostic hook. Five regression cases
+failed against the old controller; the positive complete-result control passed.
+All six pass with the production integration. They verify nested missing
+evidence, contradictory status, a nonbehavioral scorer failure disguised as a
+behavioral failure, and an unverified deployment pin preserve the original
+candidate without regeneration or export. The real `run_builder_tests` and
+`evaluate` functions, using in-memory external-service doubles, produce the
+complete pinned result shape for the positive control and behavioral repair.
+Fixed actionable guidance reaches the repair prompt; private judge text remains
+only in the retained evaluator evidence. Both attempts retain the same policy
+and contract. This compatibility check uses no model, bank, Freya or simulation
+calls and does not claim live acceptance.
 
 ## Live acceptance still required
 

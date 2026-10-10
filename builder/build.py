@@ -24,6 +24,7 @@ from .validation import validate_workflow
 from .action_bindings import compile_action_bindings
 from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
+from .stored_workflow import assert_equivalent_stored_workflow
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -203,6 +204,16 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _attempt_snapshot(directory: Path, name: str, value: Any, secrets: tuple[str, ...]) -> None:
+    """Keep evaluator/deployment evidence out of model repair context."""
+    _write_json(directory / name, sanitize(value, secrets=secrets))
+
+
+def _attempt_status(directory: Path, record: dict, secrets: tuple[str, ...], **changes: Any) -> None:
+    record.update(changes)
+    _attempt_snapshot(directory, "attempt.json", record, secrets)
+
+
 def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace) -> str | None:
     policy = candidate.get("policy")
     if policy is None:
@@ -328,6 +339,10 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     trace = Trace(run_dir / "trace.jsonl", secrets=secret_values)
     mode = "extract-policy-only" if args.extract_policy_only else "validate-only" if args.validate_only else "offline-fixture" if args.offline else "generate-only" if args.generate_only else "live"
     trace.emit("start", mode=mode, model=args.model if mode in {"live", "generate-only", "extract-policy-only"} else None)
+    attempt_dir = None
+    attempt_record = None
+    attempt_open = False
+    attempt_number = 0
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -407,11 +422,24 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         adopted = False
         while True:
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            attempt_number += 1
+            attempt_dir = run_dir / "attempts" / f"plan-{attempt_number:03d}"
+            attempt_dir.mkdir(parents=True)
+            attempt_record = {"number": attempt_number, "directory": str(attempt_dir.relative_to(run_dir)),
+                              "status": "running", "phase": "generation",
+                              "policy_contract_sha256": contract_sha256, "policy_sha256": policy_sha256,
+                              "tool_api_sha256": digest(openapi)}
+            attempt_open = True
+            _attempt_status(attempt_dir, attempt_record, secret_values)
             trace.emit("stage_started", stage="workflow", attempt=workflow_repairs + 1,
-                       contract_sha256=contract_sha256)
+                       contract_sha256=contract_sha256, attempt_directory=attempt_record["directory"])
             stage_started = time.monotonic()
-            generated = generator.generate_plan(make_workflow_prompt(compiled, openapi, repair),
-                                                    contract_sha256=contract_sha256)
+            workflow_prompt = make_workflow_prompt(compiled, openapi, repair)
+            _attempt_snapshot(attempt_dir, "generation-context.json",
+                              {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
+            generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
+            _attempt_snapshot(attempt_dir, "proposal.json", generated, secret_values)
+            _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
             stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + time.monotonic() - stage_started, 3)
             trace.emit("stage_completed", stage="workflow", elapsed_seconds=round(time.monotonic() - stage_started, 3),
                        attempt=workflow_repairs + 1)
@@ -420,15 +448,21 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             if not isinstance(generated, dict) or set(generated) != {"plan", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
                 raise ValueError("Plan output must match the frozen contract and cannot replace policy")
             plan = copy.deepcopy(generated["plan"])
+            _attempt_snapshot(attempt_dir, "plan.json", plan, secret_values)
             guard_context = None
             try:
                 assert_no_secrets(plan, forbidden_values=secret_values)
                 bindings = compile_action_bindings(frozen_policy, openapi)
+                _attempt_snapshot(attempt_dir, "action-bindings.json", bindings, secret_values)
                 execution_policy = compile_execution_policy(
                     frozen_policy, bindings, required_kinds=required_execution_kinds(plan))
-                guard_bundle = compile_guarded_workflow(plan, compiled, openapi, execution_policy, bindings)
+                _attempt_snapshot(attempt_dir, "execution-policy.json", execution_policy, secret_values)
                 guard_context = {"plan": plan, "contract": compiled,
                                  "execution_policy": execution_policy, "bindings": bindings}
+                _attempt_snapshot(attempt_dir, "guard-context.json", guard_context, secret_values)
+                guard_bundle = compile_guarded_workflow(plan, compiled, openapi, execution_policy, bindings)
+                _attempt_snapshot(attempt_dir, "guard-manifest.json", guard_bundle["guard_manifest"], secret_values)
+                _attempt_snapshot(attempt_dir, "workflow.json", guard_bundle["workflow"], secret_values)
                 candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": guard_bundle["workflow"]}
                 errors = validate_workflow(candidate["workflow"], openapi, frozen_policy,
                                            guard_context=guard_context)
@@ -442,16 +476,21 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 errors = getattr(exc, "errors", [str(exc)])
                 candidate = {"policy": copy.deepcopy(frozen_policy), "plan": plan}
             if errors:
+                _attempt_snapshot(attempt_dir, "validation.json", {"errors": errors, "candidate": candidate}, secret_values)
+                _attempt_status(attempt_dir, attempt_record, secret_values, status="validation_rejected", phase="validation")
+                attempt_open = False
                 _write_json(run_dir / f"candidate.rejected-{repairs + 1}.json", sanitize(
                     {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
-                trace.emit("validation", passed=False, errors=errors)
+                trace.emit("validation", passed=False, errors=errors, attempt=attempt_number)
                 if repairs >= MAX_REPAIRS:
                     raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
                 repairs += 1
                 workflow_repairs += 1
                 repair = {"validation_errors": errors, "previous_plan": sanitize(plan, secrets=secret_values)}
                 continue
-            trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]))
+            _attempt_status(attempt_dir, attempt_record, secret_values, status="validated", phase="compilation",
+                            plan_sha256=digest(plan), workflow_sha256=digest(candidate["workflow"]))
+            trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]), attempt=attempt_number)
             _write_json(run_dir / "plan.json", plan)
             _write_json(run_dir / "execution-policy.json", execution_policy)
             _write_json(run_dir / "action-bindings.json", bindings)
@@ -461,6 +500,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                        plan_sha256=digest(plan), guard_manifest_sha256=digest(guard_bundle["guard_manifest"]))
             if mode == "generate-only":
                 deadline.require()
+                _attempt_status(attempt_dir, attempt_record, secret_values, status="generated_validated", phase="complete")
+                attempt_open = False
                 manifest = {"mode": mode, "status": "generated_validated", "sources": source_manifest,
                             "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
                             "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
@@ -469,6 +510,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "guard_manifest_sha256": digest(guard_bundle["guard_manifest"]),
                             "policy_contract_sha256": contract_sha256,
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
+                            "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                             "run_directory": str(run_dir.relative_to(PROJECT))}
                 _write_json(run_dir / "manifest.json", manifest)
@@ -482,39 +524,53 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 trace.emit("workflow_adopted", **binding)
                 adopted = True
             runtime_workflow = bind_controller_auth(candidate["workflow"], openapi)
+            _attempt_status(attempt_dir, attempt_record, secret_values, phase="deployment",
+                            authenticated_workflow_sha256=digest(runtime_workflow))
             client.validate_workflow(args.slot or args.brief[0].stem, runtime_workflow)
             deployment = client.save_workflow(args.slot or args.brief[0].stem, runtime_workflow, output_dir / ".freya-slots.json")
             deployment["model"] = args.model
             deployment["reasoning_effort"] = args.reasoning_effort
             if args.test_brief:
                 deployment["brief"] = args.test_brief
+            _attempt_snapshot(attempt_dir, "deployment.json", deployment, secret_values)
             # Revalidate the actual stored workflow, before optional tests.
             deployed_definition = {k: v for k, v in deployment["workflow"].items() if k != "agent_config"}
             # Validate the authored form; the adapter separately verifies injected model config.
-            # Auth is controller-bound after exact guarded compilation. Readback
-            # must preserve that exact definition; metadata is not a proof.
-            if canonical_json(deployed_definition) != canonical_json(runtime_workflow):
-                raise ValueError("Deployed definition differs from the controller-authenticated guarded workflow")
+            # Auth is controller-bound after exact guarded compilation. Only
+            # specifically recognized serializer defaults may be added on save.
+            try:
+                assert_equivalent_stored_workflow(deployed_definition, runtime_workflow)
+            except ValueError as exc:
+                raise ValueError("Deployed definition differs from the controller-authenticated guarded workflow: " + str(exc)) from exc
             deployed_errors = validate_workflow(candidate["workflow"], openapi, candidate["policy"],
                                                 guard_context=guard_context)
             if deployed_errors:
                 raise ValueError("Deployed definition failed validation: " + "; ".join(deployed_errors))
             trace.emit("deployment", **{k: v for k, v in deployment.items() if k != "workflow"},
-                       steps=len(deployment["workflow"]["nodes"]), tools=len(operations(openapi)))
+                       steps=len(deployment["workflow"]["nodes"]), tools=len(operations(openapi)), attempt=attempt_number)
+            _attempt_status(attempt_dir, attempt_record, secret_values, status="published", phase="deployment")
             if not args.test_cases:
                 break
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             if test_runner is None:
                 from benchmarks.hosted import run_builder_tests
                 test_runner = run_builder_tests
-            tests = test_runner(client, deployment, _within_project(args.test_cases), run_dir, deadline)
-            trace.emit("tests", result=tests)
+            _attempt_status(attempt_dir, attempt_record, secret_values, phase="testing")
+            tests = test_runner(client, deployment, _within_project(args.test_cases), attempt_dir, deadline)
+            _attempt_snapshot(attempt_dir, "tests.json", tests, secret_values)
+            # Canonical convenience result remains the selected/latest tested
+            # candidate; every authoritative attempt snapshot is retained above.
+            _attempt_snapshot(run_dir, "benchmark-results.json", tests, secret_values)
+            trace.emit("tests", result=tests, attempt=attempt_number,
+                       attempt_directory=attempt_record["directory"])
             if _test_infrastructure_failed(tests):
                 trace.emit("test_infrastructure_failure", candidate_preserved=True, model_repair_attempted=False)
                 raise HostedTestInfrastructureError(
                     "Hosted test infrastructure or evidence failed; the existing candidate was preserved and was not regenerated")
             if tests.get("status") in {"passed", "completed"} and tests.get("total", 0) > 0 and tests.get("passed") == tests.get("total"):
                 break
+            _attempt_status(attempt_dir, attempt_record, secret_values, status="behavioral_failure", phase="testing")
+            attempt_open = False
             if repairs >= MAX_REPAIRS:
                 raise ValueError("The supplied hosted acceptance cases still fail after bounded repairs")
             repairs += 1
@@ -524,10 +580,15 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
 
         client.reserve = 0
         deadline.require()
+        _attempt_status(attempt_dir, attempt_record, secret_values, phase="export")
         exported = client.export_workflow(deployment, run_dir / "submission.workflow.json")
+        _attempt_snapshot(attempt_dir, "export.json", exported, secret_values)
         # An export response can arrive after its allocation. Preserve it as
         # evidence, but never report a build exceeding the global limit as done.
         deadline.require()
+        _attempt_status(attempt_dir, attempt_record, secret_values, status="exported", phase="complete",
+                        export_sha256=digest(exported))
+        attempt_open = False
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
@@ -536,6 +597,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "guard_manifest_sha256": digest(guard_bundle["guard_manifest"]),
                     "policy_contract_sha256": contract_sha256,
                     "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
+                    "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "run_directory": str(run_dir.relative_to(PROJECT))}
@@ -543,10 +605,16 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         trace.emit("end", status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
         return manifest
     except Exception as exc:
+        if attempt_open and attempt_dir is not None and attempt_record is not None:
+            _attempt_status(attempt_dir, attempt_record, secret_values, status="failed", error=str(exc),
+                            failure_kind="test_infrastructure" if isinstance(exc, HostedTestInfrastructureError)
+                            else "frozen_policy_contract" if isinstance(exc, FrozenPolicyContractError) else "builder")
         _write_json(run_dir / "manifest.json", sanitize({"mode": mode, "status": "failed", "error": str(exc),
                                                          "failure_kind": "test_infrastructure" if isinstance(exc, HostedTestInfrastructureError)
                                                          else "frozen_policy_contract" if isinstance(exc, FrozenPolicyContractError) else "builder",
                                                          "hosted_behavior_verified": False,
+                                                         "last_attempt": attempt_number or None,
+                                                         "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
                                                          "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
         trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining())
         raise

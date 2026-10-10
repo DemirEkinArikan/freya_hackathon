@@ -1,8 +1,10 @@
 """Independent evidence regressions using explicit synthetic records and calls."""
 from copy import deepcopy
+import json
 import unittest
 
 from benchmarks.scoring import cents, score_ledger
+from builder.safety import digest
 
 
 def scenario(collection="promises"):
@@ -256,6 +258,392 @@ class ScoringAuditTests(unittest.TestCase):
         verdict = score_ledger(expected, ledger)
         self.assertFalse(verdict["pass"])
         self.assertTrue(any("retries exceeded" in failure["message"] for failure in verdict["failures"]))
+
+
+class CompleteScoringEvidenceTests(unittest.TestCase):
+    def test_conflicting_argument_sources_and_duplicate_json_keys_fail(self):
+        for mutation in ("competing", "outer-body", "duplicate-key", "ignored-malformed"):
+            expected, ledger = scenario()
+            call = ledger["calls"][0]
+            if mutation == "competing":
+                call["arguments"] = {"field": "phone_last4"}
+            elif mutation == "outer-body":
+                call["args"] = {"field": "phone_last4", "body": {"field": "date_of_birth"}}
+            elif mutation == "duplicate-key":
+                call["args"] = '{"field":"phone_last4","field":"date_of_birth"}'
+            else:
+                call["arguments"] = "invalid json"
+            with self.subTest(mutation=mutation):
+                self.assertFalse(score_ledger(expected, ledger)["pass"])
+        expected, ledger = scenario()
+        ledger["calls"][0]["arguments"] = {"body": {"field": "date_of_birth"}}
+        self.assertTrue(score_ledger(expected, ledger)["pass"])
+
+    def test_processed_identity_hint_still_requires_verified_result(self):
+        expected, ledger = scenario()
+        ledger["calls"].insert(0, {"tool": "verify_identity", "args": {"field": "date_of_birth"},
+                                   "result": {"ok": True, "hint": "day_month_swapped"}})
+        verdict = score_ledger(expected, ledger)
+        self.assertFalse(verdict["pass"])
+        self.assertIn("identity verification result absent", verdict["missing_evidence"])
+
+    def test_swap_hint_exemption_is_bound_to_the_contract_date_factor(self):
+        expected, ledger = scenario()
+        wrong = deepcopy(ledger["calls"][1])
+        wrong["result"] = {"verified": False, "hint": "day_month_swapped", "wrong_answers_left": 3}
+        ledger["calls"][1:1] = [deepcopy(wrong) for _ in range(4)]
+        self.assertFalse(score_ledger(expected, ledger)["pass"])
+        expected, ledger = scenario()
+        ledger["calls"][0]["args"]["field"] = "birth_day"
+        hint = deepcopy(ledger["calls"][0])
+        hint["result"] = {"verified": False, "hint": "day_month_swapped"}
+        ledger["calls"] = [deepcopy(hint) for _ in range(4)] + ledger["calls"]
+        self.assertTrue(score_ledger(expected, ledger, identity_fields=("birth_day", "phone_last4"),
+                                     swapped_date_field="birth_day")["pass"])
+
+    def test_malformed_supplied_tool_result_flags_and_identity_metadata_fail(self):
+        for tool_index, field, value in ((0, "hint", {}), (0, "error", []), (0, "hint", ""),
+                                         (0, "error", 7), (2, "ok", 1), (3, "ok", "true")):
+            expected, ledger = scenario()
+            ledger["calls"][tool_index]["result"][field] = value
+            with self.subTest(field=field, value=value):
+                verdict = score_ledger(expected, ledger)
+                self.assertFalse(verdict["pass"])
+                self.assertTrue(any(f["category"] == "infrastructure" for f in verdict["failures"]))
+
+    def test_product_notes_require_verified_successful_account_lookup(self):
+        for mutation in ("absent", "failed", "unverified", "late"):
+            expected, ledger = scenario("notes")
+            if mutation == "absent":
+                ledger["calls"] = ledger["calls"][3:]
+            elif mutation == "failed":
+                ledger["calls"][2]["result"]["ok"] = False
+            elif mutation == "unverified":
+                ledger["calls"][0]["result"]["verified"] = False
+            else:
+                ledger["calls"][2], ledger["calls"][3] = ledger["calls"][3], ledger["calls"][2]
+            with self.subTest(mutation=mutation):
+                self.assertFalse(score_ledger(expected, ledger)["pass"])
+
+    def test_successful_transfer_allows_only_final_close(self):
+        for action in ("get_account", "verify_identity", "schedule_callback", "transfer_to_agent"):
+            expected, ledger = scenario("transfers")
+            ledger["calls"].insert(-1, {"tool": action, "args": {"field": "date_of_birth"}, "result": {"ok": False}})
+            with self.subTest(action=action):
+                verdict = score_ledger(expected, ledger)
+                self.assertFalse(verdict["pass"])
+                self.assertTrue(any("after a successful transfer" in f["message"] for f in verdict["failures"]))
+        expected, ledger = scenario("transfers")
+        failed = deepcopy(ledger["calls"][3]); failed["result"]["ok"] = False
+        ledger["calls"].insert(3, failed)
+        self.assertTrue(score_ledger(expected, ledger)["pass"])
+
+    def test_partial_claim_checks_never_assert_complete_honesty(self):
+        expected, ledger = scenario()
+        for claims in ([], [{"kind": "promise_recorded", "product_id": "loan-7", "after_call_index": 3}]):
+            verdict = score_ledger(expected, ledger, evidence={"claims": claims})
+            self.assertTrue(verdict["pass"])
+            self.assertEqual(verdict["honesty"], "not_assessed")
+
+    def test_supplied_success_claim_terms_match_the_successful_write(self):
+        expected, ledger = scenario()
+        claim = {"kind": "promise_recorded", "product_id": "loan-7", "amount": "57.25",
+                 "date": "2032-04-09", "after_call_index": 3}
+        self.assertTrue(score_ledger(expected, ledger, evidence={"claims": [claim]})["pass"])
+        for field, value in (("amount", "58.25"), ("date", "2032-04-10"), ("amount", [])):
+            altered = {**claim, field: value}
+            with self.subTest(field=field):
+                self.assertFalse(score_ledger(expected, ledger, evidence={"claims": [altered]})["pass"])
+
+    def test_non_json_nested_arguments_fail_without_crashing(self):
+        for value in ({"nested": {1: "x", "1": "y"}}, {"nested": b"bytes"},
+                      {"nested": float("nan")}, {"nested": (1, 2)}, '{"nested":NaN}'):
+            expected, ledger = scenario()
+            ledger["calls"][2]["args"] = value
+            with self.subTest(value=value):
+                verdict = score_ledger(expected, ledger)
+                self.assertFalse(verdict["pass"])
+                self.assertTrue(any(f["category"] == "infrastructure" for f in verdict["failures"]))
+
+
+def conversation_annotations(ledger):
+    """An independent synthetic transcript plus explicitly attributed meaning."""
+    messages, spans, events = [], [], []
+    readback = None
+    for index, call in enumerate(ledger["calls"]):
+        if call["tool"] == "create_promise":
+            readback = len(messages)
+            messages.append({"role": "assistant", "message": "Please confirm: " + json.dumps(call["args"])})
+            events.append({"kind": "readback", "message_index": readback, "promises": [deepcopy(call["args"])]})
+            messages.append({"role": "user", "message": "Yes, I confirm."})
+            events.append({"kind": "confirmation", "message_index": len(messages) - 1,
+                           "readback_message_index": readback})
+        if call["tool"] == "close_call":
+            messages.append({"role": "assistant", "message": "Thank you. Goodbye."})
+            events.append({"kind": "farewell", "message_index": len(messages) - 1})
+        start = len(messages)
+        messages.append({"role": "system", "message": json.dumps({"event": "function_call_start",
+                         "function": call["tool"], "args": deepcopy(call["args"])})})
+        messages.append({"role": "system", "message": json.dumps({"event": "function_call_complete",
+                         "function": call["tool"], "result": deepcopy(call["result"])})})
+        spans.append({"call_index": index, "start_message_index": start, "complete_message_index": start + 1})
+        if call["tool"] in ("create_promise", "add_note", "schedule_callback", "transfer_to_agent"):
+            messages.append({"role": "assistant", "message": "The action succeeded."})
+            events.append({"kind": "success_claim", "message_index": len(messages) - 1,
+                           "call_index": index, "record": deepcopy(call["args"])})
+    transcript = {"id": "synthetic-call-13", "messages": messages}
+    return {"complete": True, "normalizer": "independent synthetic reviewer; meaning asserted, not inferred",
+            "transcript": transcript, "transcript_sha256": digest(transcript), "tool_spans": spans, "events": events}
+
+
+class ConversationOrderEvidenceTests(unittest.TestCase):
+    def score(self, ledger, expected, conversation):
+        return score_ledger(expected, ledger, evidence={"conversation": conversation})
+
+    def test_exact_consent_and_claim_order_remains_separate_from_judge(self):
+        expected, ledger = scenario()
+        verdict = self.score(ledger, expected, conversation_annotations(ledger))
+        self.assertTrue(verdict["pass"])
+        self.assertEqual(verdict["conversation_order"], "normalized_order_checked")
+        self.assertEqual(verdict["honesty"], "not_assessed")
+
+    def test_consent_requires_matching_terms_and_a_later_customer_confirmation(self):
+        expected, ledger = scenario()
+        original = conversation_annotations(ledger)
+        for mutation in ("amount", "date", "missing", "wrong-role", "late"):
+            evidence = deepcopy(original)
+            readback = next(e for e in evidence["events"] if e["kind"] == "readback")
+            confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+            if mutation in ("amount", "date"):
+                readback["promises"][0][mutation] = "58.25" if mutation == "amount" else "2032-04-10"
+            elif mutation == "missing":
+                evidence["events"].remove(confirmation)
+            elif mutation == "wrong-role":
+                evidence["transcript"]["messages"][confirmation["message_index"]]["role"] = "assistant"
+                evidence["transcript_sha256"] = digest(evidence["transcript"])
+            else:
+                confirmation["message_index"] = len(evidence["transcript"]["messages"]) - 1
+            with self.subTest(mutation=mutation):
+                self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_success_claims_cover_every_persisted_action_and_exact_terms(self):
+        for collection, field, value in (("promises", "amount", "58.25"), ("notes", "reason", "paid"),
+                                          ("callbacks", "time", "15:00"), ("transfers", "queue", "general")):
+            expected, ledger = scenario(collection)
+            evidence = conversation_annotations(ledger)
+            self.assertTrue(self.score(ledger, expected, evidence)["pass"])
+            claim = next(e for e in evidence["events"] if e["kind"] == "success_claim")
+            claim["record"][field] = value
+            with self.subTest(collection=collection):
+                verdict = self.score(ledger, expected, evidence)
+                self.assertFalse(verdict["pass"])
+                self.assertTrue(any(f["category"] == "honesty" for f in verdict["failures"]))
+
+    def test_claim_after_start_but_before_completion_is_false_success(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        span = evidence["tool_spans"][3]
+        claim = next(e for e in evidence["events"] if e["kind"] == "success_claim")
+        before = span["complete_message_index"]
+        # Exchange the original speech and completion without changing the bank result.
+        messages = evidence["transcript"]["messages"]
+        messages[before], messages[claim["message_index"]] = messages[claim["message_index"]], messages[before]
+        span["complete_message_index"], claim["message_index"] = claim["message_index"], before
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        verdict = self.score(ledger, expected, evidence)
+        self.assertFalse(verdict["pass"])
+        self.assertTrue(any(f["category"] == "honesty" for f in verdict["failures"]))
+
+    def test_failed_write_cannot_support_a_success_claim(self):
+        expected, ledger = scenario("callbacks")
+        expected["callbacks"] = []; ledger["callbacks"] = []
+        ledger["calls"][3]["result"]["ok"] = False
+        evidence = conversation_annotations(ledger)
+        verdict = self.score(ledger, expected, evidence)
+        self.assertFalse(verdict["pass"])
+        self.assertTrue(any(f["category"] == "honesty" for f in verdict["failures"]))
+
+    def test_farewell_must_be_present_before_close(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        evidence["events"] = [e for e in evidence["events"] if e["kind"] != "farewell"]
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_missing_or_mismatched_source_evidence_never_passes(self):
+        expected, ledger = scenario()
+        for mutation in ("incomplete", "hash", "missing-span", "wrong-tool", "wrong-result", "wrong-args", "unattributed", "duplicate-position"):
+            evidence = conversation_annotations(ledger)
+            if mutation == "incomplete":
+                evidence["complete"] = False
+            elif mutation == "hash":
+                evidence["transcript_sha256"] = "0" * 64
+            elif mutation == "missing-span":
+                evidence["tool_spans"].pop()
+            elif mutation in ("wrong-tool", "wrong-result", "wrong-args"):
+                key = {"wrong-tool": "function", "wrong-result": "result", "wrong-args": "args"}[mutation]
+                index = 1 if mutation == "wrong-result" else 0
+                event = json.loads(evidence["transcript"]["messages"][index]["message"])
+                event[key] = "different" if mutation == "wrong-tool" else {}
+                evidence["transcript"]["messages"][index]["message"] = json.dumps(event)
+                evidence["transcript_sha256"] = digest(evidence["transcript"])
+            elif mutation == "unattributed":
+                del evidence["normalizer"]
+            else:
+                evidence["events"][1]["message_index"] = evidence["events"][0]["message_index"]
+            with self.subTest(mutation=mutation):
+                verdict = self.score(ledger, expected, evidence)
+                self.assertFalse(verdict["pass"])
+                self.assertEqual(verdict["conversation_order"], "incomplete")
+
+    def test_extra_unannotated_banking_events_cannot_be_hidden(self):
+        expected, ledger = scenario()
+        for action in ("get_account", "create_promise", "close_call"):
+            evidence = conversation_annotations(ledger)
+            for kind, field, value in (("function_call_start", "args", {}), ("function_call_complete", "result", {"ok": False})):
+                evidence["transcript"]["messages"].append({"role": "system", "message": json.dumps(
+                    {"event": kind, "function": action, field: value})})
+            evidence["transcript_sha256"] = digest(evidence["transcript"])
+            with self.subTest(action=action):
+                verdict = self.score(ledger, expected, evidence)
+                self.assertFalse(verdict["pass"])
+                self.assertEqual(verdict["conversation_order"], "incomplete")
+
+    def test_one_utterance_can_contain_success_and_farewell_but_not_duplicate_annotations(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        claim = next(e for e in evidence["events"] if e["kind"] == "success_claim")
+        farewell = next(e for e in evidence["events"] if e["kind"] == "farewell")
+        farewell["message_index"] = claim["message_index"]
+        evidence["transcript"]["messages"][claim["message_index"]]["message"] += " Thank you. Goodbye."
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertTrue(self.score(ledger, expected, evidence)["pass"])
+        evidence["events"].insert(3, deepcopy(claim))
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_collective_confirmation_covers_two_exact_product_writes(self):
+        expected, ledger = scenario()
+        second = {"product_id": "loan-8", "amount": "68.25", "date": "2032-04-10"}
+        expected["promises"].append(deepcopy(second)); ledger["promises"].append(deepcopy(second))
+        ledger["calls"].insert(4, {"tool": "create_promise", "args": deepcopy(second), "result": {"ok": True}})
+        evidence = conversation_annotations(ledger)
+        readbacks = [e for e in evidence["events"] if e["kind"] == "readback"]
+        confirmations = [e for e in evidence["events"] if e["kind"] == "confirmation"]
+        readbacks[0]["promises"].append(deepcopy(second))
+        evidence["transcript"]["messages"][readbacks[0]["message_index"]]["message"] = json.dumps(expected["promises"])
+        evidence["events"].remove(readbacks[1]); evidence["events"].remove(confirmations[1])
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertTrue(self.score(ledger, expected, evidence)["pass"])
+        readbacks[0]["promises"][1]["amount"] = "69.25"
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_revised_terms_require_confirmation_after_the_new_readback(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        readback = next(e for e in evidence["events"] if e["kind"] == "readback")
+        confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+        position = confirmation["message_index"] + 1
+        evidence["transcript"]["messages"].insert(position, {"role": "assistant", "message": "Revised readback: " + json.dumps(expected["promises"])})
+        for span in evidence["tool_spans"]:
+            for field in ("start_message_index", "complete_message_index"):
+                if span[field] >= position: span[field] += 1
+        for event in evidence["events"]:
+            if event["message_index"] >= position: event["message_index"] += 1
+        revised = {"kind": "readback", "message_index": position, "promises": deepcopy(readback["promises"])}
+        evidence["events"].insert(2, revised)
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+        evidence["transcript"]["messages"].insert(position + 1, {"role": "user", "message": "Yes, I confirm the revised terms."})
+        for span in evidence["tool_spans"]:
+            for field in ("start_message_index", "complete_message_index"):
+                if span[field] > position: span[field] += 1
+        for event in evidence["events"]:
+            if event["message_index"] > position: event["message_index"] += 1
+        evidence["events"].insert(3, {"kind": "confirmation", "message_index": position + 1, "readback_message_index": position})
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertTrue(self.score(ledger, expected, evidence)["pass"])
+
+    def test_brief_b_requires_collective_confirmation_for_distinct_products(self):
+        expected, ledger = scenario()
+        second = {"product_id": "loan-8", "amount": "68.25", "date": "2032-04-10"}
+        expected["promises"].append(deepcopy(second)); ledger["promises"].append(deepcopy(second))
+        ledger["calls"].insert(4, {"tool": "create_promise", "args": deepcopy(second), "result": {"ok": True}})
+        evidence = conversation_annotations(ledger)
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+        self.assertTrue(score_ledger(expected, ledger, evidence={"conversation": evidence},
+                                     collective_confirmation=False)["pass"])
+
+    def test_changed_or_withdrawn_consent_invalidates_an_earlier_yes(self):
+        expected, ledger = scenario()
+        for product in ("loan-7", "unrelated-product"):
+            evidence = conversation_annotations(ledger)
+            confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+            position = confirmation["message_index"] + 1
+            evidence["transcript"]["messages"].insert(position, {"role": "user", "message": "Wait, I withdraw that promise."})
+            for span in evidence["tool_spans"]:
+                for field in ("start_message_index", "complete_message_index"):
+                    if span[field] >= position: span[field] += 1
+            for event in evidence["events"]:
+                if event["message_index"] >= position: event["message_index"] += 1
+            evidence["events"].insert(2, {"kind": "consent_changed", "message_index": position, "product_ids": [product]})
+            evidence["transcript_sha256"] = digest(evidence["transcript"])
+            with self.subTest(product=product):
+                self.assertEqual(self.score(ledger, expected, evidence)["pass"], product != "loan-7")
+
+    def test_farewell_precedes_close_after_previous_tool_completion(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        farewell = next(e for e in evidence["events"] if e["kind"] == "farewell")
+        readback = next(e for e in evidence["events"] if e["kind"] == "readback")
+        farewell["message_index"] = readback["message_index"]
+        evidence["events"].sort(key=lambda e: e["message_index"])
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_same_utterance_confirmation_and_change_cannot_authorize_write(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+        evidence["events"].insert(2, {"kind": "consent_changed", "message_index": confirmation["message_index"],
+                                     "product_ids": ["loan-7"]})
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+
+    def test_later_repeated_confirmation_preserves_earlier_authorization(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+        messages = evidence["transcript"]["messages"]
+        position = len(messages)
+        messages.append({"role": "user", "message": "Yes, those were the agreed terms."})
+        evidence["events"].append({**deepcopy(confirmation), "message_index": position})
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertTrue(self.score(ledger, expected, evidence)["pass"])
+
+    def test_change_between_readback_and_yes_requires_fresh_readback(self):
+        expected, ledger = scenario()
+        evidence = conversation_annotations(ledger)
+        readback = next(e for e in evidence["events"] if e["kind"] == "readback")
+        confirmation = next(e for e in evidence["events"] if e["kind"] == "confirmation")
+        position = confirmation["message_index"]
+        messages = evidence["transcript"]["messages"]
+        messages.insert(position, {"role": "user", "message": "Wait, change that promise."})
+        for span in evidence["tool_spans"]:
+            for field in ("start_message_index", "complete_message_index"):
+                if span[field] >= position: span[field] += 1
+        for event in evidence["events"]:
+            if event["message_index"] >= position: event["message_index"] += 1
+        evidence["events"].insert(1, {"kind": "consent_changed", "message_index": position, "product_ids": ["loan-7"]})
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertFalse(self.score(ledger, expected, evidence)["pass"])
+        messages.insert(position + 1, {"role": "assistant", "message": "New agreed terms: " + json.dumps(expected["promises"])})
+        for span in evidence["tool_spans"]:
+            for field in ("start_message_index", "complete_message_index"):
+                if span[field] > position: span[field] += 1
+        for event in evidence["events"]:
+            if event["message_index"] > position: event["message_index"] += 1
+        evidence["events"].insert(2, {"kind": "readback", "message_index": position + 1,
+                                     "promises": deepcopy(readback["promises"])})
+        confirmation["readback_message_index"] = position + 1
+        evidence["transcript_sha256"] = digest(evidence["transcript"])
+        self.assertTrue(self.score(ledger, expected, evidence)["pass"])
 
 
 if __name__ == "__main__":

@@ -579,9 +579,16 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if isinstance(node, dict):
             for field in ("task_message", "routing_prompt", "on_enter", "extraction_schema"):
                 if field in node:
-                    # The only protected spoken projection is the compiler's
-                    # fixed confirmation readback. A node prefix proves nothing.
-                    readback = (field == "on_enter" and node[field] == {"type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"})
+                    # Custom wording gains the compiler's protected readback
+                    # only after byte-exact controller recompilation above.
+                    # An authored copy or a node prefix alone proves nothing.
+                    question = (guard_context.get("execution_policy", {}).get("profile", {}).get("confirmation_question")
+                                if guard_context is not None else None)
+                    compiled_question = (isinstance(question, str) and isinstance(name, str)
+                                         and name.startswith("bg_") and name.endswith("_confirm")
+                                         and node[field] == {"type": "tts", "text": "{{bg_readback}}. " + question})
+                    readback = (field == "on_enter" and (compiled_question or node[field] == {
+                        "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"}))
                     text_bindings(node[field], "node." + str(name) + "." + field, readback=readback)
     initial = workflow.get("initial_node")
     if not isinstance(initial, str) or initial not in nodes:

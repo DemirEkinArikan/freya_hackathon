@@ -55,7 +55,8 @@ _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_boun
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables",
+                         "confirmation_question", "confirmation_question_actions"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -84,6 +85,8 @@ _SHAPE_GUIDANCE = {
     "identity_hint_exemptions": "an array of unique nonempty strings; an empty array is allowed",
     "write_retryable_errors": "an array of unique nonempty strings; an empty array is allowed",
     "confirmation_scope": 'the string "each" or "batch"',
+    "confirmation_question": "optional nonempty literal text containing the exact question prescribed by the source, present verbatim in its cited source quotation; preserve spelling/language/punctuation; no variable templates, control characters or private engine/credential prefixes (the compiler prepends its protected readback). Requires source-backed confirmation_question_actions to state exactly where the wording applies, never infer a global scope. Omit both when no wording is prescribed. This changes text only, not confirmation requirements or guarded consent semantics; different questions for different actions are not representable by this scalar interface",
+    "confirmation_question_actions": "paired with confirmation_question: a nonempty unique array containing only commit_promises, commit_transfer, schedule_callback, with literal source provenance establishing the question's action scope. No default/inferred scope. A common source question can explicitly include multiple roles. This grants neither actions nor confirmation requirements; other confirmation nodes retain their generic fallback",
     "note_failure_limit": "a positive integer; booleans are not integers",
     "callback_failure_limit": "a positive integer; booleans are not integers",
     "transfer_failure_limit": "a positive integer; booleans are not integers",
@@ -172,7 +175,7 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, dict) and bool(value) and not set(value) - {"min", "max"}
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
-    elif kind == "account_disclosure_fields":
+    elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -246,6 +249,14 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
             valid = True
         except CallVariablesError:
             valid = False
+    elif kind == "confirmation_question":
+        valid = (text(value) and bool(value.strip()) and "{{" not in value and "}}" not in value
+                 and not any(ord(char) < 32 or ord(char) == 127 for char in value)
+                 and not any(prefix in value.casefold() for prefix in ("bg_", "auth_", "bank_token")))
+    elif kind == "confirmation_question_actions":
+        valid = (isinstance(value, list) and bool(value) and all(text(item) for item in value)
+                 and len(set(value)) == len(value)
+                 and not set(value) - {"commit_promises", "commit_transfer", "schedule_callback"})
     elif kind == "account_disclosure_fields":
         def fields(items):
             return (isinstance(items, list) and all(text(item) for item in items)
@@ -410,10 +421,14 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
             quote = source.get("quote")
             if not isinstance(quote, str) or not quote.strip():
                 errors.append(prefix + " requires a literal source quote")
-            elif source_documents is not None:
-                document = source_documents.get(sid) if isinstance(sid, str) else None
-                if document is None or quote not in document:
-                    errors.append(prefix + " quote is not present in the supplied source")
+            else:
+                question = rule.get("value")
+                if rule.get("kind") == "confirmation_question" and isinstance(question, str) and question not in quote:
+                    errors.append(prefix + " confirmation_question must appear literally in its cited source quote")
+                if source_documents is not None:
+                    document = source_documents.get(sid) if isinstance(sid, str) else None
+                    if document is None or quote not in document:
+                        errors.append(prefix + " quote is not present in the supplied source")
     for ident, rule in by_id.items():
         overrides = rule.get("overrides", [])
         if not isinstance(overrides, list) or any(not isinstance(x, str) for x in overrides):
@@ -725,6 +740,8 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
         profile[kind] = copy.deepcopy(value)
     if missing:
         raise MissingExecutionRules(missing)
+    if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
+        raise MissingExecutionRules(["confirmation_question_actions" if "confirmation_question" in profile else "confirmation_question"])
     if "band_ranges" in profile:
         bands = {band["name"] for band in profile["band_ranges"]}
         for kind in ("deadline_days", "persuasion_limits"):

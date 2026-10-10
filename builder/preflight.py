@@ -35,6 +35,7 @@ PROBE_SCHEMA = {
     },
 }
 KNOWN_TOOLS = frozenset({"apply_patch", "clock.sleep", "clock__curr_time", "image_gen__imagegen", "create_goal", "get_goal", "update_goal", "exec_command", "write_stdin", "view_image", "web_search", "functions.exec", "functions.wait", "functions.request_user_input", "functions.request_user_input_async", "collaboration.followup_task", "collaboration.interrupt_agent", "collaboration.list_agents", "collaboration.send_message", "collaboration.spawn_agent", "collaboration.wait_agent"})
+KNOWN_TOOLS |= {"functions.exec_command", "functions.shell_command", "functions.apply_patch", "functions.write_stdin"}
 KNOWN_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error", "command_execution", "mcp_tool_call", "web_search", "file_change", "tool_call", "image_generation", "computer_use"})
 
 

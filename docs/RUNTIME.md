@@ -192,3 +192,16 @@ process. The trace retains the warning category and count. Count zero and the
 exact host-discovery experimental warning remain accepted; zero alone is not
 an exhaustive loader proof. A local regression exercises a successful first
 stage followed by a rejected second stage under the same cached audit.
+
+Generation and probes also explicitly disable the documented stable
+`unified_exec` feature alongside `shell_tool`, and require that capability to be
+recognized before any probe or brief is sent. This selects the PTY-backed exec
+tool off; it does not prove that all shell or patch tools disappear. The removed
+`apply_patch_freeform` flag is unchanged, and no model catalog metadata is patched.
+The fixed diagnostic-name allowlist now recognizes the public aliases
+`functions.exec_command`, `functions.shell_command`, `functions.apply_patch`,
+and `functions.write_stdin`. These names can be displayed in failure metadata;
+all nonempty reported tool lists and actual tool events still fail isolation.
+Unrecognized names and raw model response data remain excluded. This additive
+change is verified with local mocks only, with no additional live probe.
+The tool-free runtime remains unproved and substantive generation remains gated.

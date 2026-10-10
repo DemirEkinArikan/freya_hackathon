@@ -47,7 +47,7 @@ python3 -m benchmarks.hosted --execute --agent-id <id> --brief A --split train -
 python3 -m benchmarks.hosted --execute --agent-id <id> --deployment-manifest artifacts/<run>/manifest.json --brief B --split holdout --reps 3
 ```
 
-Do not run execution commands under the current no-spend boundary. The default is dry-run; it does not initialize a client or require credentials. Live execution needs a Freya API key and a team bank key of at least 16 characters. Each agent evaluates one brief; use the A/B subset files or `--brief` to avoid incompatible note semantics. Optional baseline and mandatory holdout `--deployment-manifest` pin the exported graph, agent and published version ID/number; real-client read-back verifies them before and after evaluation. Per-call version metadata is also checked when supplied. A changed/missing graph or evidence is an infrastructure failure, not a conversation pass. Output paths remain inside the project and cannot traverse symlinks. Bank HTTP redirects are blocked so team credentials cannot be forwarded to another host.
+Do not run execution commands under the current no-spend boundary. The default is dry-run; it does not initialize a client or require credentials. Live execution needs a Freya API key and a team bank key of at least 16 characters. Each agent evaluates one brief; use the A/B subset files or `--brief` to avoid incompatible note semantics. Optional baseline and mandatory holdout `--deployment-manifest` pin the exported graph, agent and published version ID/number; real-client read-back verifies them before and after evaluation. Every pinned call also requires a positive integer `agentVersionNumber` from its judge or transcript matching that deployment. Conflicting or malformed versions fail; absent per-call attribution is incomplete evidence. Unpinned development runs record unavailable attribution explicitly. Read-back publication proves the stored deployment, while per-call metadata attributes the executed call. A changed/missing graph or evidence is an infrastructure failure, not a conversation pass. Output paths remain inside the project and cannot traverse symlinks. Bank HTTP redirects are blocked so team credentials cannot be forwarded to another host.
 
 Every variant has a unique `fixture_id` and a separate known `bank_case_id`. The latter alone is sent to `/v1/practice/sessions`. Server-returned variables are preserved unchanged, with fresh sessions for every case and repetition. The adapter rejects reused customer/session IDs, duplicate persona IDs and unknown bank seeds. One workspace simulation runs at a time through the platform client's shared lease; per-simulation call concurrency defaults to the kit's five. Three repetitions require every repetition to pass. No automatic slow-run retries spend additional credits.
 
@@ -56,6 +56,12 @@ The supplied server does not document arbitrary fixture registration, reset, pol
 ## Scoring and evidence
 
 The stronger local scorer checks exact decimal amounts, records including duplicates, total identity wrong-answer limits, factor order, no premature account access, retry limits, no notes on transfers and exactly one final close. Missing ledger/arguments/judge evidence is reported explicitly. Spoken honesty is never inferred from a successful ledger alone: the platform judge and retained transcript cover conversation checks. Optional independently normalized claim-order evidence can expose success claims before a successful write. Infrastructure failures remain separate from behavioral failures. Hosted results redact keys and ephemeral session secrets before writing.
+
+Ledger and transcript retrieval are independent: an error in one preserves the
+other and the original judge evidence. A scoring error also preserves the received
+ledger. Every scored row records its simulation, iteration and call identifiers;
+any supplied transcript call identifier must match the judge's call. Retrieval
+failures remain failures, and no automatic retry replaces their original evidence.
 
 Local ledger verdicts also fail when tool success/failure or identity arguments
 are missing. Promise records must match the multiset of successful promise tool

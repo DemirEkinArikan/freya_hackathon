@@ -44,6 +44,16 @@ one eligible protected fact, and rejects ambiguous multiple unranked facts.
 An explicitly supplied ranking still requires its exact nonempty typed value;
 it cannot be discarded or replaced by the absence representation.
 
+The fixed `identity_close` table is also optional when the source supplies no
+identity-exit dispositions. The frozen policy stays unchanged; the detached
+runtime represents absence as an empty table, supplying no outcome or reason.
+The existing kernel may select an eligible protected account or transfer fact.
+Without that evidence or a supplied identity row, closing is refused and its
+sealed handler reaches a silent technical terminal without a bank request or
+success claim. This fallback does not satisfy an explicit source requirement
+to record a bank close. Supplied tables remain exact and fully typed; explicit
+empty or partial tables and choices without matching fixed scopes still reject.
+
 An optional source-backed `product_count_bounds` rule retains explicit account
 cardinality separately: a nonempty object with `min`, `max`, or both, containing
 nonnegative integers. When both are supplied the minimum cannot exceed the

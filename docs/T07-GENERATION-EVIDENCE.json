@@ -128,6 +128,226 @@
         "Narrative requires definite negative200 retries and twice-failed service_error disposition, but operative nonpersistent_failures covers only500 and promise_failure_disposition is absent.",
         "No generated routes, dialogue or code were created; interface inspection is not semantic or conversation acceptance."
       ]
+    },
+    {
+      "mode": "generate-only",
+      "status": "generated_validated",
+      "sources": [
+        {
+          "id": "brief-1",
+          "file": "brief-a.md",
+          "sha256": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+        },
+        {
+          "id": "brief-2",
+          "file": "brief-b.md",
+          "sha256": "7eeb6464eabd2e57aff916488f3bba1e2c1c35077c29fd6dac7b764385fce123"
+        }
+      ],
+      "tool_api_sha256": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "repairs": 2,
+      "policy_repairs": 1,
+      "workflow_repairs": 1,
+      "workflow_sha256": "a8ae62203eb3a72bd9ff10df217441b587d696e2350d22acc74d171324c423a0",
+      "plan_sha256": "697cc418b8e908571d68022f2ba8b2ed3dac681712d9cc419212c829f16c8f44",
+      "guard_manifest_sha256": "77beebc30d9487d8080988b951d25e63b0a46280c5de2c5a492c084a8b4f280b",
+      "policy_contract_sha256": "1b8ebbd9e7db4033e6bc0c9d22280b025dce57ddd4432321a25a6a208681cc18",
+      "execution_requirements_sha256": "41eb743124cfa8b8c468693762632be4470177e9eb8d628f33e023d75671a857",
+      "policy_provenance_checked": true,
+      "action_guard_compilation_verified": true,
+      "hosted_behavior_verified": false,
+      "selected_attempt": 2,
+      "selected_attempt_directory": "attempts/plan-002",
+      "stage_durations": {
+        "policy": 577.372,
+        "workflow": 621.594
+      },
+      "elapsed_seconds": 1204.697,
+      "builder_source_sha256": "ad990dfbcb29f4b7ae6179516cc010441c68ebf69644cd7a67a7d316495d257b",
+      "builder_source_record_sha256": "d85d20f81258be9814d6d1871e88a38d9726e7f5300d00413960d03a4d5b5991",
+      "briefs": [
+        "A",
+        "B"
+      ],
+      "run_id": "20261010T224748051958Z",
+      "source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+      "source_checks": {
+        "python3.11_full": 1090,
+        "seconds": 119.568,
+        "kit_files": 16,
+        "source_package_files": 225,
+        "git_diff_check": "pass"
+      },
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-integrated-generation-v3/artifacts/t07-current-generation/AB/20261010T224748051958Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "action-bindings.json": "a538475aed6adb40e38b75cf290e577d71f029cbe50b71059f663e0c2ffec6e5",
+        "build-provenance.json": "6274280c17656ba762f9ec354e5161a51068fce00f0c96617092855275401083",
+        "builder-source.json": "6d57ec8563a8fa751db0c4f48537c476691749475e30180589d332d04cdfcf95",
+        "candidate.rejected-2.json": "6705808bb58482b0b384fc8a224efb3e42ca987dacf2944b960e74e36df9e029",
+        "execution-policy.json": "303289d455611d151105a68f39192bab969d93f06e30af72924a6f4560c1302c",
+        "execution-requirements.json": "8866a99767231affb19b602d6fa64f2c7de7f89fa3e557e8621991404c8ac2ba",
+        "guard-manifest.json": "654dd5220a727e2ef1ce899d7e911ec11281e0cca50240e91272d48d250e6d9e",
+        "manifest.json": "b44df276beee07c04ac690eddfdef7f301f581963bc75134ec1ac55e684c44b7",
+        "plan.json": "bc9f38c77768142de2e791ed125fa5a448ebe0ecdc6411be55acd63047cff0e2",
+        "policy.contract.json": "2de965932c55c94dd81d2afb5aa9ce5113bfa44af9541e637356412670b0fba1",
+        "policy.json": "b1aebfb006099c7c88697fb9069fb434829f78f4fd85a1255a0ae2222852e439",
+        "policy.rejected-1.json": "bd34351c9550ebb5c3c2490ffeb4f7377e97e48ac828aad25294839e672c1bd5",
+        "trace.jsonl": "37f13d286cfafdf480e6e48af739db4e1ef72196d52da032f4ca49e119528334",
+        "workflow.json": "c2898876f19bbd85f168aaf91a49d2b55f3a541672bb0e9cb77cc9657937841a"
+      },
+      "remaining_seconds": 595.3033607079997,
+      "isolation": {
+        "status": "pass",
+        "seconds": 6.77,
+        "reported_tools": 0,
+        "canary_exposures": 0,
+        "unknown_diagnostics": 0,
+        "limitations": "Observed events and unknown canaries supplement model self-reports; this does not independently prove operating-system file denial."
+      },
+      "source_review": {
+        "literal_rules": 95,
+        "active_concepts": 82,
+        "explicit_B_overrides": 13,
+        "exact_API_witnesses": 14,
+        "source_constraint_preservation": "pass",
+        "semantic_execution_acceptance": false
+      },
+      "independent_validation": {
+        "original_source_recompilation": "pass",
+        "normal_and_exact_validation": "pass",
+        "root_selected_workflow_match": "pass",
+        "limitations": "Structural compilation is not policy-complete speech or hosted acceptance."
+      },
+      "semantic_blockers": [
+        "Valid card/loan responses quarantine under the original unconditional union of type-specific disclosure fields. PR98 fixes source support only; original generated policy stays unchanged.",
+        "Missing callback terms can produce an absorbing conversation loop; source validation proves a reachable ending, not termination of every path.",
+        "The generated plan assumes silent compiled closing supplies a farewell; its silent identity-exit route lacks a spoken exhaustion-advice action.",
+        "Source-global preaccount restructuring routes are absent from the original contact/security graph.",
+        "Shared-date adjustment explanation is incorrectly assigned to the controller, whose readback supplies final terms only."
+      ],
+      "independent_execution_summary": {
+        "one_two_three_product_positive_paths": "blocked before writes by original disclosure union; not accepted",
+        "four_product_upper_bound": "supplied max3 rejection verified independently",
+        "callback_preidentity_transfer_identity_exhaustion": "positive mock receipts reach actual closing and silent terminal; no speech/hosted proof",
+        "missing_callback_terms": "absorbing_loop, no API call"
+      },
+      "platform_calls": 0,
+      "simulation_lease_modified": false,
+      "raw_model_events_included": false,
+      "evaluator_frames_or_expected_records_included": false,
+      "holdout_used": false
+    },
+    {
+      "profile": "train-1",
+      "run_id": "20261010T231942492895Z",
+      "mode": "generate-only",
+      "status": "failed",
+      "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-train1-full-20261011/artifacts/t07-current-train1-generation/20261010T231942492895Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "builder-source.json": "ae17c0743712deeaee032f49c4e9715e17db34aeb5f9338341937f53a09c1ad9",
+        "manifest.json": "b4f3679e32acd0e83bf8e2bc5bed6054aebe84d5c00baafe7d8592a7e86f098b",
+        "policy.rejected-1.json": "fa0f99bf363f01396b882300e877f3ece47a59f7a67df52686dddb5f63d9e9a0",
+        "policy.rejected-2.json": "19765949266d1b9321f3c58b8640e605ea5ffa11f4c5d8ff12e917760be02a9f",
+        "policy.rejected-3.json": "c2247f614ddf04564589a34083d920ae2d5b810509741f4011d35fc2150710ed",
+        "trace.jsonl": "3b3750f64b56a5e6039c98aa99e48fd36a4fac6a38929441fe5c1ace450c0608"
+      },
+      "elapsed_wall_seconds": 583.925403,
+      "remaining_seconds": 1216.0773696250108,
+      "isolation_status": "pass",
+      "rejected_policy_candidates": 3,
+      "shared_policy_repairs_used": 2,
+      "accepted_policy_created": false,
+      "workflow_created": false,
+      "platform_calls": 0,
+      "holdout_used": false,
+      "raw_model_events_included": false,
+      "evaluator_inputs_included": false,
+      "source_checks_limit": "No exact combined pre-run full-suite count is asserted here; contributing merged PR checks are separate.",
+      "error_family": "unsupported constraints; raw profile additionally retains invalid rule scope fields",
+      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations.",
+      "sources": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "27ee7511731188e7b287ff7de25aed1287fbaa8a3a3b491c70e51f0def0803d2"
+        }
+      ],
+      "tool_api_sha256": "d1ef8916e24c5b9fd49a6781a676c39e581a3134f3f71396c012e6b733ad2a4f"
+    },
+    {
+      "profile": "train-2",
+      "run_id": "20261010T232400167593Z",
+      "mode": "generate-only",
+      "status": "failed",
+      "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-train2-full-20261011/artifacts/t07-current-train2-generation/20261010T232400167593Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "builder-source.json": "aae50f445837bc40e37e0dd2650ac3a9d045bcd4cb492b803f07cb54f1f1acd0",
+        "manifest.json": "66fc319c60211d0dd4598487ccd265ed1b416d9314d277d838922fdd93b809a0",
+        "policy.rejected-1.json": "d36038962968a91ddbb0260df6e719a2538e14933365852ae8024ca4daf5f1a0",
+        "policy.rejected-2.json": "0612a8f8af29695e2b9e7c0dac0200a95c5bc252b2f0ab351b9bb5c1906536f1",
+        "policy.rejected-3.json": "9c0cbb42e9cd041c79057805a572c075766ea409c14aedf2b8da8829e9f09e57",
+        "trace.jsonl": "e1f8be6a7a96ec0c51e6482b16dbd432d28c0451369eaae5e4feaea2a35c5dd5"
+      },
+      "elapsed_wall_seconds": 656.157684,
+      "remaining_seconds": 1143.7758033749997,
+      "isolation_status": "pass",
+      "rejected_policy_candidates": 3,
+      "shared_policy_repairs_used": 2,
+      "accepted_policy_created": false,
+      "workflow_created": false,
+      "platform_calls": 0,
+      "holdout_used": false,
+      "raw_model_events_included": false,
+      "evaluator_inputs_included": false,
+      "source_checks_limit": "No exact combined pre-run full-suite count is asserted here; contributing merged PR checks are separate.",
+      "error_family": "unsupported constraints; raw profile additionally retains invalid rule scope fields",
+      "source_only_review": "Source omissions, unnecessary dependencies and model over-rejection must be distinguished. No missing policy values inferred from permitted vocabulary or evaluator expectations.",
+      "source_only_review_notes": [
+        "Missing identity dispositions and exhaustion consequences grant no inferred bank values; absence is conservative, and blanket extraction dependencies must be scoped.",
+        "Human product readback source and API type field exist; categorical absence is overstated, while unique repeated-type labels remain unspecified.",
+        "Supplied effective-date and goal conditions need typed executable selection; stripping invalid extra scope fields would lose constraints.",
+        "API remaining budget maximum two does not prove contradiction with total wrong limit three; do not infer initial budget or call date.",
+        "Nonpromise definite-failure retry support and source triggers remain unresolved; preserve obligations without invented counter scope."
+      ],
+      "sources": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "a3df9c87ca910d95bd7f55a8a6ed6397e79f3b1b42d286b81ba71d64216fb6ee"
+        },
+        {
+          "id": "brief-2",
+          "file": "effective-memo.md",
+          "sha256": "2d5aaf68dadf46298ff42720ca462e0c5590c7807c4f8a49f3aefbf6158430d4"
+        },
+        {
+          "id": "brief-3",
+          "file": "historical-policy.md",
+          "sha256": "9dab0f53683559f19d0d2f341cda7b2780d2fa346131a2285a82e9119448acb9"
+        },
+        {
+          "id": "brief-4",
+          "file": "operations-mail.md",
+          "sha256": "2d94e82066af72fe47a81e6229f92a5edc1f54612c50c5f735fae7c39ebeb47b"
+        },
+        {
+          "id": "brief-5",
+          "file": "code-list.md",
+          "sha256": "5bc32b39e009688154d529e4a9354da433bbc1a8d768a26c207477c50509ac7c"
+        }
+      ],
+      "tool_api_sha256": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761"
     }
   ],
   "changed_schema_trials": {
@@ -141,8 +361,42 @@
     "accepted_policy_or_workflow": false
   },
   "remaining": [
+    "Actual complete generation and guarded compilation for changing approved schemas and supported goals",
+    "Executable date/goal applicability preserving supplied scopes and source/API fields",
+    "Safe termination of conversation and action cycles; source-required speech in actual speaking nodes",
+    "Future hosted use only: reconcile the canonical primary simulation lease with the server"
+  ],
+  "dependency_update": {
+    "T03": "closed",
+    "T05": "closed",
+    "T06": "closed",
+    "T05_completion_comment": "https://github.com/DemirEkinArikan/freya_hackathon/issues/6#issuecomment-6103215647",
+    "T07": "open",
+    "reason": "Actual changed-schema/goals and all-path safe execution remain unfulfilled."
+  },
+  "later_source_fixes": [
+    {
+      "pr": 98,
+      "checked_head": "e078a53976f573f087aeb173a3cc03734976b7d9",
+      "scope": "Typed conditional disclosure and protected projection; fresh generation required."
+    },
+    {
+      "pr": 101,
+      "checked_head": "a2b66665352aa927aaa80c5511228f7c8b7ea9d5",
+      "merge": "b7d3ff3a09f7038a27374fd67f19d140cff1a505",
+      "full_tests": 1213,
+      "full_seconds": 132.452,
+      "kit_files": 16,
+      "source_files": 246,
+      "scope": "Unused disclosure metadata remains frozen and inert without selected account lookup; source acceptance only."
+    }
+  ],
+  "historical_remaining": [
     "Fresh audited generation after coordinated generic semantic/controller guidance repair",
     "Actual routes/extraction/dialogue/code compilation for different complete approved policy/schema inputs",
     "T05 dependency acceptance and shared-lease server reconciliation before hosted use"
-  ]
+  ],
+  "initial_source_commit_scope": "Top-level source_commit binds the initial two policy-only runs; each later record binds its own exact source.",
+  "generation_inputs_scope": "Top-level generation_inputs describes the initial organizer runs; later approved development runs bind their own input inventories.",
+  "latest_structurally_validated_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3"
 }

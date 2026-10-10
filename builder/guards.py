@@ -57,7 +57,48 @@ _REQUIRED = {
     "finalize_notes": {"note_reasons", "record_notes", "product_order", "resolve_all_products"},
     "stage_transfer": {"transfer_reasons", "transfer_prerequisites"}, "commit_transfer": {"transfer_reasons", "transfer_prerequisites"},
     "schedule_callback": {"callback_window", "holidays", "business_weekdays"},
-    "close_call": {"close_reasons", "record_notes", "identity_close"},
+    "close_call": {"close_reasons", "record_notes"},
+}
+
+# Interface facts about the sealed kernel, never policy permissions or defaults.
+# Accepted preparation is distinct from reconciled positive API evidence.
+_CONTROLLER_STATE_EFFECTS = {
+    "verify_identity": {
+        "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
+        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, identity_wrong_limit - returned wrong_answers_left); ok=true alone does not verify a factor.",
+                               "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
+    "get_account": {
+        "accepted_staging": ["Sending the account request does not establish loaded products."],
+        "positive_recording": ["Validated positive account evidence loads the returned products once."]},
+    "stage_promise": {
+        "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
+                             "Clears the pending confirmation snapshot; staging does not record a bank promise."],
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+    "commit_promises": {
+        "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
+        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
+    "stage_note": {
+        "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
+                             "Clears the pending confirmation snapshot; staging does not record a bank note."],
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+    "finalize_notes": {
+        "accepted_staging": ["Requires every loaded product resolved by a recorded promise or staged disposition, with no pending promise.",
+                             "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
+    "stage_transfer": {
+        "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
+                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
+        "rejections": ["Any recorded note or existing handoff prevents staging; supplied queue prerequisites remain mandatory."]},
+    "commit_transfer": {
+        "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
+        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."]},
+    "schedule_callback": {
+        "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
+        "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
+    "close_call": {
+        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close."],
+        "positive_recording": ["Validated positive close evidence marks the close recorded."],
+        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
 }
 
 
@@ -78,7 +119,8 @@ def execution_action_catalogue() -> dict[str, dict[str, Any]]:
     return {action: {"operation_role": operation_roles[action],
                      "input_fields": sorted(_INPUTS[action]),
                      "optional_input_fields": sorted(_OPTIONAL_INPUTS.get(action, set())),
-                     "required_kinds": sorted(_REQUIRED[action])}
+                     "required_kinds": sorted(_REQUIRED[action]),
+                     "controller_state_effects": copy.deepcopy(_CONTROLLER_STATE_EFFECTS[action])}
             for action in sorted(_INPUTS)}
 
 
@@ -300,6 +342,10 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     # fact or a sourced identity disposition, and rejects ambiguous facts.
     # This detached runtime representation is not a frozen policy rule.
     result.setdefault("close_precedence", [])
+    # No sourced identity disposition grants no bank closing choice. The
+    # existing close handler can still use protected account/transfer facts;
+    # otherwise it refuses the request and ends silently without a bank call.
+    result.setdefault("identity_close", {})
     if result.get("policy_applicability") == {"products": "single"}:
         # Conservative kernel invariant: the sole product must be resolved.
         # This is not an invented cross-product policy rule or sort order;

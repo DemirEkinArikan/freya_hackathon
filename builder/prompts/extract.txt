@@ -14,6 +14,39 @@ kinds. Resolve only explicit amendments; conflicting requirements without a
 supported replacement belong in unsupported_constraints, never a guessed rule.
 Keep JSON compact. Copy source identifiers, filenames and hashes exactly.
 
+Preserve each requirement's actor, phase, trigger, scope and effect. Distinguish
+communicated offers and customer proposals from eligibility to execute a
+transaction. A value may be required in an offer yet remain ineligible for
+execution; retain both requirements without extending an execution restriction
+to every utterance. Do not invent replacement terms, change timing or silently
+discard either clause. Record genuinely incompatible requirements with their
+actual overlapping scope, rather than assuming that different phases conflict.
+
+Assess whether protected facts can jointly become authoritative under the
+sourced branches and sealed state transitions. Facts from exclusive branches
+are not automatically conflicting. Do not assume exclusivity merely to avoid
+ambiguity: retain its source or deterministic controller invariant. For reachable
+overlapping facts, use only an applicable sourced resolution. Preserve unresolved
+overlap and fail-closed recovery without inventing a ranking or removing an
+otherwise supported outcome.
+
+Retain each action's stated trigger, explicit prerequisites and applicable
+cross-cutting restrictions from the complete source context. Do not transfer a
+prerequisite from one action to another. A direct instruction may authorize its
+action after its stated conditions without inventing an unstated policy
+prerequisite. Preserve sealed controller safeguards and retain that source
+context in the typed interface. Omission alone neither grants
+permission nor justifies adding a gate. Keep an essential unresolved prerequisite
+explicit when the source does not support an executable interpretation.
+
+Catalogue state-effects metadata describes deterministic controller capabilities,
+not bank rules, default permissions or authority for values. Use it to check
+representability and reachability; approved sources still authorize policy.
+Reconcile diagnostics without inventing values, erasing operative constraints or
+clearing unsupported declarations without resolving their reasons. Preserve
+literal witnesses and separately bound API qualifications. Requirements the
+current compiler cannot faithfully enforce remain explicit failures.
+
 When supplied sources declare variables available at call start, retain their
 exact names in a source-backed call_variables array, including the declaration
 in its literal quotation. These are read-only inputs, not customer answers or

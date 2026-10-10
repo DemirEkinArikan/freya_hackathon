@@ -19,7 +19,10 @@ be silently replaced.
 
 Local checks verify coverage, unique variant identity, unchanged seed facts and
 oracles, attack metadata, security-question prompt constraints and exact brief
-subsets. These checks do not establish that a persona follows its script or that
-a generated phone agent passes a conversation. T12's empirical persona agreement
-and T11's live session/version gates remain open under the current execution
-boundary. Evaluator cases and oracles must never become builder inputs.
+subsets. A manual wording audit also confirms that corrections end at the
+scripted terms, questions follow verification, and compounds preserve final
+seed decisions and judge checks. This satisfies T12's own local fixture/audit
+deliverable; T12 remains dependency-blocked on T11. Its acceptance does not add
+an empirical persona-execution requirement. Persona simulator obedience and
+generated phone-agent conversation results remain unexecuted and unclaimed.
+Evaluator cases and oracles must never become builder inputs.

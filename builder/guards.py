@@ -285,6 +285,21 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     or not isinstance(value.get("value_labels", {}), dict)
                     or any(not isinstance(labels, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in labels.items()) for labels in value.get("value_labels", {}).values())):
                 errors.append("promise_readback needs human product fields and optional field value labels, excluding internal IDs")
+    selected_actions = {node.get("action") for node in plan.get("nodes", {}).values()
+                        if isinstance(node, dict) and node.get("node_type") == "guard_action"}
+    scopes = profile.get("attempt_scopes", {})
+    limits = {"commit_promises": "promise_failure_limit", "finalize_notes": "note_failure_limit",
+              "schedule_callback": "callback_failure_limit", "commit_transfer": "transfer_failure_limit"}
+    if isinstance(scopes, dict):
+        for action in selected_actions & set(scopes) & set(limits):
+            limit = profile.get(limits[action])
+            if type(limit) is not int or limit < 1:
+                errors.append("selected attempt_scopes action requires its explicit positive " + limits[action])
+        resume = profile.get("definite_failure_resume", [])
+        if isinstance(resume, list) and all(isinstance(action, str) for action in resume):
+            for action in set(resume) & selected_actions:
+                if action not in scopes:
+                    errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -715,6 +730,7 @@ def guard_new(customer_id, now):
                 identity_status='pending', products=list(), account_loaded=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
+                attempt_counts=dict(),
                 transfer=dict(), callbacks=list(), notes_finalized=False, closed=False, close_attempted=False,
                 quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict())
 
@@ -957,6 +973,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
     if state['closed'] or state.get('close_attempted') or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
+    if any(type(key) is not str or not key or type(count) is not int or count < 0
+           for key, count in state['attempt_counts'].items()):
+        state['quarantined'] = True
+        return state, 'failure', dict(), ''
     local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
     if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
         raise ValueError('the disposition phase is sealed')
@@ -1109,6 +1129,16 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         for item in items:
             guard_body(item, operation, catalog)
         batch = dict(action=action, operation=operation, items=items, index=0)
+        scope = profile.get('attempt_scopes', dict()).get(action)
+        if scope is not None:
+            limit_kind = dict(commit_promises='promise_failure_limit', finalize_notes='note_failure_limit',
+                              schedule_callback='callback_failure_limit', commit_transfer='transfer_failure_limit')
+            batch['attempt_scope'] = scope
+            batch['attempt_limit'] = 1 if action == 'close_call' else profile[limit_kind[action]]
+            # Validate callback budgets before asking for new confirmation;
+            # proposals/corrections cannot reset the dispatch counter.
+            if action == 'schedule_callback':
+                guard_attempt_slot(state, batch, items[0], catalog)
         state['batch'] = batch
         state['consent'] = ''
         confirmation = action == 'commit_promises' and profile['require_confirmation'] or action in profile.get('confirmation_actions', list())
@@ -1119,6 +1149,49 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     body = guard_body(semantic, operation, catalog)
     state['inflight'] = dict(action=action, operation=operation, body=body, semantic=semantic)
     return state, 'allow', body, ''
+
+def guard_attempt_slot(state, batch, semantic, catalog, exhausted_ok=False):
+    scope = batch.get('attempt_scope')
+    if scope is None:
+        return '', 0
+    action = batch['action']
+    limit = batch.get('attempt_limit')
+    if type(limit) is not int or limit < 1:
+        raise ValueError('malformed policy attempt budget')
+    if scope == 'call':
+        key = action + ':call'
+    elif scope == 'product' and action in ('commit_promises', 'finalize_notes'):
+        product = semantic.get('product_id')
+        if type(product) is not str or not product:
+            raise ValueError('product-scoped attempt lacks a trusted product')
+        key = action + ':product:' + product
+    elif scope == 'exact_request':
+        key = action + ':request:' + batch['operation'] + ':' + guard_json(guard_body(semantic, batch['operation'], catalog))
+    else:
+        raise ValueError('unsupported policy attempt scope')
+    count = state['attempt_counts'].get(key, 0)
+    if type(count) is not int or count < 0 or count > limit or count == limit and not exhausted_ok:
+        raise ValueError('policy dispatch attempt budget exhausted or malformed')
+    # The separate counter must agree with the already protected dispatch
+    # history. A removed/reset but superficially valid zero is not a new call.
+    prefix = batch['operation'] + ':'
+    actual = 0
+    for attempt_key, attempt in state['attempts'].items():
+        if not attempt_key.startswith(prefix):
+            continue
+        if scope == 'exact_request' and attempt_key != batch['operation'] + ':' + guard_json(guard_body(semantic, batch['operation'], catalog)):
+            continue
+        if scope == 'product':
+            request = json.loads(attempt_key[len(prefix):])
+            if request.get(catalog[batch['operation']]['fields']['product_id']) != semantic['product_id']:
+                continue
+        recorded_count = attempt.get('count')
+        if type(recorded_count) is not int or recorded_count < 1:
+            raise ValueError('malformed protected dispatch history')
+        actual += recorded_count
+    if count != actual:
+        raise ValueError('policy attempt counter differs from protected dispatch history')
+    return key, count
 
 def guard_send(state, catalog):
     batch = state['batch']
@@ -1133,6 +1206,9 @@ def guard_send(state, catalog):
     previous = state['attempts'].get(key, dict())
     if previous and previous.get('status') != 'nonpersistent_failed':
         raise ValueError('duplicate or unresolved bank write')
+    count_key, count = guard_attempt_slot(state, batch, semantic, catalog)
+    if count_key:
+        state['attempt_counts'][count_key] = count + 1
     state['attempts'][key] = dict(status='sent', count=previous.get('count', 0) + 1)
     state['inflight'] = dict(action=batch['action'], operation=operation, body=body, semantic=semantic, key=key)
     if batch['action'] == 'close_call':
@@ -1176,7 +1252,10 @@ def guard_result(state, data, profile, catalog, expected_action):
         status = int(status)
     status_valid = '_http_status' not in data or type(status) is int and 100 <= status <= 599
     success_status = '_http_status' not in data or status_valid and 200 <= status <= 299
-    if not status_valid or guard_true(ok) and not success_status:
+    # A positive flag and an error cannot jointly prove success. Preserve the
+    # pending request and every earlier record; this never grants a replay.
+    contradictory_error = guard_true(ok) and 'error' in data and data['error'] != ''
+    if not status_valid or guard_true(ok) and not success_status or contradictory_error:
         state['quarantined'] = True
         if tx.get('key'):
             state['attempts'][tx['key']]['status'] = 'unknown_persistence'
@@ -1255,6 +1334,32 @@ def guard_result(state, data, profile, catalog, expected_action):
             return state, 'failure', dict(), ''
         state['quarantined'] = True
         return state, 'failure', dict(), ''
+    if (action in profile.get('definite_failure_resume', list()) and sourced_failure
+            and nonpersistent and (negative_ok or bodyless_failure)):
+        state['inflight'] = dict()
+        state['attempts'][tx['key']]['status'] = 'nonpersistent_failed'
+        batch = state['batch']
+        try:
+            limit_kind = dict(finalize_notes='note_failure_limit', schedule_callback='callback_failure_limit',
+                              commit_transfer='transfer_failure_limit')
+            if (batch.get('attempt_scope') != profile['attempt_scopes'][action]
+                    or batch.get('attempt_limit') != profile[limit_kind[action]]):
+                raise ValueError('pending attempt budget differs from frozen policy')
+            count_key, count = guard_attempt_slot(state, batch, tx['semantic'], catalog, True)
+            if not count_key:
+                raise ValueError('resume lacks a policy attempt scope')
+        except Exception:
+            state['quarantined'] = True
+            return state, 'failure', dict(), ''
+        if count == batch['attempt_limit']:
+            # The request is known not to have persisted, and the source
+            # explicitly permits continuation. No successful fact is created.
+            state['batch'] = dict()
+            state['consent'] = ''
+            if action == 'commit_transfer' and state['transfer'].get('status') != 'recorded':
+                state['transfer'] = dict()
+            return state, 'failure', dict(), ''
+        return guard_continue(state, catalog)
     if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):
         state['quarantined'] = True
         return state, 'failure', dict(), ''

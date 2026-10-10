@@ -55,7 +55,8 @@ _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_boun
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables",
+                         "attempt_scopes", "definite_failure_resume"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -93,6 +94,8 @@ _SHAPE_GUIDANCE = {
     "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique",
     "nonpersistent_failures": "an object mapping actual operation names to arrays of unique objects containing http_status (integer 100..599), optional error (nonempty string), and optional api_source containing exactly pointer and quote (nonempty strings); controller execution requires a literal OpenAPI witness scoped to that operation's exact response status",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
+    "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent',
+    "definite_failure_resume": 'an optional unique string array containing only finalize_notes/schedule_callback/commit_transfer; an empty array is allowed. For selected roles an explicit attempt_scopes entry and matching positive limit are required. Only source-authorized continuation after an exact API-qualified nonpersistent negative receipt is enabled: retry the same frozen request below its cap, or resume without claiming success at the cap. This supplies no bank disposition, never resumes uncertainty, and never replays close_call or changes promise exhaustion handling',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
     "identity_close": "an object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string)",
@@ -256,6 +259,16 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  and all(text(kind) and fields(items) for kind, items in value["by_product_type"].items()))
     elif kind in {"record_notes", "resolve_all_products"}:
         valid = type(value) is bool
+    elif kind == "attempt_scopes":
+        valid = (isinstance(value, dict) and bool(value)
+                 and set(value) <= {"commit_promises", "finalize_notes", "schedule_callback", "commit_transfer", "close_call"}
+                 and all(scope in ("call", "product", "exact_request") for scope in value.values())
+                 and all(scope != "product" or action in {"commit_promises", "finalize_notes"}
+                         for action, scope in value.items()))
+    elif kind == "definite_failure_resume":
+        valid = (isinstance(value, list) and all(text(action) for action in value)
+                 and len(set(value)) == len(value)
+                 and set(value) <= {"finalize_notes", "schedule_callback", "commit_transfer"})
     elif kind in {"confirmation_actions", "close_precedence"}:
         valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))
                  and all(text(item) for item in value) and len(set(value)) == len(value))

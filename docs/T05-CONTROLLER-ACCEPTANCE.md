@@ -220,3 +220,44 @@ guarantees. A separate pre-freeze check rejects unsupported selected local paid
 closing configurations before any plan generation. These are interface and
 compiler representability checks; literal source binding still needs semantic
 review, and no hosted behavior is established by them.
+
+## Preserved published but unaccepted controller run
+
+Checked/merged PR90 source `601afe742a0e30434f069b5a26d01ab057d65c2d`
+produced fresh run `20261010T224433522224Z`. Mandatory audit passed in
+8.26 seconds; all 36 runtime file hashes matched that commit. One bounded
+policy repair retained all 50 rules, canonical call variables, local paid
+disposition and exact qualified API failure witnesses. The first plan passed
+guard compilation and workflow validation.
+
+The actual workflow was saved and published as
+`a309fefa-d17a-4f56-94bf-c909140d17b2`, version
+`04a4dc10-03f2-4bc9-9de3-a17ee37f9f73` (number 1). Strict stored comparison
+then failed on an added unset conversation turn-limit field. The run ended
+failed after 625.756 seconds at `2026-10-10T22:54:59.191050Z`; no export or
+simulation occurred. Its original frozen policy, plan, guarded workflow,
+stored definition, source snapshot, trace and failed manifest remain intact.
+
+Read-only server verification confirmed the exact published version and added
+`max_node_turns: null` on conversation nodes whose authored turn-limit fields
+were absent. Complete definition review also found added `mode: "exact"` on
+nested equality condition leaves. These are observed serializer defaults;
+the kit documents a turn cap of 10, not an unlimited null cap. Recognizing
+unset serialization must preserve authored caps, fallback routes, modes,
+operands and list order, and reject arbitrary additions or mutations.
+
+Independent execution review found that the generated goodbye deliberately
+leaves protected callback closing to the controller. A recorded preidentity
+callback with absent proposals instead selected an incomplete identity close.
+A generic correction must derive the closing only from a unique eligible
+frozen callback choice and actual recorded evidence, with no invented outcome
+or reason. Publication alone cannot accept this run, and the generated graph
+must not be manually patched or resumed as a successful build. A fresh full
+build follows checked, merged generic source corrections, using explicit
+adoption of the recorded workflow ID to avoid duplicate slot creation.
+
+At `2026-10-10T23:00:02.350093Z`, a read-only source-review probe compared
+the entire preserved published definition to its controller-authenticated
+authored workflow using the narrow serializer correction. That comparison
+passed, with the published version unchanged and no platform mutation, model
+call, simulation or export. It does not resume or accept the failed build.

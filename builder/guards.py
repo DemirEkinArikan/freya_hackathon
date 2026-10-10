@@ -708,25 +708,44 @@ def guard_close(state, proposed, profile, maps):
         if state['identity_status'] == 'failed' and not state['account_loaded']:
             proposal = dict(table['failed'])
         elif state['identity_status'] != 'verified' and not state['account_loaded']:
-            if not isinstance(proposed.get('outcome', ''), str):
-                raise ValueError('identity closing outcome proposal must be text')
-            outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
-            scope = 'unreached' if outcome == table['unreached']['outcome'] and not state['verified_fields'] else 'incomplete'
-            choices = profile.get('identity_close_choices', dict()).get(scope)
-            if choices is None:
-                proposal = dict(table[scope])
-            else:
-                if not isinstance(proposed.get('reason', ''), str):
-                    raise ValueError('identity closing reason proposal must be text')
-                reason = guard_decode('reasons', proposed.get('reason', ''), maps)
-                matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]
+            # A recorded callback is protected evidence, independent of free
+            # dialogue proposals. Only the actual identity phase determines
+            # which frozen callback choices can represent that evidence.
+            unreached = (state['identity_status'] == 'pending' and not state['verified_fields']
+                         and state['wrong_answers'] == 0)
+            if state['callbacks']:
+                scope = 'unreached' if unreached else 'incomplete'
+                choices = profile.get('identity_close_choices', dict()).get(scope)
+                # A fixed phase row is already one source-declared disposition;
+                # no callback reason is invented when that row omits one. Its
+                # supplied reason still passes the evidence/vocabulary checks.
+                if choices is None:
+                    matching = [table[scope]]
+                else:
+                    matching = [choice for choice in choices if choice['requires'] == 'recorded_callback']
                 if len(matching) != 1:
-                    raise ValueError('identity closing proposal lacks one declared eligible choice')
-                choice = matching[0]
-                requirement = choice['requires']
-                if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
-                    raise ValueError('identity closing proposal lacks required callback evidence')
-                proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
+                    raise ValueError('recorded callback lacks one declared closing choice for the actual identity phase')
+                proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
+            else:
+                if not isinstance(proposed.get('outcome', ''), str):
+                    raise ValueError('identity closing outcome proposal must be text')
+                outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
+                scope = 'unreached' if outcome == table['unreached']['outcome'] and not state['verified_fields'] else 'incomplete'
+                choices = profile.get('identity_close_choices', dict()).get(scope)
+                if choices is None:
+                    proposal = dict(table[scope])
+                else:
+                    if not isinstance(proposed.get('reason', ''), str):
+                        raise ValueError('identity closing reason proposal must be text')
+                    reason = guard_decode('reasons', proposed.get('reason', ''), maps)
+                    matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]
+                    if len(matching) != 1:
+                        raise ValueError('identity closing proposal lacks one declared eligible choice')
+                    choice = matching[0]
+                    requirement = choice['requires']
+                    if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
+                        raise ValueError('identity closing proposal lacks required callback evidence')
+                    proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
         else:
             raise ValueError('closing lacks protected evidence')
     reasons = profile['close_reasons']

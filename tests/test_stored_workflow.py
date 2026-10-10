@@ -34,11 +34,118 @@ class StoredWorkflowTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     assert_equivalent_stored_workflow(action_mutation, authored)
 
-    def test_conversation_turn_cap_defaults_require_explicit_authored_value(self):
+    def test_unset_conversation_cap_accepts_only_observed_null_without_fallback(self):
+        authored = copy.deepcopy(self.authored)
+        del authored["nodes"]["start"]["max_node_turns"]
+        del authored["nodes"]["start"]["max_turn_transition"]
+        stored = copy.deepcopy(self.stored)
+        stored["nodes"]["start"]["max_node_turns"] = None
+        stored["nodes"]["start"]["max_turn_transition"] = None
+        assert_equivalent_stored_workflow(stored, authored)
+        for value in (10, 0, False, "10", "", 10.0):
+            with self.subTest(value=value):
+                stored["nodes"]["start"]["max_node_turns"] = value
+                with self.assertRaises(ValueError):
+                    assert_equivalent_stored_workflow(stored, authored)
+
+    def test_added_null_cap_cannot_supply_or_erase_authored_fallback(self):
         authored = copy.deepcopy(self.authored)
         del authored["nodes"]["start"]["max_node_turns"]
         stored = copy.deepcopy(self.stored)
         stored["nodes"]["start"]["max_node_turns"] = None
+        with self.assertRaises(ValueError):
+            assert_equivalent_stored_workflow(stored, authored)
+        stored["nodes"]["start"]["max_turn_transition"] = None
+        with self.assertRaises(ValueError):
+            assert_equivalent_stored_workflow(stored, authored)
+
+    def test_null_cap_at_unknown_node_type_or_wrong_path_is_rejected(self):
+        authored = copy.deepcopy(self.authored)
+        del authored["nodes"]["start"]["max_node_turns"]
+        del authored["nodes"]["start"]["max_turn_transition"]
+        for node_type in ("unknown", None, "conversation-like"):
+            with self.subTest(node_type=node_type):
+                authored["nodes"]["start"]["node_type"] = node_type
+                stored = copy.deepcopy(authored)
+                stored["nodes"]["start"]["max_node_turns"] = None
+                with self.assertRaises(ValueError):
+                    assert_equivalent_stored_workflow(stored, authored)
+        authored["nodes"]["start"]["node_type"] = "conversation"
+        for path in ((), ("nodes",), ("nodes", "start", "on_enter")):
+            stored = copy.deepcopy(authored)
+            target = stored
+            for key in path:
+                target = target[key]
+            target["max_node_turns"] = None
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                assert_equivalent_stored_workflow(stored, authored)
+
+    def _grouped_authored(self):
+        authored = copy.deepcopy(self.authored)
+        authored["nodes"]["start"]["transitions"][0]["condition"] = {
+            "logic": "or", "conditions": [
+                {"variable": "synthetic_route", "operator": "equals", "operand": "ready"},
+                {"variable": "synthetic_counter", "operator": "equals", "operand": 0},
+            ]}
+        return authored
+
+    def test_immediate_grouped_equality_accepts_only_exact_default_immutably(self):
+        authored = self._grouped_authored()
+        stored = copy.deepcopy(authored)
+        leaves = stored["nodes"]["start"]["transitions"][0]["condition"]["conditions"]
+        for leaf in leaves:
+            leaf["mode"] = "exact"
+        before = copy.deepcopy(stored)
+        assert_equivalent_stored_workflow(stored, authored)
+        self.assertEqual(stored, before)
+        for value in ("contains", "EXACT", None, False, 0, {}):
+            with self.subTest(value=value):
+                mutated = copy.deepcopy(stored)
+                mutated["nodes"]["start"]["transitions"][0]["condition"]["conditions"][0]["mode"] = value
+                with self.assertRaises(ValueError):
+                    assert_equivalent_stored_workflow(mutated, authored)
+
+    def test_grouped_default_preserves_authored_mode_operands_and_order(self):
+        authored = self._grouped_authored()
+        leaves = authored["nodes"]["start"]["transitions"][0]["condition"]["conditions"]
+        leaves[0]["mode"] = "contains"
+        stored = copy.deepcopy(authored)
+        stored["nodes"]["start"]["transitions"][0]["condition"]["conditions"][1]["mode"] = "exact"
+        assert_equivalent_stored_workflow(stored, authored)
+        for mutate in (
+                lambda leaves: leaves[0].update(mode="exact"),
+                lambda leaves: leaves[0].update(operand="replacement"),
+                lambda leaves: leaves[0].update(variable="replacement"),
+                lambda leaves: leaves.reverse()):
+            mutated = copy.deepcopy(stored)
+            mutate(mutated["nodes"]["start"]["transitions"][0]["condition"]["conditions"])
+            with self.assertRaises(ValueError):
+                assert_equivalent_stored_workflow(mutated, authored)
+
+    def test_grouped_default_requires_immediate_equality_leaf_at_transition(self):
+        for leaf in ({"variable": "synthetic_route", "operator": "is_set"},
+                     {"variable": "synthetic_counter", "operator": "greater_than", "operand": 0},
+                     {"operator": "equals", "operand": "ready"},
+                     {"variable": "synthetic_route", "operator": "equals"},
+                     {"variable": "", "operator": "equals", "operand": "ready"}):
+            authored = self._grouped_authored()
+            authored["nodes"]["start"]["transitions"][0]["condition"]["conditions"] = [leaf]
+            stored = copy.deepcopy(authored)
+            stored["nodes"]["start"]["transitions"][0]["condition"]["conditions"][0]["mode"] = "exact"
+            with self.subTest(leaf=leaf), self.assertRaises(ValueError):
+                assert_equivalent_stored_workflow(stored, authored)
+        authored = self._grouped_authored()
+        group = authored["nodes"]["start"]["transitions"][0]["condition"]
+        group["conditions"] = [{"logic": "and", "conditions": group["conditions"]}]
+        stored = copy.deepcopy(authored)
+        stored["nodes"]["start"]["transitions"][0]["condition"]["conditions"][0]["conditions"][0]["mode"] = "exact"
+        with self.assertRaises(ValueError):
+            assert_equivalent_stored_workflow(stored, authored)
+        authored = copy.deepcopy(self.authored)
+        authored["nodes"]["start"]["on_enter"]["conditions"] = [
+            {"variable": "synthetic_route", "operator": "equals", "operand": "ready"}]
+        stored = copy.deepcopy(authored)
+        stored["nodes"]["start"]["on_enter"]["conditions"][0]["mode"] = "exact"
         with self.assertRaises(ValueError):
             assert_equivalent_stored_workflow(stored, authored)
 

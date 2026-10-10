@@ -87,3 +87,27 @@ A passing report from each collaborator's own
 computer and a successful live isolation audit are still required for T02
 acceptance. Do not close the task based on the local implementation or unit
 checks alone.
+
+## Follow-up after the runtime PR merge
+
+Two additional synthetic probes failed. CLI 0.162.0-alpha.2 was tested with
+explicit code-mode configuration disabled, the function/collaboration/clock/
+image-generation namespaces excluded, unified exec disabled, code-mode-only
+disabled and the default-mode input-request feature disabled. It still reported
+four function tools and five omitted skills. The app-bundled CLI
+0.158.0-alpha.2.1 passed capability/sign-in preflight but returned no complete
+audit response, exited with an error and reported six omitted skills.
+Neither run leaked a synthetic canary or emitted an observed tool action.
+
+Reviewed metadata and the exact added controls are in
+[the follow-up report](runtime-evidence/demir-20261010-followup.json).
+The extra controls remain an experiment; no failing variant replaces the
+production configuration. Raw process output and temporary canaries were not
+persisted. Each probe used only synthetic inputs and a 120-second timeout.
+
+T02 is blocked on a supported generation configuration that passes the
+isolation audit and independent verification from Naci's own computer. No
+banking generation, staging deployment or hosted simulation was attempted.
+T05 requires that generation boundary; later evaluation and rehearsal tasks
+also need a valid candidate. The separate policy/compiler work already in
+progress retains its own branches and ownership.

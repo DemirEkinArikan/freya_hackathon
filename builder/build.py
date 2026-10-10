@@ -21,6 +21,9 @@ from .runtime import CodexGenerator, Deadline, DeadlineExceeded, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
+from .action_bindings import compile_action_bindings
+from .policy import compile_execution_policy, PolicyError
+from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -129,7 +132,7 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
     payload = {"policy_contract_sha256": contract["sha256"], "goal": contract["goal"],
                "active_rules": {kind: copy.deepcopy(rule["value"]) for kind, rule in contract["active_rules"].items()},
                "permitted_operations": contract["permitted_operations"], "sources": contract["sources"],
-               "derived_tools": derive_tools(openapi), "runtime_reference": reference}
+               "runtime_reference": reference}
     if repair:
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
@@ -349,6 +352,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                         "tool_api_sha256": digest(openapi), "workflow_sha256": digest(candidate["workflow"]),
                         "policy_provenance_checked": candidate.get("policy") is not None,
                         "policy_contract_sha256": contract_sha256,
+                        "action_guard_compilation_verified": False,
                         "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT))}
             _write_json(run_dir / "manifest.json", manifest)
             trace.emit("end", status="validated", hosted_behavior_verified=False)
@@ -398,17 +402,31 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             trace.emit("stage_started", stage="workflow", attempt=workflow_repairs + 1,
                        contract_sha256=contract_sha256)
             stage_started = time.monotonic()
-            generated = generator.generate_workflow(make_workflow_prompt(compiled, openapi, repair),
+            generated = generator.generate_plan(make_workflow_prompt(compiled, openapi, repair),
                                                     contract_sha256=contract_sha256)
             stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + time.monotonic() - stage_started, 3)
             trace.emit("stage_completed", stage="workflow", elapsed_seconds=round(time.monotonic() - stage_started, 3),
                        attempt=workflow_repairs + 1)
             if digest(frozen_policy) != policy_sha256 or compile_policy_contract(frozen_policy, sources, openapi)["sha256"] != contract_sha256:
                 raise ValueError("Frozen policy contract changed during workflow generation")
-            if not isinstance(generated, dict) or set(generated) != {"workflow", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
-                raise ValueError("Workflow output must match the frozen contract and cannot replace policy")
-            candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": generated["workflow"]}
-            errors = candidate_errors(candidate, sources, openapi, require_policy=True)
+            if not isinstance(generated, dict) or set(generated) != {"plan", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
+                raise ValueError("Plan output must match the frozen contract and cannot replace policy")
+            plan = copy.deepcopy(generated["plan"])
+            guard_context = None
+            try:
+                assert_no_secrets(plan, forbidden_values=secret_values)
+                bindings = compile_action_bindings(frozen_policy, openapi)
+                execution_policy = compile_execution_policy(
+                    frozen_policy, bindings, required_kinds=required_execution_kinds(plan))
+                guard_bundle = compile_guarded_workflow(plan, compiled, openapi, execution_policy, bindings)
+                guard_context = {"plan": plan, "contract": compiled,
+                                 "execution_policy": execution_policy, "bindings": bindings}
+                candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": guard_bundle["workflow"]}
+                errors = validate_workflow(candidate["workflow"], openapi, frozen_policy,
+                                           guard_context=guard_context)
+            except (GuardCompileError, PolicyError, ValueError) as exc:
+                errors = getattr(exc, "errors", [str(exc)])
+                candidate = {"policy": copy.deepcopy(frozen_policy), "plan": plan}
             if errors:
                 _write_json(run_dir / f"candidate.rejected-{repairs + 1}.json", sanitize(
                     {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
@@ -417,16 +435,24 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
                 repairs += 1
                 workflow_repairs += 1
-                repair = {"validation_errors": errors, "previous_workflow": sanitize(candidate["workflow"], secrets=secret_values)}
+                repair = {"validation_errors": errors, "previous_plan": sanitize(plan, secrets=secret_values)}
                 continue
             trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]))
+            _write_json(run_dir / "plan.json", plan)
+            _write_json(run_dir / "execution-policy.json", execution_policy)
+            _write_json(run_dir / "action-bindings.json", bindings)
+            _write_json(run_dir / "guard-manifest.json", guard_bundle["guard_manifest"])
             _write_json(run_dir / "workflow.json", candidate["workflow"])
+            trace.emit("action_guard_compilation", verified=True,
+                       plan_sha256=digest(plan), guard_manifest_sha256=digest(guard_bundle["guard_manifest"]))
             if mode == "generate-only":
                 deadline.require()
                 manifest = {"mode": mode, "status": "generated_validated", "sources": source_manifest,
                             "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
                             "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
                             "policy_provenance_checked": True, "hosted_behavior_verified": False,
+                            "action_guard_compilation_verified": True, "plan_sha256": digest(plan),
+                            "guard_manifest_sha256": digest(guard_bundle["guard_manifest"]),
                             "policy_contract_sha256": contract_sha256,
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
@@ -451,7 +477,12 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             # Revalidate the actual stored workflow, before optional tests.
             deployed_definition = {k: v for k, v in deployment["workflow"].items() if k != "agent_config"}
             # Validate the authored form; the adapter separately verifies injected model config.
-            deployed_errors = validate_workflow(deployed_definition, openapi, candidate["policy"])
+            # Auth is controller-bound after exact guarded compilation. Readback
+            # must preserve that exact definition; metadata is not a proof.
+            if canonical_json(deployed_definition) != canonical_json(runtime_workflow):
+                raise ValueError("Deployed definition differs from the controller-authenticated guarded workflow")
+            deployed_errors = validate_workflow(candidate["workflow"], openapi, candidate["policy"],
+                                                guard_context=guard_context)
             if deployed_errors:
                 raise ValueError("Deployed definition failed validation: " + "; ".join(deployed_errors))
             trace.emit("deployment", **{k: v for k, v in deployment.items() if k != "workflow"},
@@ -475,7 +506,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             repairs += 1
             workflow_repairs += 1
             repair = {"test_summary": _repair_test_summary(tests, frozen_policy),
-                      "previous_workflow": sanitize(candidate["workflow"], secrets=secret_values)}
+                      "previous_plan": sanitize(plan, secrets=secret_values)}
 
         client.reserve = 0
         deadline.require()
@@ -484,6 +515,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
                     "authored_workflow_sha256": digest(candidate["workflow"]), "export_sha256": digest(exported),
+                    "action_guard_compilation_verified": True, "plan_sha256": digest(plan),
+                    "guard_manifest_sha256": digest(guard_bundle["guard_manifest"]),
                     "policy_contract_sha256": contract_sha256,
                     "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),

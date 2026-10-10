@@ -1,64 +1,43 @@
-Freya kit v3 format summary, derived from the pinned workflow/tools references.
+Restricted plan format for the controller-owned Freya compiler:
+Root: initial_node, nodes (object keyed by name), optional system_prompt.
+Every node has matching name and node_type. Public names begin with a letter or
+underscore and contain letters/digits/underscores; bg_* is reserved.
 
-Root: initial_node (normal node key), system_prompt, nodes (object keyed by node
-name); optional global_nodes. Every node has name equal to its key and node_type.
-Names use letters/digits/underscores, beginning with a letter or underscore.
-Omit agent_config. No null anywhere in workflow JSON. No top-level lifecycle tools.
+conversation fields: name,node_type,task_message,on_enter,
+on_enter_first_entry_only,extraction_schema,transitions,max_node_turns,
+max_turn_transition. No other fields. on_enter is {type:llm}, {type:tts,text:...}
+or {type:silent}. Transitions may target public plan nodes only.
+Extraction entries: name,type,description,min_confidence, optional enum_values,
+validation_pattern,max_retries,extraction_prompt. Types are string,integer,float,
+boolean,date,datetime,name,phone_number. Write only public proposed-input variables.
+Custom extraction_prompt must include the kit's extractor.speech,
+extractor.conversation.last-10,extractor.type_preamble,extractor.variables_list
+placeholders. Use documented template substitution for read-only dialogue values.
 
-conversation: task_message describes this node's dialogue only. Routing does not
-see task_message; use transitions/routing_prompt. on_enter is {type:llm},
-{type:tts,text:...}, or {type:silent}. Extraction is an array of objects with name,
-type, description, min_confidence, optional enum_values/validation_pattern.
-Extraction types: string,integer,float,boolean,date,datetime,name,phone_number.
-Use string routing flags. A custom extraction_prompt replaces the built-in prompt
-and must include extractor.speech, extractor.conversation.last-10,
-extractor.type_preamble, extractor.variables_list placeholders. Dates must be
-anchored to the supplied now rather than any system clock; retain vague-date text
-when the bank requires asking for an exact day.
+Transitions: {target_node,description,condition}. Intent conditions use
+{operator:matches_intent,description:...}; fallback {operator:always}.
+Variable comparisons use outer {logic:or,conditions:[...]}; nested and/or groups
+are permitted. Operators: equals,not_equals,greater_than,less_than,contains,
+is_set,is_not_set. Avoid duplicate routes to the same target with incompatible
+conditions. Every conversation fallback and failure route targets a public node.
 
-All call variables live in one vars table, persist across nodes and can be stale.
-Initialize/reset proposed-action and extracted-intent fields deliberately.
-Templates use two opening/closing braces around variable_name in prompts/requests.
-For JSON substitution use variable_name:json. Unset exact request placeholders can
-drop a field; therefore initialize required values before invoking an API.
-Do not use context_variables or an each_turn hook.
+Action placeholder:
+{name,node_type:"guard_action",action,inputs:{semantic_field:public_variable},
+success_node,blocked_node,failure_node}. All three route targets are required.
+Inputs are variable names, not literals, API schemas, code or protected state.
+Supported roles and input keys:
+verify_identity: field,answer
+get_account: none
+stage_promise: product_id,amount,date
+commit_promises: none; optional product_id when confirming separately
+stage_note: product_id,reason
+finalize_notes: none
+stage_transfer: queue
+commit_transfer: none
+schedule_callback: date,time
+close_call: none; optional outcome,reason for language-derived identity disposition
 
-Every transition has target_node, description, condition. Intent:
-{operator:matches_intent,description:...}. Unconditional: {operator:always}.
-Variable comparisons must use an outer group:
-{logic:or,conditions:[{variable:flag,operator:equals,operand:ready}]}.
-Other comparisons: not_equals,greater_than,less_than,contains,is_set,is_not_set.
-An outer group is always or; nested and/or groups are allowed. Boolean values
-arrive as true/True strings. Do not put different conditional/unconditional routes
-to the same target: the engine merges their conditions. An extracted enum can
-route in the same turn. API response routing also runs without another user turn.
-
-api_request/code nodes: on_enter silent, passthrough true,
-passthrough_default_transition equal to the final fallback target, transitions
-ending in always. pre_actions only on these node types. API pre_action uses the
-supplied function template with handler __function__:api_call, fixed url/method,
-headers.properties and body.properties with type/default leaves. config.timeoutMs
-positive, maxRetries zero, connect_retries zero. Response mapping belongs on the
-node: [{path:data.ok,variable:result_ok}, ...]. Tool results are an envelope with
-status,data,message,status_code; ok inside data is the bank success flag. Strings,
-objects/lists, and flattened keys may need defensive normalization. Never rewrite
-success in a post-hook. Do not rely on a pre-hook exception blocking an API call.
-
-code pre_action:
-{type:function,function:{name:calculate,handler:__function__:code_exec,
-parameters:{type:object,properties:{code:{type:string,default:PYTHON_SOURCE},
-timeout_ms:{type:number,default:30000}}}}}.
-Python has vars; values must be written to vars, not returned. Use only json,re,
-datetime, bounded loops and supplied now. No files/network, real clock, exec/eval,
-dynamic imports or double template braces in code (even nested dict endings).
-Initialize string routing flags before try and fill fallback values in except.
-
-end_call node: on_enter silent, transitions [], disable_inactivity_monitor true,
-terminal {type:function,function:{name:finish,handler:__function__:end_call,
-parameters:{type:object,properties:{message_mode:{type:string,default:none}}}}}.
-Use a farewell conversation before the bank close API when required. The bank
-close API must be the last bank tool, followed only by session termination.
-
-Global nodes may interrupt normal nodes using condition/routing_prompt and
-excluded_nodes; exclude terminals and guarded action sequences. Treat global
-routes like normal graph edges, never allow them to bypass action prerequisites.
+A guarded close_call is required; authored end_call nodes are forbidden.
+The compiler owns protected bg_state/bg_route values and all internal nodes. A
+compiler success route means observed API success or completed local staging as
+appropriate. Blocked/failure routes do not establish that any bank write occurred.

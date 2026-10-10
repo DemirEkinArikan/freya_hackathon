@@ -40,7 +40,9 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
 _PROFILE_KINDS.add("wire_codes")
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
-                         "close_precedence", "identity_close", "promise_failure_disposition"}
+                         "close_precedence", "identity_close", "promise_failure_disposition",
+                         "record_notes", "resolve_all_products", "transfer_prerequisites",
+                         "promise_readback"}
 
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
@@ -113,12 +115,18 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item)
-    if kind in {"confirmation_actions", "close_precedence"}:
-        valid = isinstance(value, list) and bool(value) and all(text(item) for item in value) and len(set(value)) == len(value)
+    if kind in {"record_notes", "resolve_all_products"}:
+        valid = type(value) is bool
+    elif kind in {"confirmation_actions", "close_precedence"}:
+        valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))
+                 and all(text(item) for item in value) and len(set(value)) == len(value))
+        if valid and kind == "confirmation_actions":
+            valid = set(value) <= {"commit_promises", "commit_transfer", "schedule_callback"}
     elif kind == "product_order":
-        valid = (isinstance(value, dict) and set(value) == {"field", "direction", "tie_breaker"}
-                 and text(value["field"]) and value["direction"] in ("ascending", "descending")
-                 and value["tie_breaker"] == "account_order")
+        valid = (isinstance(value, dict) and (value == {"mode": "account_order"}
+                 or (set(value) == {"field", "direction", "tie_breaker"}
+                     and text(value["field"]) and value["direction"] in ("ascending", "descending")
+                     and value["tie_breaker"] == "account_order")))
     elif kind == "identity_close":
         valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
                  and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}
@@ -127,7 +135,22 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
     elif kind == "promise_failure_disposition":
         valid = (isinstance(value, dict) and set(value) == {"reason", "clear_pending"}
                  and text(value["reason"]) and type(value["clear_pending"]) is bool)
-    else:  # An exact trusted HTTP-status/error pair; no free prose predicates.
+    elif kind == "transfer_prerequisites":
+        valid = (isinstance(value, dict) and bool(value)
+                 and all(text(queue) and prerequisite in ("none", "identity", "account")
+                         for queue, prerequisite in value.items()))
+    elif kind == "promise_readback":
+        valid = (isinstance(value, dict) and set(value) <= {"product_fields", "value_labels"}
+                 and isinstance(value.get("product_fields"), list) and bool(value["product_fields"])
+                 and all(text(field) and field not in {"customer_id", "product_id"}
+                         for field in value["product_fields"])
+                 and len(set(value["product_fields"])) == len(value["product_fields"])
+                 and isinstance(value.get("value_labels", {}), dict))
+        if valid:
+            valid = all(text(field) and field in value["product_fields"] and isinstance(labels, dict)
+                        and all(text(wire) and text(label) for wire, label in labels.items())
+                        for field, labels in value.get("value_labels", {}).items())
+    elif kind == "nonpersistent_failures":  # Exact trusted pairs; no free prose predicates.
         valid = isinstance(value, dict)
         if valid:
             for operation, failures in value.items():
@@ -530,7 +553,7 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
     become executable rules; an unknown requested kind fails closed.
     """
     kinds = _PROFILE_KINDS | _EXECUTION_ONLY_KINDS
-    if not isinstance(required_kinds, (list, tuple)) or any(kind not in kinds for kind in required_kinds):
+    if not isinstance(required_kinds, (list, tuple)) or any(not isinstance(kind, str) or kind not in kinds for kind in required_kinds):
         raise PolicyError("requested execution rule kind is unsupported")
     profile = {}
     absent = object()

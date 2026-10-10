@@ -96,12 +96,12 @@ GENERATION_SCHEMA = {"type": "object", "additionalProperties": False,
                                     "workflow_json": {"type": "string", "description": "Serialized complete Freya workflow JSON object"}}}
 
 
-def workflow_generation_schema(contract_sha256: str) -> dict:
+def plan_generation_schema(contract_sha256: str) -> dict:
     if not isinstance(contract_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", contract_sha256):
-        raise GenerationError("Workflow generation requires a validated policy contract fingerprint")
+        raise GenerationError("Plan generation requires a validated policy contract fingerprint")
     return {"type": "object", "additionalProperties": False,
-            "required": ["workflow_json", "contract_sha256"],
-            "properties": {"workflow_json": {"type": "string", "description": "Serialized complete Freya workflow JSON object"},
+            "required": ["plan_json", "contract_sha256"],
+            "properties": {"plan_json": {"type": "string", "description": "Serialized restricted dialogue/action plan JSON object"},
                            "contract_sha256": {"type": "string", "enum": [contract_sha256]}}}
 
 
@@ -330,13 +330,13 @@ class CodexGenerator:
     def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *, max_seconds: float = 900) -> dict:
         return self._generate(prompt, purpose, max_seconds=max_seconds)
 
-    def generate_workflow(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
-        return self._generate(prompt, "Generate workflow from frozen banking policy contract",
-                              max_seconds=max_seconds, workflow_contract_sha256=contract_sha256)
+    def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
+        return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
+                              max_seconds=max_seconds, plan_contract_sha256=contract_sha256)
 
     def _generate(self, prompt: str, purpose: str, *, max_seconds: float,
-                  workflow_contract_sha256: str | None = None) -> dict:
-        schema_value = workflow_generation_schema(workflow_contract_sha256) if workflow_contract_sha256 else GENERATION_SCHEMA
+                  plan_contract_sha256: str | None = None) -> dict:
+        schema_value = plan_generation_schema(plan_contract_sha256) if plan_contract_sha256 else GENERATION_SCHEMA
         if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
             raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
         self.check_capabilities()
@@ -401,14 +401,14 @@ class CodexGenerator:
                 text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
             try:
                 value = _strict_json(text)
-                if workflow_contract_sha256:
-                    if not isinstance(value, dict) or set(value) != {"workflow_json", "contract_sha256"}:
+                if plan_contract_sha256:
+                    if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
                         continue
-                    if value["contract_sha256"] != workflow_contract_sha256 or not isinstance(value["workflow_json"], str):
-                        raise GenerationError("Workflow output does not match the frozen policy contract")
-                    workflow = _strict_json(value["workflow_json"])
-                    if isinstance(workflow, dict):
-                        return {"workflow": workflow, "contract_sha256": workflow_contract_sha256}
+                    if value["contract_sha256"] != plan_contract_sha256 or not isinstance(value["plan_json"], str):
+                        raise GenerationError("Plan output does not match the frozen policy contract")
+                    plan = _strict_json(value["plan_json"])
+                    if isinstance(plan, dict):
+                        return {"plan": plan, "contract_sha256": plan_contract_sha256}
                     continue
                 if isinstance(value, dict) and isinstance(value.get("policy_json"), str) and isinstance(value.get("workflow_json"), str):
                     value = {"policy": _strict_json(value["policy_json"]), "workflow": _strict_json(value["workflow_json"])}

@@ -1,0 +1,65 @@
+# Policy and workflow generation budgets
+
+Two fresh approved development-v2 builders at source `5837d95` failed during
+initial policy extraction after 450.02 seconds. Their run IDs are
+`20261010T220638685420Z` (clean train1) and `20261010T220638022828Z` (raw train2).
+Both fresh tool-free audits passed in about seven seconds. The retained partial
+events contain only thread/turn starts and the known experimental-feature
+warning: no final policy, reasoning item or provider failure was emitted.
+The traces cannot establish whether the request was reasoning or stalled.
+Original failed artifacts remain unchanged; no policy/workflow was accepted.
+
+Each unconditional 450-second timeout left about 1343 seconds of the same
+1800-second deadline. Initial policy extraction now allows at most 900 seconds,
+retaining 450 seconds for the pending first workflow generation and 300 seconds
+for export. Policy validation repairs allow at most 450 seconds and share that
+same reserve. Extraction-only mode retains the 300 export/completion reserve
+without reserving a nonexistent workflow stage. The workflow stage still uses
+at most 900 seconds, clipped by the remaining global time and export reserve.
+The two-repair limit remains shared across policy and workflow validation.
+Timeouts remain failures; they do not automatically restart a model call.
+
+The controller and generator use the original `Deadline` instance. Actual
+subprocess allocation is recalculated after capability inspection and mandatory
+isolation auditing, so their elapsed time cannot create a second budget.
+Allocation also follows catalog/schema preparation. Process-group termination,
+drained partial output, secret redaction, stage wire
+validation and the installed restricted-model catalog are unchanged. The model
+and reasoning effort remain explicit `gpt-6.1-sol` / `high`; every fresh build
+requires its own audit. No source prompt or banking semantics changed.
+
+The configuration snapshot binds initial/repair caps and workflow/export
+reserves. Policy budget events and actual model-call events record their caps,
+allocations and remaining global time. Model calls also record prompt UTF-8
+bytes and exact serialized response-schema bytes. The original prompts had
+36,857 and 46,252 characters (rough heuristic 9,214 and 11,563 input tokens at
+four characters per token, not tokenizer/provider usage). Current payload
+measurements show distinct approved documents, OpenAPI and execution-interface
+metadata rather than a duplicated workflow reference; context was retained for
+correctness. Output size and hidden reasoning usage were not reported.
+
+Unit checks exercise the 900/450 allocation, audit consumption, nearly exhausted
+deadlines, extraction-only mode, injected generator overruns, exact configuration
+binding, unchanged shared repair semantics and subprocess kill/drain behavior.
+They do not establish live model throughput. After integrated source checks,
+one controlled fresh public-A build with the longer policy allowance is the
+next diagnostic; do not repeat parallel silent failures or manually edit a
+generated policy to obtain an accepted artifact.
+
+A separate original public-A extraction completed a healthy 280-second model
+turn but its final serialized stage object was rejected. The retained bounded
+trace does not identify the precise invalid inner value. A completed, zero-exit,
+exactly-one-turn tool-free stream now distinguishes fixed `outer_json`,
+`wire_shape`, `inner_json` and `inner_shape` diagnostics. The strict parser still
+rejects malformed JSON, duplicate keys, nonfinite values and incorrect object
+shapes. It does not normalize malformed bytes or accept an earlier message.
+
+Only these healthy serialization failures can consume the existing repair
+allowance. Policy repairs receive approved briefs/API and fixed serialization
+guidance; plan repairs receive the same frozen contract and fixed guidance.
+Unaccepted raw output is retained in the original sanitized runtime trace, while
+only the fixed code enters repair context. Attempt records distinguish a format
+rejection from a validated or compiled proposal. Failed/incomplete/nonzero turns,
+unknown diagnostics or tool events, timeouts and frozen plan hash mismatches
+remain fatal. Additional checks cover those boundaries, unchanged policy hashes
+and the shared two-repair limit across policy and workflow format failures.

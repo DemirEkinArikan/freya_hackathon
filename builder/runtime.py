@@ -6,6 +6,7 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -24,6 +25,17 @@ class DeadlineExceeded(RuntimeError):
 
 class GenerationError(RuntimeError):
     pass
+
+
+class GenerationFormatError(GenerationError):
+    """A healthy completed tool-free turn returned invalid serialized output."""
+    CODES = frozenset({"outer_json", "wire_shape", "inner_json", "inner_shape"})
+
+    def __init__(self, code: str):
+        if code not in self.CODES:
+            raise ValueError("Unknown generation format diagnostic")
+        self.code = code
+        super().__init__("Codex completed output has invalid serialization: " + code)
 
 
 class Deadline:
@@ -382,27 +394,27 @@ class CodexGenerator:
             raise GenerationError("Codex model catalog changed during isolation audit; no banking brief was sent")
         self._isolation_checked = True
 
-    def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *, max_seconds: float = 900) -> dict:
-        return self._generate(prompt, purpose, max_seconds=max_seconds)
+    def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *,
+                 max_seconds: float = 900, reserve_seconds: float = 300) -> dict:
+        return self._generate(prompt, purpose, max_seconds=max_seconds, reserve_seconds=reserve_seconds)
 
     def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
         return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
                               max_seconds=max_seconds, plan_contract_sha256=contract_sha256)
 
     def _generate(self, prompt: str, purpose: str, *, max_seconds: float,
-                  plan_contract_sha256: str | None = None) -> dict:
+                  plan_contract_sha256: str | None = None, reserve_seconds: float = 300) -> dict:
         schema_value = plan_generation_schema(plan_contract_sha256) if plan_contract_sha256 else GENERATION_SCHEMA
         if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
             raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
+        if (type(reserve_seconds) not in {int, float} or not math.isfinite(reserve_seconds)
+                or reserve_seconds < 300):
+            raise GenerationError("Generation reserve must retain at least 300 export seconds")
+        self.deadline.require(seconds=1, reserve=reserve_seconds)
         self.check_capabilities()
         self.check_isolation()
-        self.deadline.require(seconds=1, reserve=300)
+        self.deadline.require(seconds=1, reserve=reserve_seconds)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        allocated = self.deadline.timeout(max_seconds, reserve=300)
-        started = time.monotonic()
-        self.trace.emit("model_call", model=self.model or "codex-default; actual emitted model recorded when available",
-                        purpose=purpose, reasoning_effort=self.reasoning_effort,
-                        allocated_seconds=round(allocated, 2), prompt_characters=len(prompt))
         # Workspaces remain inside the project artifacts directory; only schema is on disk.
         with tempfile.TemporaryDirectory(prefix="generation-", dir=self.output_dir) as dirname:
             directory = Path(dirname)
@@ -410,6 +422,18 @@ class CodexGenerator:
             schema.write_text(json.dumps(schema_value), encoding="utf-8")
             catalog_evidence = self.prepare_catalog(directory)
             self.trace.emit("generation_model_catalog", **catalog_evidence)
+            # Capability checks, mandatory audit and catalog/schema preparation
+            # all consume this same deadline. Never send a stale allocation.
+            self.deadline.require(seconds=1, reserve=reserve_seconds)
+            allocated = self.deadline.timeout(max_seconds, reserve=reserve_seconds)
+            started = time.monotonic()
+            self.trace.emit("model_call", model=self.model or "codex-default; actual emitted model recorded when available",
+                            purpose=purpose, reasoning_effort=self.reasoning_effort,
+                            allocated_seconds=round(allocated, 2), prompt_characters=len(prompt),
+                            prompt_utf8_bytes=len(prompt.encode("utf-8")),
+                            response_schema_bytes=len(json.dumps(schema_value).encode("utf-8")),
+                            reserve_seconds=reserve_seconds,
+                            remaining_seconds=round(self.deadline.remaining(), 2))
             try:
                 result = self.run(self.argv(directory, schema), input=prompt, text=True, capture_output=True,
                                   timeout=allocated, env=generation_environment(), cwd=directory, on_progress=self._progress)
@@ -506,25 +530,38 @@ class CodexGenerator:
             raise GenerationError("Codex returned no final completed agent message; see sanitized trace")
         # Earlier commentary, started/updated items and cached candidates cannot
         # stand in for the final completed message of this invocation.
-        for message in messages[-1:]:
-            text = message.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        text = messages[-1].strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        try:
+            value = _strict_json(text)
+        except (json.JSONDecodeError, ValueError):
+            raise GenerationFormatError("outer_json") from None
+        if plan_contract_sha256:
+            if (isinstance(value, dict) and "contract_sha256" in value
+                    and value["contract_sha256"] != plan_contract_sha256):
+                raise GenerationError("Plan output does not match the frozen policy contract")
+            if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
+                raise GenerationFormatError("wire_shape")
+            if not isinstance(value["plan_json"], str):
+                raise GenerationFormatError("wire_shape")
             try:
-                value = _strict_json(text)
-                if plan_contract_sha256:
-                    if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
-                        continue
-                    if value["contract_sha256"] != plan_contract_sha256 or not isinstance(value["plan_json"], str):
-                        raise GenerationError("Plan output does not match the frozen policy contract")
-                    plan = _strict_json(value["plan_json"])
-                    if isinstance(plan, dict):
-                        return {"plan": plan, "contract_sha256": plan_contract_sha256}
-                    continue
-                if isinstance(value, dict) and isinstance(value.get("policy_json"), str) and isinstance(value.get("workflow_json"), str):
-                    value = {"policy": _strict_json(value["policy_json"]), "workflow": _strict_json(value["workflow_json"])}
-                if isinstance(value, dict) and isinstance(value.get("policy"), dict) and isinstance(value.get("workflow"), dict):
-                    return value
+                plan = _strict_json(value["plan_json"])
             except (json.JSONDecodeError, ValueError):
-                pass
-        raise GenerationError("Codex returned no object matching the generation stage contract")
+                raise GenerationFormatError("inner_json") from None
+            if not isinstance(plan, dict):
+                raise GenerationFormatError("inner_shape")
+            return {"plan": plan, "contract_sha256": plan_contract_sha256}
+        if isinstance(value, dict) and set(value) == {"policy_json", "workflow_json"}:
+            if not all(isinstance(value[key], str) for key in ("policy_json", "workflow_json")):
+                raise GenerationFormatError("wire_shape")
+            try:
+                value = {"policy": _strict_json(value["policy_json"]),
+                         "workflow": _strict_json(value["workflow_json"])}
+            except (json.JSONDecodeError, ValueError):
+                raise GenerationFormatError("inner_json") from None
+            if not all(isinstance(value[key], dict) for key in ("policy", "workflow")):
+                raise GenerationFormatError("inner_shape")
+        if isinstance(value, dict) and isinstance(value.get("policy"), dict) and isinstance(value.get("workflow"), dict):
+            return value
+        raise GenerationFormatError("wire_shape")

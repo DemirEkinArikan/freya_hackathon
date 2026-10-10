@@ -290,6 +290,12 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
+    # Keep unused disclosure metadata frozen and shape-checked above, but do
+    # not approve account narration or bind its schema/type codes for a goal
+    # that never loads an account. This detached runtime selection grants no
+    # fields; it is not a replacement policy rule or an added API permission.
+    if not loads_account and "account_disclosure_fields" in result:
+        result["account_disclosure_fields"] = []
     # Absence grants no priority: the kernel accepts only a unique protected
     # fact or a sourced identity disposition, and rejects ambiguous facts.
     # This detached runtime representation is not a frozen policy rule.

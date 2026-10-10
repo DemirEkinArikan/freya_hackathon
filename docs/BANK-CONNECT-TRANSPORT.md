@@ -19,8 +19,10 @@ It contains no credentials. Controller configuration must record this choice
 and exclude it from generation inputs. It grants no bank action or simulation
 permission and does not change workflow tool URLs.
 
-Eight regressions drive the real Python HTTP stack with fake sockets, proving
+Eleven regressions drive the real Python HTTP stack with fake sockets, proving
 exact bytes, hostname/SNI, CA settings, destination routing, redirects, proxies,
-ports/IPv6 and single-attempt failure handling. They do not claim a fresh live
+ports/IPv6, request-dispatch mutations, hidden conflicting Host headers and
+single-attempt failure handling. A detached request snapshot preserves effective
+headers while preventing mutable dispatch fields from bypassing HTTPS. They do not claim a fresh live
 bank request. Earlier T11 live evidence verified the same confined-routing
 principle; a new actual run must retain its own source/configuration evidence.

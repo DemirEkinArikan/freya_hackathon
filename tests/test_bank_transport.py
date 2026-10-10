@@ -66,7 +66,8 @@ class BankTransportTests(unittest.TestCase):
         route = BankConnectTransport(self.origin, self.address)
         with patch.object(route._opener, "open") as opened:
             for url in ("https://other.example.test/x", "http://bank.example.test/x",
-                        "https://bank.example.test:444/x", "https://user@bank.example.test/x"):
+                        "https://bank.example.test:444/x", "https://user@bank.example.test/x",
+                        "TEST_ONLY_NOT_A_URL"):
                 with self.subTest(url=url), self.assertRaises(ValueError):
                     route(url, timeout=1)
             request = urllib.request.Request(self.origin, headers={"Host": "other.example.test"})
@@ -83,6 +84,48 @@ class BankTransportTests(unittest.TestCase):
                 route(urllib.request.Request(self.origin + "/ledger/TEST_ONLY"), timeout=2)
         self.assertEqual(error.exception.code, 302)
         self.assertEqual(connect.call_count, 1)
+
+    def test_mutated_dispatch_or_proxy_fields_cannot_bypass_https_handler(self):
+        route = BankConnectTransport(self.origin, self.address)
+        for field, value in (("type", "http"), ("host", "other.example.test"),
+                             ("selector", self.origin + "/steal"),
+                             ("_tunnel_host", "proxy.example.test")):
+            with self.subTest(field=field):
+                request = urllib.request.Request(self.origin, headers={"Authorization": "Bearer TEST_ONLY"})
+                setattr(request, field, value)
+                with patch("socket.create_connection") as connect, self.assertRaises(ValueError):
+                    route(request, timeout=1)
+                connect.assert_not_called()
+
+    def test_unredirected_host_cannot_hide_behind_regular_host(self):
+        route = BankConnectTransport(self.origin, self.address)
+        request = urllib.request.Request(self.origin, headers={"Host": "bank.example.test"})
+        request.add_unredirected_header("Host", "other.example.test")
+        self.assertEqual(dict(request.header_items())["Host"], "bank.example.test")
+        with patch("socket.create_connection") as connect, self.assertRaises(ValueError):
+            route(request, timeout=1)
+        connect.assert_not_called()
+
+    def test_host_must_be_authority_only_and_snapshot_preserves_effective_headers(self):
+        route = BankConnectTransport(self.origin, self.address)
+        for host in ("bank.example.test/altered", "bank.example.test?altered=1",
+                     "bank.example.test#altered", "user@bank.example.test"):
+            with self.subTest(host=host):
+                request = urllib.request.Request(self.origin, headers={"Host": host})
+                with patch("socket.create_connection") as connect, self.assertRaises(ValueError):
+                    route(request, timeout=1)
+                connect.assert_not_called()
+        request = urllib.request.Request(self.origin, data=b"{}", method="PATCH",
+                                         headers={"Authorization": "Bearer REGULAR_TEST_ONLY"})
+        request.add_unredirected_header("Authorization", "Bearer EFFECTIVE_TEST_ONLY")
+        sock = self.response()
+        with patch("socket.create_connection", return_value=sock), \
+                patch.object(ssl.SSLContext, "wrap_socket", autospec=True, side_effect=lambda context, socket, **kwargs: socket):
+            with route(request, timeout=2) as result:
+                result.read()
+        self.assertIn(b"Authorization: Bearer EFFECTIVE_TEST_ONLY\r\n", sock.sent)
+        self.assertNotIn(b"REGULAR_TEST_ONLY", sock.sent)
+        self.assertTrue(sock.sent.startswith(b"PATCH / HTTP/1.1\r\n"))
 
     def test_proxy_environment_does_not_replace_explicit_connection(self):
         with patch.dict("os.environ", {"HTTPS_PROXY": "http://proxy.example.test:8888", "NO_PROXY": ""}):

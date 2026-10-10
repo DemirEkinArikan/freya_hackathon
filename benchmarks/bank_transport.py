@@ -10,6 +10,8 @@ import urllib.request
 
 
 def _origin(url: str) -> tuple[str, int]:
+    if not isinstance(url, str):
+        raise ValueError("bank transport requires a valid HTTPS origin")
     try:
         parsed = urllib.parse.urlsplit(url)
         port = 443 if parsed.port is None else parsed.port
@@ -71,16 +73,34 @@ class BankConnectTransport:
             urllib.request.ProxyHandler({}), _NoRedirect(), Handler(context=context))
 
     def __call__(self, request, *, timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
-        url = request.full_url if isinstance(request, urllib.request.Request) else request
+        if isinstance(request, str):
+            if _origin(request) != self.origin:
+                raise ValueError("bank transport cannot send to another origin")
+            request = urllib.request.Request(request)
+        if not isinstance(request, urllib.request.Request):
+            raise ValueError("bank transport requires a URL or HTTP request")
+        url = request.full_url
         if _origin(url) != self.origin:
             raise ValueError("bank transport cannot send to another origin")
-        if isinstance(request, urllib.request.Request):
-            supplied_host = next((value for key, value in request.header_items()
-                                  if key.lower() == "host"), None)
-            if supplied_host is not None:
-                if _origin("https://" + supplied_host) != self.origin:
+        # Dispatch uses mutable Request fields, not full_url alone. Snapshot the
+        # request into a fresh URL-derived object before urllib selects a handler.
+        safe = urllib.request.Request(url, data=request.data, method=request.get_method())
+        if (request.type != safe.type or request.host != safe.host
+                or request.selector != safe.selector or request._tunnel_host is not None):
+            raise ValueError("bank transport cannot replace HTTP dispatch or proxy state")
+        regular, unredirected = dict(request.headers), dict(request.unredirected_hdrs)
+        # do_open gives unredirected headers precedence; header_items alone can
+        # hide a conflicting Host. Check both snapshots before transmitting.
+        for name, value in (*regular.items(), *unredirected.items()):
+            if name.lower() == "host":
+                if not isinstance(value, str):
+                    raise ValueError("bank transport requires a literal Host authority")
+                parsed = urllib.parse.urlsplit("https://" + value)
+                if (parsed.path or parsed.query or parsed.fragment
+                        or _origin("https://" + value) != self.origin):
                     raise ValueError("bank transport cannot replace the HTTP Host")
-        return self._opener.open(request, timeout=timeout)
+        safe.headers, safe.unredirected_hdrs = regular, unredirected
+        return self._opener.open(safe, timeout=timeout)
 
     def configuration(self) -> dict:
         return {"mode": "explicit_connect_address", "hostname": self.origin[0],

@@ -122,7 +122,7 @@ REQUIRED_FLAGS = ("--ignore-user-config", "--ignore-rules", "--ephemeral", "--ou
 DISABLED_FEATURES = ("shell_tool", "apps", "plugins", "remote_plugin", "hooks", "multi_agent", "memories",
                      "view_image", "browser_use", "computer_use", "skill_search", "skill_mcp_dependency_install",
                      "multi_agent_v2", "image_generation", "goals", "sleep_tool", "code_mode_host", "tool_suggest",
-                     "code_mode", "code_mode_only")
+                     "code_mode", "code_mode_only", "unified_exec")
 
 
 def _expected_cli_warning(message: Any) -> str | None:

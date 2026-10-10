@@ -65,7 +65,7 @@ class RuntimeTests(unittest.TestCase):
             with self.subTest(setting=setting):
                 self.assertIn(setting, argv)
                 self.assertEqual(argv[argv.index(setting) - 1], "-c")
-        for feature in ("code_mode", "code_mode_only", "code_mode_host"):
+        for feature in ("code_mode", "code_mode_only", "code_mode_host", "unified_exec"):
             with self.subTest(feature=feature):
                 self.assertIn(feature, argv)
                 self.assertEqual(argv[argv.index(feature) - 1], "--disable")
@@ -85,8 +85,8 @@ class RuntimeTests(unittest.TestCase):
             gen.generate("safe brief")
         self.assertEqual(len(calls), 2)
 
-    def test_missing_code_mode_control_fails_before_any_probe_or_brief(self):
-        for missing in ("code_mode", "code_mode_only"):
+    def test_missing_execution_control_fails_before_any_probe_or_brief(self):
+        for missing in ("code_mode", "code_mode_only", "unified_exec"):
             calls = []
             def run(argv, **kwargs):
                 calls.append((argv, kwargs))
@@ -295,6 +295,13 @@ class RuntimeTests(unittest.TestCase):
         for bad in bad_events:
             with self.subTest(event=bad[:80]), self.assertRaises(GenerationError):
                 self.parse_stream("\n".join(lines[:2] + [bad] + lines[2:]))
+
+    def test_shell_and_patch_actions_reject_a_complete_generation_stream(self):
+        lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()
+        for item_type in ("command_execution", "file_change"):
+            tool = json.dumps({"type": "item.completed", "item": {"type": item_type, "command": "sensitive action"}})
+            with self.subTest(item_type=item_type), self.assertRaisesRegex(GenerationError, "prohibited tool action"):
+                self.parse_stream("\n".join(lines[:2] + [tool] + lines[2:]))
 
     def test_thread_start_requires_a_nonempty_identifier_and_cannot_repeat(self):
         lines = completed_stream({"policy_json": "{}", "workflow_json": "{}"}).splitlines()

@@ -25,10 +25,12 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn(marker, json.dumps(report))
 
     def test_tool_action_is_fatal_even_when_final_response_claims_no_tools(self):
-        tool = {"type": "item.completed", "item": {"type": "command_execution", "command": "sensitive command"}}
-        report = inspect_probe(subprocess.CompletedProcess([], 0, json.dumps(tool) + "\n" + response(), ""), {})
-        self.assertIn("tool_event", report["failures"])
-        self.assertNotIn("sensitive command", json.dumps(report))
+        for item_type in ("command_execution", "file_change"):
+            with self.subTest(item_type=item_type):
+                tool = {"type": "item.completed", "item": {"type": item_type, "command": "sensitive command"}}
+                report = inspect_probe(subprocess.CompletedProcess([], 0, json.dumps(tool) + "\n" + response(), ""), {})
+                self.assertIn("tool_event", report["failures"])
+                self.assertNotIn("sensitive command", json.dumps(report))
 
     def test_incomplete_turn_cannot_pass_with_valid_json(self):
         text = response().splitlines()[0]
@@ -42,6 +44,16 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(report["model_reported_tool_count"], 2)
         self.assertEqual(report["model_reported_tools"], ["functions.exec"])
         self.assertNotIn("private source text", json.dumps(report))
+
+    def test_public_namespaced_tool_aliases_are_displayed_but_still_fail_isolation(self):
+        names = ["functions.exec_command", "functions.shell_command", "functions.apply_patch", "functions.write_stdin"]
+        report = inspect_probe(subprocess.CompletedProcess([], 0, response(available_tools=names + ["private unrecognized name"]), ""), {})
+        self.assertEqual(report["status"], "fail")
+        self.assertIn("model_reports_available_tools", report["failures"])
+        self.assertEqual(report["model_reported_tools"], sorted(names))
+        self.assertEqual(report["model_reported_tool_count"], 5)
+        self.assertEqual(report["unrecognized_tool_name_count"], 1)
+        self.assertNotIn("private unrecognized name", json.dumps(report))
 
     def test_skill_budget_warning_records_omitted_count_and_is_not_zero_loader_claim(self):
         warning = {"type": "item.completed", "item": {"type": "error", "message": "Exceeded skills context budget. All skill descriptions were removed and 4 additional skills were not included in the model-visible skills list."}}
@@ -104,6 +116,7 @@ class PreflightTests(unittest.TestCase):
                 self.assertIn("tools.update_plan.enabled=false", argv)
                 self.assertEqual(argv[argv.index("code_mode") - 1], "--disable")
                 self.assertEqual(argv[argv.index("code_mode_only") - 1], "--disable")
+                self.assertEqual(argv[argv.index("unified_exec") - 1], "--disable")
                 return subprocess.CompletedProcess(argv, 0, response(), "")
             report = isolation_probe(Path(tmp), run=run)
             self.assertEqual(report["status"], "pass")

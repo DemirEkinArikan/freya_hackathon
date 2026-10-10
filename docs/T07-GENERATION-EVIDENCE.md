@@ -1,4 +1,8 @@
-# T07 actual generation checkpoint
+# T07 actual generation evidence
+
+The initial checkpoint below is historical. The later completed build and its
+remaining execution limits are recorded at the end; original artifacts are
+preserved rather than upgraded retrospectively.
 
 The applicability fixes are merged in PR58 and PR73. The independently checked
 integrated generation source was `18024c393aed1eaad71c4758809023a29053c79a`:
@@ -47,7 +51,89 @@ dispositions and sourced reason vocabulary; descriptive extensions cannot execut
 It introduces no policy values, source constraints or compiler behavior. T05's
 separate failure-witness validation and runtime functions remain untouched.
 
-Issue8 remains open. Fresh audited policy and full workflow compilation, different
-complete approved policy/schema inputs, and T05 dependency acceptance remain.
-Hosted use requires primary coordination and actual server readback under the
-canonical shared simulation lease. `tools/cowork.py complete` has not been run.
+At this initial checkpoint, issue8 remained open for fresh full compilation,
+different complete approved inputs and T05 acceptance.
+
+## Completed A+B build and independent review
+
+Actual run `20261010T224748051958Z` used immutable checked/pushed source
+`2d09c31d2f2d25a0e01466e707f560127634cad3`. That source passed 1,090 Python3.11
+tests in 119.568 seconds, 16 kit files, 225 source files and the diff check before generation.
+The approved pinned A and B briefs and matching OpenAPI were the bank inputs;
+no evaluator scripts, expected records or holdout entered generation. The fresh
+tool-free audit passed in 6.77 seconds. This audit has the limitations stated
+above and is not an independent operating-system denial proof.
+
+The original complete command ended `generated_validated` after 1204.697 seconds,
+with 595.303 seconds remaining from the 1800-second deadline and the 300-second
+export reserve retained. Exactly two shared repairs were used: one policy repair
+after a safety rejection and one plan repair after an unreachable-node rejection.
+Both rejected originals remain unchanged. Selected plan attempt 2, the root
+workflow and its trusted original-source recompilation agree. Normal and exact
+validation pass. No Freya, bank or simulation call was made.
+
+Independent approved-source review found 95 literal rules, 82 active concepts,
+13 explicit B overrides and 14 exact API witnesses. Operative rules retain the
+source 1–3 product bound, returned account order, batch confirmation, notes,
+inherited identity rules, calendars and definite negative-result semantics. This is
+actual generation and structural compilation evidence, not full execution
+acceptance. The JSON record binds file hashes separately from canonical JSON
+digests, including the selected guard manifest's complete-record digest.
+
+| Independent original-graph check | Actual result and limit |
+| --- | --- |
+| Valid one/two/three-product card and loan responses | Account result is accepted, then narration quarantines because the original global disclosure union requires fields belonging to other product types. Promise and retry paths are therefore unaccepted. |
+| Four returned products | The supplied maximum of three rejects before projection. This is an independently isolated count-bound check. |
+| Recorded callback, preidentity human transfer, wrong-factor exhaustion | Mock receipts reach real guarded closing and a silent terminal. Ideal extracted frames prove neither observed speech nor hosted behavior. |
+| Missing callback terms | Conversation can self-loop without a terminating turn fallback. Terminal reachability does not prove all-path termination. |
+
+The generated graph attributes farewell and shared-date adjustment explanations
+to the compiler. Actual compiled closing and its terminal are silent; readback
+supplies final product/amount/date terms without an adjustment explanation.
+Identity-exhaustion advice is instructed in a silent exit node, with no speaking
+action on that route. Source-global preaccount restructuring
+routes are absent. These are reviewed implementation gaps, not successful
+conversation evidence. Replay scripts and fictional frames remain evaluator-only
+in ignored local artifacts and are not included in this record or generation.
+
+PR98 adds source-backed conditional disclosure; PR101 makes unused disclosure
+metadata inert for nonaccount goals. Their checks are source acceptance only.
+They neither alter this generated policy/workflow nor resolve all termination
+and speech gaps. Fresh changed-input generation is still needed. Separate
+development-input trials and source revisions do not retroactively repair this
+run.
+
+T03, T05 and T06 are now closed. T05's original audited generation acceptance
+was recorded using this actual build; no new hosted/publication gate is added to
+that dependency. Issue8 remains open for changed-policy/schema/goal generation
+and safe all-path execution. `tools/cowork.py complete T07` has not been run.
+Any future hosted use must reconcile the canonical primary simulation lease
+with actual server status and retain the fixed experimental-5 phone model.
+
+
+## Changed-schema development trials
+
+Fresh train-1 and raw train-2 runs at immutable source
+`2b493e9df0baf1638325b62cb73ff760b57faca5` used the reviewed development briefs
+and complete synthetic API. The corrected train-2 invocation supplied all five
+exported documents. Both mandatory audits passed. Each original run exhausted
+two policy repairs, retained three rejected policies and ended failed without
+an accepted policy or workflow. Their exact hashes, wall times and remaining
+deadlines are recorded in JSON. No exact combined pre-run suite count is asserted
+for that source; contributing PR checks must not be relabeled as a same-head run.
+
+Independent approved-source review separates three causes: genuine unspecified
+bank dispositions/triggers, blanket compiler dependencies, and model
+over-rejection. An absent exhaustion consequence is already conservative and
+does not justify inventing `service_error`. Source product readback and the API
+`type` field exist, although unique repeated-type human labels remain unspecified.
+The API's maximum remaining budget of two does not itself contradict a historical
+three-wrong-answer limit. No initial budget or call date is inferred.
+
+Effective-date overrides and goal-specific resolution are real supplied scopes.
+The raw candidate uses invalid extra `scope` rule fields; removing those fields
+or applying the rules unconditionally would discard constraints. Typed executable
+date/goal selection, qualified nonpromise retry support and safe all-path
+termination remain implementation work. Neither original failed run is upgraded
+or resumed as accepted, and its reviewed candidate or diagnostic is not a model
+policy answer. Evaluator expectations cannot fill missing source values.

@@ -45,8 +45,8 @@ class HostedDevelopmentCoverageTests(unittest.TestCase):
 
     def test_development_attacks_include_fake_authority_webhook_and_tool_success(self):
         rows = [row for row in self.manifest["cases"][:60] if row["style"] == "compound"]
-        self.assertEqual(len(rows), 8)
-        self.assertTrue({0, 6, 7, 13}.issubset({row["compound_index"] for row in rows}))
+        self.assertEqual(len(rows), 14)
+        self.assertEqual({row["compound_index"] for row in rows}, set(range(len(COMPOUNDS))))
         for row in rows:
             self.assertIn(COMPOUNDS[row["compound_index"]], row["case"]["script"])
             self.assertEqual(row["outcome_constraints"], {

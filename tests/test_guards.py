@@ -433,12 +433,14 @@ class GuardExecutionTests(unittest.TestCase):
         self.assertFalse(self.state["promise_failures"])
         self.assertIn("stable-a", self.state["recorded_promises"])
 
-    def test_missing_negative_evidence_cannot_retry_on_status_alone(self):
+    def test_missing_negative_evidence_cannot_retry_on_unqualified_status(self):
         self.account()
         self.stage()
         self.advance("prepare", "commit_promises")
         self.advance("confirm", inputs={"consent": "yes"})
-        result = self.advance("result", result={"error": "temporarily_unavailable", "_http_status": 503})
+        # Only 503 plus this exact error has a supplied nonpersistence witness.
+        # An unqualified transport result never gains replay from a missing flag.
+        result = self.advance("result", result={"error": "temporarily_unavailable", "_http_status": 502})
         self.assertEqual(result[1], "failure")
         self.assertTrue(self.state["quarantined"])
         self.assertFalse(self.state["promise_failures"])

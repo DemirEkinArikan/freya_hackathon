@@ -25,7 +25,7 @@ if __package__ in (None, ""):
 
 from .platform import FreyaClient, PlatformError
 from .contract import compile_policy_contract, PolicyContractError
-from .runtime import CodexGenerator, Deadline, DeadlineExceeded, Trace
+from .runtime import CodexGenerator, Deadline, DeadlineExceeded, GenerationFormatError, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
@@ -44,6 +44,12 @@ PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
 EXPORT_RESERVE = 300
 MAX_REPAIRS = 2
+POLICY_INITIAL_CAP = 900
+POLICY_REPAIR_CAP = 450
+FIRST_WORKFLOW_RESERVE = 450
+FORMAT_REPAIR_GUIDANCE = ("Return only the exact required outer JSON object. Serialize each inner object "
+                         "as a valid JSON string; escape quotes, backslashes and control characters once "
+                         "for each JSON layer. Do not return commentary, duplicate keys or nonfinite numbers.")
 
 
 class FrozenPolicyContractError(ValueError):
@@ -165,12 +171,29 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets):
+def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True):
     repair = None
+    reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     for attempt in range(MAX_REPAIRS + 1):
+        deadline.require(seconds=1, reserve=reserve)
+        cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
+        allocated = deadline.timeout(cap, reserve=reserve)
+        trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
+                   allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
+                   first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
+                   remaining_seconds=round(deadline.remaining(), 2))
+        try:
+            extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
+                                           purpose="Extract banking policy and source/API bindings",
+                                           max_seconds=allocated, reserve_seconds=reserve)
+        except GenerationFormatError as exc:
+            _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
+            trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1)
+            if attempt == MAX_REPAIRS:
+                raise
+            repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+            continue
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
-        extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
-                                       purpose="Extract banking policy and source/API bindings", max_seconds=450)
         policy = extracted.get("policy")
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
@@ -316,6 +339,10 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
             "codex_executable": args.codex, "deadline_seconds": deadline.limit - deadline.start,
             "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
+            "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
+                                   "policy_repair_cap_seconds": POLICY_REPAIR_CAP,
+                                   "first_workflow_reserve_seconds": FIRST_WORKFLOW_RESERVE,
+                                   "workflow_cap_seconds": 900},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
         })
         _write_json(run_dir / "builder-source.json", source_record)
@@ -354,7 +381,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy_origin = "provided_and_revalidated"
         else:
             policy, compiled, requirements, policy_repairs = _extract_policy(
-                generator, sources, openapi, run_dir, trace, deadline, secret_values)
+                generator, sources, openapi, run_dir, trace, deadline, secret_values,
+                workflow_pending=mode != "extract-policy-only")
             policy_origin = "extracted"
         stage_durations["policy"] = round(time.monotonic() - stage_started, 3)
         trace.emit("stage_completed", stage="policy", elapsed_seconds=stage_durations["policy"],
@@ -399,7 +427,22 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             workflow_prompt = make_workflow_prompt(compiled, openapi, repair, execution_requirements=requirements)
             _attempt_snapshot(attempt_dir, "generation-context.json",
                               {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
-            generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
+            try:
+                generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
+            except GenerationFormatError as exc:
+                elapsed = round(time.monotonic() - stage_started, 3)
+                stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + elapsed, 3)
+                _attempt_snapshot(attempt_dir, "generation-format.json", {"format_error": exc.code}, secret_values)
+                _attempt_status(attempt_dir, attempt_record, secret_values, status="format_rejected", phase="generation")
+                attempt_open = False
+                trace.emit("workflow_format_validation", passed=False, format_error=exc.code,
+                           attempt=attempt_number, elapsed_seconds=elapsed)
+                if repairs >= MAX_REPAIRS:
+                    raise
+                repairs += 1
+                workflow_repairs += 1
+                repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+                continue
             _attempt_snapshot(attempt_dir, "proposal.json", generated, secret_values)
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
             stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + time.monotonic() - stage_started, 3)

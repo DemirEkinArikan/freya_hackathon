@@ -57,4 +57,12 @@ The supplied server does not document arbitrary fixture registration, reset, pol
 
 The stronger local scorer checks exact decimal amounts, records including duplicates, total identity wrong-answer limits, factor order, no premature account access, retry limits, no notes on transfers and exactly one final close. Missing ledger/arguments/judge evidence is reported explicitly. Spoken honesty is never inferred from a successful ledger alone: the platform judge and retained transcript cover conversation checks. Optional independently normalized claim-order evidence can expose success claims before a successful write. Infrastructure failures remain separate from behavioral failures. Hosted results redact keys and ephemeral session secrets before writing.
 
+Local ledger verdicts also fail when tool success/failure or identity arguments
+are missing. Promise records must match the multiset of successful promise tool
+writes, including their product, amount and date. A retry after a successful write
+is prohibited even if that retry fails; a failure on another product preserves
+the earlier success. Final close must succeed. Claim-order evidence must use a
+real tool-call index. These checks assess recorded tool behavior; they do not
+prove spoken confirmation, persuasion counters or dialogue correctness.
+
 `run_builder_tests(client, deployment, cases_path, output_dir, deadline)` is an explicitly invoked controller hook, one repetition only. It accepts a single-brief subset or `deployment['brief']`; its caller owns execution authorization. Reserve 300 seconds for export through the scoped platform client deadline. Only sanitized failure categories/rule identifiers may feed a repair prompt; never feed oracles or customer scripts to code generation.

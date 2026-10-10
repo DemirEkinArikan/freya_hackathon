@@ -48,10 +48,10 @@ class FakeBackend:
             for callback in expected["callbacks"]: calls.append({"tool": "schedule_callback", "args": callback, "result": {"ok": True}})
             calls.append({"tool": "close_call", "args": {"outcome": expected["outcome"]}, "result": {"ok": True}})
             self.ledgers[session["customer_id"]] = {**expected, "calls": calls}
-        return {"simulation_id": "sim", "iteration_id": "iteration", "status": "completed"}
+        return {"simulation_id": "sim-" + str(len(self.simulations)), "iteration_id": "iteration-" + str(len(self.simulations)), "status": "completed"}
 
     def iteration(self, simulation):
-        return {"runs": [{"personaId": pid, "outcome": "pass", "callId": "call-" + pid} for pid in self.by_persona]}
+        return {"runs": [{"personaId": pid, "outcome": "pass", "callId": "call-" + str(len(self.simulations)) + "-" + pid} for pid in self.by_persona]}
 
     def ledger(self, customer): return self.ledgers[customer]
     def call(self, call_id): return {"messages": [{"role": "user", "content": "Synthetic test turn"}], "id": call_id}

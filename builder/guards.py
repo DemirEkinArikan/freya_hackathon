@@ -1497,7 +1497,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                  + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
-            nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"},
+            question = ("{{bg_readback}}. " + profile["confirmation_question"] if "confirmation_question" in profile
+                        else "Please confirm these exact terms: {{bg_readback}}. Do you agree?")
+            nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": question},
                 "task_message": "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement.",
                 "extraction_schema": [{"name": "bg_consent", "type": "string", "enum_values": ["yes", "no", "unclear"], "description": "Only a fresh unconditional affirmative answer to all exact terms just read is yes. A refusal is no. Any changed term, condition, question or other topic is unclear.", "min_confidence": 0.95, "max_retries": 0}],
                 "max_node_turns": 1, "max_turn_transition": accept,

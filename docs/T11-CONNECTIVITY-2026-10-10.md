@@ -47,7 +47,7 @@ That generic result exposes no DNS/TCP/TLS details and is not used as evidence
 of the failing layer. Tool discovery found no connected remote executor;
 available unconnected provisioning integrations were not used.
 
-Sanitized logs:
+Sanitized logs (trailing line whitespace removed; observations unchanged):
 
 - [Initial Linux checks](network-evidence/t11-linux-20261010.txt)
 - [Linux checks with explicit CA trust and handshake states](network-evidence/t11-linux-verified-20261010.txt)

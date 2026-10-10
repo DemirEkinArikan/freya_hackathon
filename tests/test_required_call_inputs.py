@@ -57,8 +57,10 @@ class RequiredCallInputTests(unittest.TestCase):
         variables = initialize(bundle["workflow"], {"recipient_style": "Mx", "recipient_label": "Invented Recipient"})
         self.assertEqual(variables["bg_route"], "done")
         self.assertEqual(variables["recipient_label"], "Invented Recipient")
+        private_state = json.loads(variables["bg_state"])
+        self.assertEqual(private_state.pop("call_inputs"), {"recipient_style": "Mx", "recipient_label": "Invented Recipient"})
         for name in ("recipient_style", "recipient_label", "Invented Recipient"):
-            self.assertNotIn(name, variables["bg_state"])
+            self.assertNotIn(name, json.dumps(private_state))
             self.assertNotIn(name, variables["bg_facts"])
         self.assertNotIn("test_variables", bundle["workflow"])
         self.assertNotIn("context_variables", bundle["workflow"])

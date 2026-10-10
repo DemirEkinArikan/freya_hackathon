@@ -123,6 +123,32 @@ class LocalGeneratedEvaluationTests(unittest.TestCase):
             with self.subTest(mode=mode), self.assertRaises(LocalEvaluationError):
                 evaluate(manifest, case["fixture_id"], workflow, context, api, script)
 
+    def test_profile_names_are_generic_and_validation_requires_explicit_selection(self):
+        manifest, case, workflow, context, api, script = sample()
+        manifest["profiles"][0]["profile_id"] = case["profile_id"] = "independent-contact-profile"
+        result = evaluate(manifest, case["fixture_id"], workflow, context, api, script)
+        self.assertTrue(result["ledger_verdict"]["pass"])
+        self.assertEqual(result["profile_id"], "independent-contact-profile")
+        case["split"] = "validation"
+        with self.assertRaises(LocalEvaluationError):
+            evaluate(manifest, case["fixture_id"], workflow, context, api, script)
+        result = evaluate(manifest, case["fixture_id"], workflow, context, api, script, split="validation")
+        self.assertTrue(result["ledger_verdict"]["pass"])
+        self.assertEqual(result["split"], "validation")
+        case["split"] = "holdout"
+        with self.assertRaises(LocalEvaluationError):
+            evaluate(manifest, case["fixture_id"], workflow, context, api, script, split="holdout")
+
+    def test_unsupported_response_schema_is_an_explicit_evidence_failure(self):
+        manifest, case, workflow, context, api, script = sample()
+        profile = manifest["profiles"][0]
+        profile["openapi"]["paths"]["/create_promise"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]["allOf"] = []
+        report = {"calls": [{"tool": "create_promise", "arguments": {"customer_id": "synthetic-session", "product_id": "synthetic-product", "amount": 20, "date": "2031-05-06"},
+                              "envelope": {"status_code": 200, "data": {"ok": True, "promise_id": "local-receipt"}}}]}
+        ledger, errors = normalize_calls(report, case, profile)
+        self.assertTrue(any("declared response" in error for error in errors))
+        self.assertFalse(ledger["promises"])
+
     def test_http_alone_missing_ids_and_conflicting_negative_ids_never_record_success(self):
         manifest, case, workflow, context, api, script = sample()
         for body in ({"promise_id": "receipt"}, {"ok": True}, {"ok": False, "promise_id": "conflicting"}, {"ok": 1, "promise_id": "receipt"}):

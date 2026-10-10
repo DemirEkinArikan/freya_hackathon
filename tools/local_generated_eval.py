@@ -152,13 +152,12 @@ def normalize_calls(report, case, profile):
     return ledger, errors
 
 
-def evaluate(manifest, fixture_id, workflow, context, openapi, script, *, max_steps=256, seconds=30):
+def evaluate(manifest, fixture_id, workflow, context, openapi, script, *, split="train", max_steps=256, seconds=30):
     if manifest.get("kind") != "offline":
         raise LocalEvaluationError("only independently authored offline development fixtures are allowed")
     case = next((row for row in manifest["cases"] if row["fixture_id"] == fixture_id), None)
-    if (case is None or case["split"] != "train" or case["status"] != "materialized"
-            or case["profile_id"] not in ("train-1", "train-2")):
-        raise LocalEvaluationError("fixture must be materialized train-1 or train-2; no holdout execution")
+    if split not in ("train", "validation") or case is None or case["split"] != split or case["status"] != "materialized":
+        raise LocalEvaluationError("fixture must be materialized in the explicitly selected development split; no holdout execution")
     profile = next(row for row in manifest["profiles"] if row["profile_id"] == case["profile_id"])
     sources = [{key: value for key, value in row.items() if key != "text"} for row in controller_sources(profile)]
     if digest(openapi) != digest(profile["openapi"]) or context["contract"]["sources"] != sources:
@@ -179,7 +178,7 @@ def evaluate(manifest, fixture_id, workflow, context, openapi, script, *, max_st
     if errors:
         verdict["pass"] = False
         verdict["failures"].extend({"category": "evidence", "message": error} for error in errors)
-    return {"version": 1, "fixture_id": fixture_id, "profile_id": case["profile_id"],
+    return {"version": 1, "fixture_id": fixture_id, "profile_id": case["profile_id"], "split": split,
             "fixture_sha256": digest(case), "profile_sha256": digest(profile), "openapi_sha256": digest(openapi),
             "guard_context_sha256": digest(context), "replay": original, "normalized_ledger": ledger,
             "ledger_verdict": verdict, "source_api_binding_verified": True,
@@ -192,6 +191,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, default=ROOT / "benchmarks/fixtures/offline.json")
     parser.add_argument("--fixture", required=True)
+    parser.add_argument("--split", choices=("train", "validation"), default="train",
+                        help="Validation is evaluator-only and requires this explicit opt-in.")
     for name in ("workflow", "guard-context", "tool-api", "script", "output"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--max-steps", type=int, default=256)
@@ -199,7 +200,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         values = [_input(path) for path in (args.cases, args.workflow, args.guard_context, args.tool_api, args.script)]
-        result = evaluate(values[0], args.fixture, *values[1:], max_steps=args.max_steps, seconds=args.seconds)
+        result = evaluate(values[0], args.fixture, *values[1:], split=args.split, max_steps=args.max_steps, seconds=args.seconds)
         from benchmarks.paths import output_path
         output = output_path(args.output)
         if not output.is_relative_to(ROOT / "artifacts"):

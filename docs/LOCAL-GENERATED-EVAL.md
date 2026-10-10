@@ -1,8 +1,10 @@
 # Local evaluation of an exact generated workflow
 
 `tools/local_generated_eval.py` joins the trusted compiled replay to the existing
-independent ledger scorer. It allows only materialized training cases from
-`train-1` and `train-2`. No model, network, hosted simulation or holdout executes.
+independent ledger scorer. It accepts materialized development profiles through
+their independent source/API bindings, with training selected by default. Later
+validation runs require explicit `--split validation`; reserved and held-out
+cases are refused. No model, network, hosted simulation or holdout executes.
 
 First export the approved generator inputs separately, preserving brief order:
 
@@ -43,6 +45,12 @@ closing fields. HTTP status alone, speech, malformed flags and conflicting IDs
 cannot establish success. Returned account facts/order must match the bound
 fixture, and declared injected faults must actually appear as failed receipts.
 The original replay stays separate from its normalized projection.
+
+The API instance checker supports the simple typed object/array/scalar schemas
+in the current development profiles. References, composite schemas, bodyless
+fault receipts and undeclared response statuses are not assessed as valid
+receipt evidence; they prevent a local PASS. These are evaluation limitations,
+not demonstrated banking behavior failures.
 
 Each output binds fixture/profile/API/context hashes and retains the existing
 strict ledger verdict. A local PASS means ideal-extraction compiled execution

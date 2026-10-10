@@ -21,7 +21,7 @@ from typing import Callable
 from .runtime import (CodexGenerator, Deadline, DISABLED_FEATURES,
                       REQUIRED_FLAGS, Trace, _expected_cli_warning,
                       generation_environment, run_bounded)
-from .safety import sanitize
+from .safety import assert_no_secrets, sanitize
 
 
 PROBE_SCHEMA = {
@@ -38,13 +38,18 @@ KNOWN_TOOLS = frozenset({"apply_patch", "clock.sleep", "clock__curr_time", "imag
 KNOWN_ITEM_TYPES = frozenset({"agent_message", "reasoning", "error", "command_execution", "mcp_tool_call", "web_search", "file_change", "tool_call", "image_generation", "computer_use"})
 
 
-def inspect_probe(result: subprocess.CompletedProcess, canaries: dict[str, str]) -> dict:
+def inspect_probe(result: subprocess.CompletedProcess, canaries: dict[str, str],
+                  *, known_secrets: tuple[str, ...] = ()) -> dict:
     """Extract only bounded metadata; discard model text and file/token contents."""
     stdout = CodexGenerator._text(result.stdout)
     stderr = CodexGenerator._text(result.stderr)
     exposed = sorted(name for name, token in canaries.items() if token in stdout or token in stderr)
     item_types, warnings, responses = set(), set(), []
     failures = set()
+    unknown_diagnostics = []
+    unknown_diagnostic_count = 0
+    diagnostics_truncated = False
+    redactions = (*known_secrets, *canaries.values())
     discovered_skills = 0
     completed_turns, last_event = 0, None
     allowed_events = {"thread.started", "turn.started", "turn.completed", "item.started", "item.updated", "item.completed"}
@@ -71,6 +76,22 @@ def inspect_probe(result: subprocess.CompletedProcess, canaries: dict[str, str])
             warning = _expected_cli_warning(item.get("message"))
             if warning is None:
                 failures.add("unknown_cli_diagnostic")
+                unknown_diagnostic_count += 1
+                message = item.get("message")
+                if isinstance(message, str):
+                    # Redact the complete string before bounding, so a clipped
+                    # credential cannot evade detection. Never retain raw events.
+                    clean = sanitize(message, secrets=redactions)
+                    clean = re.sub(r"/(?:Users|private|tmp|var|home|root)/[^\s`\"'<>,;]+", "[HOST_PATH]", clean)
+                    clean = re.sub(r"(?i)[A-Z]:\\(?:Users|Temp)\\[^\s`\"'<>,;]+", "[HOST_PATH]", clean)
+                    assert_no_secrets(clean, forbidden_values=redactions)
+                    diagnostics_truncated |= len(clean) > 2000
+                    clean = clean[:2000]
+                    if clean not in unknown_diagnostics:
+                        if len(unknown_diagnostics) < 8:
+                            unknown_diagnostics.append(clean)
+                        else:
+                            diagnostics_truncated = True
             else:
                 warnings.add(warning)
                 match = re.search(r"(\d+) additional skills", item.get("message", ""))
@@ -118,6 +139,9 @@ def inspect_probe(result: subprocess.CompletedProcess, canaries: dict[str, str])
         "status": "pass" if not failures else "fail",
         "failures": sorted(failures), "canary_exposure": exposed,
         "observed_item_types": sorted(item_types), "cli_warnings": sorted(warnings),
+        "unknown_cli_diagnostics": unknown_diagnostics,
+        "unknown_cli_diagnostic_count": unknown_diagnostic_count,
+        "unknown_cli_diagnostics_truncated": diagnostics_truncated,
         "omitted_skill_count": discovered_skills,
         "model_reported_tools": tools, "model_reported_tool_count": len(response["available_tools"]) if valid else None,
         "unrecognized_tool_name_count": sum(name not in KNOWN_TOOLS for name in response["available_tools"]) if valid else None,
@@ -167,17 +191,23 @@ def isolation_probe(root: Path, *, executable: str = "codex", model: str | None 
             "Do not read any other files or use network."
         )
         environment = generation_environment({**os.environ, "FREYA_ISOLATION_CANARY": canaries["environment"]})
+        # Read only already-present environment values for exact redaction;
+        # never inspect auth/config files or put these values in model context.
+        known_secrets = tuple(value for name, value in os.environ.items() if value and
+                              (name in {"FREYA_API_KEY", "FREYA_BANK_TEAM_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+                               or name.startswith("FREYA_TOOL_AUTH_")))
         try:
             result = run(generator.argv(directory, schema), input=prompt, text=True,
                          capture_output=True, timeout=timeout, cwd=directory, env=environment)
         except subprocess.TimeoutExpired as exc:
-            report = inspect_probe(subprocess.CompletedProcess([], -1, exc.output or "", exc.stderr or ""), canaries)
+            report = inspect_probe(subprocess.CompletedProcess([], -1, exc.output or "", exc.stderr or ""), canaries,
+                                   known_secrets=known_secrets)
             report["status"] = "fail"
             report["failures"] = sorted(set(report["failures"]) | {"timeout"})
             return report
         except OSError:
             return {"status": "fail", "failures": ["process_start_failed"]}
-        return inspect_probe(result, canaries)
+        return inspect_probe(result, canaries, known_secrets=known_secrets)
 
 
 def preflight(*, executable: str = "codex", run: Callable = run_bounded) -> dict:

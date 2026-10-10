@@ -121,7 +121,8 @@ def _strict_json(text: str) -> Any:
 REQUIRED_FLAGS = ("--ignore-user-config", "--ignore-rules", "--ephemeral", "--output-schema", "--strict-config")
 DISABLED_FEATURES = ("shell_tool", "apps", "plugins", "remote_plugin", "hooks", "multi_agent", "memories",
                      "view_image", "browser_use", "computer_use", "skill_search", "skill_mcp_dependency_install",
-                     "multi_agent_v2", "image_generation", "goals", "sleep_tool", "code_mode_host", "tool_suggest")
+                     "multi_agent_v2", "image_generation", "goals", "sleep_tool", "code_mode_host", "tool_suggest",
+                     "code_mode", "code_mode_only")
 
 
 def _expected_cli_warning(message: Any) -> str | None:
@@ -294,6 +295,8 @@ class CodexGenerator:
                 "--strict-config", "--skip-git-repo-check", "--cd", str(directory), "--output-schema", str(schema), "--json"]
         settings = ["approval_policy=\"never\"", "project_doc_max_bytes=0", "web_search=\"disabled\"",
                     "agents.enabled=false", "apps._default.enabled=false",
+                    "skills.bundled.enabled=false", "skills.include_instructions=false", "cloud.skills.enabled=false",
+                    "tools.experimental_request_user_input.enabled=false", "tools.update_plan.enabled=false",
                     "skills.max_context_tokens=1", "default_permissions=\"freya_generation\"",
                     "permissions.freya_generation.filesystem=" + filesystem,
                     "permissions.freya_generation.network.enabled=false", "features.skip_host_skill_discovery=true",

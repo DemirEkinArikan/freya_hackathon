@@ -14,14 +14,17 @@ calendar, advice, farewell, product type or bank-specific phrase. Guards continu
 to calculate and enforce terms and consent; their existence does not prove that
 the required explanation was spoken.
 
-The transport reference also documents the already supported conditional
+Both the extraction and transport references document the already supported conditional
 `account_disclosure_fields` object: `common` fields apply to every product, and
 `by_product_type` fields apply only to the selected source/API type. Legacy arrays
 remain mandatory for every product. Use only the compiled approved displays for
 narration; missing required fields block disclosure and unrelated API extras
 remain private. Protected state and the complete `bg_facts` object are never TTS.
+Extraction must not flatten type-limited fields into the unconditional array;
+other unsupported conditions remain explicit instead of widening permission.
 
-The dedicated regressions check active amendment transport without historical
+The dedicated regressions check the approved-input policy prompt against its typed
+interface, active amendment transport without historical
 text, absence of invented advice or values, and exact compiled ordering of an
 independently authored speaking route before silent termination. They also show
 that a frozen speech rule alone does not make the compiler speak it. These use

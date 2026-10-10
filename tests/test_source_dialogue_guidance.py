@@ -6,7 +6,7 @@ from copy import deepcopy
 import json
 import unittest
 
-from builder.build import make_workflow_prompt
+from builder.build import make_policy_prompt, make_workflow_prompt
 from builder.contract import compile_policy_contract
 from builder.guards import compile_guarded_workflow
 from builder.safety import digest
@@ -31,6 +31,15 @@ def source_context(*, speaking=False):
     policy["sources"].append({key: value for key, value in source.items() if key != "text"})
     policy["rules"].append({"id": "closing-speech", "kind": "closing_speech", "value": deepcopy(SPEECH),
                             "source": {"id": source["id"], "quote": quote}})
+    disposition = {"failed": {"outcome": "not_verified", "reason": "identity_failed"},
+                   "incomplete": {"outcome": "not_verified", "reason": "identity_failed"},
+                   "unreached": {"outcome": "not_reached"}}
+    closure_quote = "The synthetic source prescribes these identity dispositions: " + json.dumps(disposition)
+    sources[0]["text"] += "\n" + closure_quote
+    sources[0]["sha256"] = digest(sources[0]["text"])
+    policy["sources"][0]["sha256"] = sources[0]["sha256"]
+    policy["rules"].append({"id": "explicit-identity-close", "kind": "identity_close", "value": disposition,
+                            "source": {"id": sources[0]["id"], "quote": closure_quote}})
     context = call_context(policy, sources, api)
     context["plan"]["nodes"]["talk"]["on_enter"] = {"type": "tts", "text": "Hello."}
     if speaking:
@@ -49,6 +58,24 @@ def source_context(*, speaking=False):
 
 
 class SourceDialogueGuidanceTests(unittest.TestCase):
+    def test_policy_prompt_agrees_with_typed_conditional_interface_using_approved_inputs_only(self):
+        context, api, policy, sources = source_context()
+        before = deepcopy((sources, api))
+        prompt = make_policy_prompt(sources, api)
+        header, data = prompt.split("\n\nAUTHORIZED INPUTS:\n", 1)
+        payload = json.loads(data)
+        self.assertEqual(set(payload), {"sources", "openapi", "execution_interface"})
+        self.assertEqual(payload["sources"], sources)
+        self.assertEqual(payload["openapi"], api)
+        shape = payload["execution_interface"]["rule_shapes"]["account_disclosure_fields"]
+        for field in ("common", "by_product_type"):
+            self.assertIn(field, shape)
+            self.assertIn(field, header)
+        self.assertIn("Do not flatten conditional fields", header)
+        self.assertIn("explicit unsupported constraints", header)
+        self.assertNotIn("Preserve conditional disclosure constraints separately", header)
+        self.assertEqual((sources, api), before)
+
     def test_active_amendment_and_conditional_fields_reach_prompt_without_history_or_mutation(self):
         context, api, policy, sources = source_context()
         old = next(rule for rule in policy["rules"] if rule["kind"] == "closing_speech")

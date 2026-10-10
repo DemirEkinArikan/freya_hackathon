@@ -1,0 +1,27 @@
+{
+  "observed_at_utc": "2026-10-10T22:04:54.182151+00:00",
+  "bank_case_id": "PUB-01",
+  "session_post_attempts": 1,
+  "creation_outcome": "validated",
+  "ledger_get_attempts": 1,
+  "status": "pristine_ledger_verified",
+  "live_conversation_acceptance": false,
+  "customer_capability_present": true,
+  "session_capability_present": false,
+  "collection_shapes_valid": {
+    "calls": true,
+    "promises": true,
+    "notes": true,
+    "callbacks": true,
+    "transfers": true
+  },
+  "collection_counts": {
+    "calls": 0,
+    "promises": 0,
+    "notes": 0,
+    "callbacks": 0,
+    "transfers": 0
+  },
+  "outcome_unset": true,
+  "reason_unset": true
+}

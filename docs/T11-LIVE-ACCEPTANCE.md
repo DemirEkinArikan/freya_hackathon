@@ -1,9 +1,45 @@
 # T11 live acceptance lane
 
 T11 remains open. The existing local/macOS and Docker evidence stops after
-ClientHello; those environments share upstream egress. The latest primary
-public-A banking build failed before deployment. Neither source readiness nor
-the T03 synthetic greeting simulation establishes generated banking compatibility.
+ClientHello; those environments share upstream egress. An independent Europe
+West executor has now verified bank TLS and one pristine practice-session
+retrieval. Fresh repeated runner compatibility with a pinned published agent
+still requires actual evidence.
+
+## Verified independent connectivity and pristine retrieval
+
+The original capability-free evidence is retained in
+[`network-evidence/20261011-europe-west`](network-evidence/20261011-europe-west/).
+At `2026-10-10T22:02:35Z`, the disposable personal 2-core Europe West Codespace
+verified bank and control TLS with public CA trust, chain validation, SNI and
+matching hostnames. The bank resolved to `104.21.31.48` and `172.67.174.249`;
+the connection used the first address and negotiated TLS 1.3. This differs from
+the local resolver's previously observed `188.114.*` addresses. It demonstrates
+independent reachability, without diagnosing the cause of the local failure.
+
+At `2026-10-10T22:04:54.182151Z`, the unchanged `t11_bank_probe.py` passed its
+verified-log prerequisite and made exactly one documented `PUB-01` session POST
+and one ledger GET. The result is `pristine_ledger_verified`: all five required
+collections exist as empty lists and outcome/reason are null. No retry, banking
+action, persona, simulation or model call occurred. The random team namespace
+and customer capability were held in memory and never retained. Freya
+credentials were not transferred to the executor.
+
+The executor used source `35403042d95519e78e5edcf842d7323abcf4d95d` and its
+existing Python 3.14.2 interpreter. This is standard-library HTTP compatibility
+evidence, not Python 3.11 builder-runtime acceptance. The retained provenance
+records the exact helper-source and original evidence hashes. The TLS JSON
+envelope contains the original log text byte for byte, including DNS-output
+whitespace; decode its `text` field to inspect it or pass it to `verified_tls`.
+Its raw SHA-256 is
+`8aba53ac948653eda990d7056ded2c131658809a17a148ee0a35a3ddb3314811`.
+
+Existing included executor capacity and an unchanged enforced stop-at-budget
+were checked before creation. No billing or permission setting changed. After
+retaining the evidence, the exact disposable runtime was stopped and deleted;
+GitHub confirmed deletion and an empty Codespaces inventory. This does not
+prove a published agent conversation, repetition freshness, scoring or winning
+readiness. Those remain separate rows below.
 
 ## Independent runner and single retrieval
 
@@ -19,7 +55,8 @@ runs observed during setup. Private repositories consume account-wide included
 minutes and can incur overage. The existing token cannot read account billing
 usage (404 with a required `user` scope). Included no-charge capacity must be
 confirmed before dispatch; this lane changes no billing setting, provisions no
-service and buys nothing. No authenticated browser is available in this session.
+service and buys nothing. No Actions job was dispatched for this evidence;
+the independent Codespace lane above supplied the verified connection.
 [GitHub Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
 
 The workflow has no push/PR/schedule trigger, uses a pinned checkout action,
@@ -112,13 +149,13 @@ source as part of adapter acceptance.
 
 | Criterion | Required actual evidence | Current lane evidence |
 | --- | --- | --- |
-| Bank reachability | Independent verified TLS bank/control logs | Awaiting confirmed no-charge executor capacity |
-| Untouched retrieval | One explicit PUB-01 POST and pristine GET | No session POST or ledger GET made |
+| Bank reachability | Independent verified TLS bank/control logs | Verified Europe West bank/control TLS, original log retained |
+| Untouched retrieval | One explicit PUB-01 POST and pristine GET | Exactly one of each; pristine fixed shape/counts verified |
 | Fixture mapping | Distinct fixture aliases for one known bank seed, with matching personas | Existing local regression coverage only |
 | Freshness/seed preservation | Multiple repetitions; fresh customer/session fingerprints and unchanged forwarded server facts | No banking simulation |
-| Pagination | Complete observed inventory/total, with local multi-page regression; retrieve every page when the actual response paginates | Existing 101-run mock regression only |
+| Pagination | Complete observed inventory/total, with local multi-page regression; retrieve every page when the actual response paginates | Local 101-run regression; prior synthetic live inventory 1/1 unique call, one actual page |
 | Bounded waits | Actual request/poll timing and retained terminal/interrupted evidence | Existing local deadline regressions only |
-| Published version | Before/after publication pin plus matching positive integer actual judge/transcript version on every call | T03 synthetic evidence only |
+| Published version | Before/after publication pin plus matching positive integer actual judge/transcript version on every call | Prior synthetic call reports actual judge version 2, matching expected version; fresh pinned runner proof outstanding |
 | Shared lease | Primary coordination and server reconciliation immediately before live use; retained IDs/status afterward | Read-only prior synthetic status confirmed |
 | Compatible pinned agent | Published graph/model/version suitable for an adapter check; generated-candidate readiness is a separate gate | T03 synthetic publication evidence exists |
 

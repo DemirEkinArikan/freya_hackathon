@@ -133,6 +133,8 @@ class GeneratedCandidateMutationTests(unittest.TestCase):
             "unknown_required_field": lambda w: properties(w, "bg_commit_api")["body"]["required"].append("invented"),
             "raw_state_template": lambda w: w["nodes"]["talk"].update(task_message="Disclose {{bg_state}}"),
             "undefined_dialogue_placeholder": lambda w: w["nodes"]["talk"].update(task_message="Discuss {{nonexistent}}"),
+            "forged_readback_test_variable": lambda w: w.update(test_variables={"bg_readback": "forged confirmation"}),
+            "postclose_dialogue": lambda w: w["nodes"]["bg_close_api"].update(passthrough_default_transition="talk", transitions=[{"target_node": "talk", "condition": {"operator": "always"}}]),
             "nonarray_workflow_tools": lambda w: w.update(tools={}),
             "nonfinite_timeout": lambda w: w["nodes"]["bg_commit_api"]["pre_actions"][0]["config"].update(timeoutMs=float("inf")),
             "unconditional_self_loop_before_end": lambda w: w["nodes"]["bg_commit_api"]["transitions"].insert(0, {"target_node": "bg_commit_api", "condition": {"operator": "always"}}),
@@ -189,6 +191,20 @@ class GeneratedCandidateMutationTests(unittest.TestCase):
         variables["cycle"] = variables
         candidate["test_variables"] = variables
         self.assertTrue(self.checked(candidate, guarded=False))
+        assessment = assess_workflow(candidate, self.context["openapi"])
+        self.assertFalse(assessment["structurally_valid"])
+        self.assertFalse(assessment["behavioral_compliance_proven"])
+
+    def test_automatic_cycle_rejected_despite_fallback_graph_path_to_terminal(self):
+        candidate = copy.deepcopy(self.original)
+        first, second = "bg_commit_api", "bg_account_api"
+        for node, target in ((first, second), (second, first)):
+            candidate["nodes"][node]["transitions"] = [{"target_node": target, "condition": {"operator": "always"}}]
+        # Existing passthrough fallback edges still give a graph path to the end.
+        errors = self.checked(candidate, guarded=False)
+        self.assertTrue(errors)
+        self.assertTrue(any("cycle" in error for error in errors))
+        self.assertFalse(any("no graph path" in error for error in errors))
 
     def test_invalid_json_values_are_rejected_without_serialization_crash(self):
         for value in (object(), {42: "not a string key"}, ("tuple",), b"bytes", {"set"}):
@@ -235,6 +251,8 @@ class StaticPythonHazardTests(unittest.TestCase):
             "def recur():\n    return again()\nagain = recur\nrecur()",
             "def first():\n    return second()\ndef second():\n    return first()\nfirst()",
             "again = lambda: again()\nagain()",
+            "callbacks = {'again': lambda: callbacks['again']()}\ncallbacks['again']()",
+            "def recur():\n    return again()\nagain, = (recur,)\nrecur()",
             "def recur():\n    return callbacks[0]()\ncallbacks = [recur]\nrecur()",
             "def recur():\n    return callbacks['again']()\ncallbacks = {'again': recur}\nrecur()",
             "def recur():\n    return callbacks[0]()\ncallbacks = (recur,)\nrecur()",
@@ -251,8 +269,10 @@ class StaticPythonHazardTests(unittest.TestCase):
             "try:\n    vars['status'] = str(vars['missing'])\nexcept ValueError:\n    vars['status'] = 'unknown'",
             "if vars.get('ready'):\n    vars['status'] = 'unknown'\ntry:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    pass",
             "try:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    if vars.get('ready'):\n        vars['status'] = 'unknown'",
+            "class Exception(ValueError):\n    pass\ntry:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    vars['status'] = 'unknown'",
             "Exception = ValueError\ntry:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    vars['status'] = 'unknown'",
             "try:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    raise\n    vars['status'] = 'unknown'",
+            "try:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    if vars.get('ready'):\n        raise\n    vars['status'] = 'unknown'",
             "try:\n    vars['status'] = str(vars['missing'])\nexcept Exception:\n    pass\nvars['status'] = 'unknown'",
         ]
         with patch("builtins.exec", side_effect=AssertionError("executed unsafe Python")), \

@@ -281,6 +281,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             for choice in choices] for scope, choices in result["identity_close_choices"].items()}
     if "promise_failure_disposition" in result:
         result["promise_failure_disposition"]["reason"] = decode("reasons", decode("notes", result["promise_failure_disposition"]["reason"]))
+        commits = any(node.get("action") == "commit_promises" for node in plan["nodes"].values())
+        if commits and result["promise_failure_disposition"]["reason"] not in result.get("note_reasons", []):
+            raise GuardCompileError(["supplied promise failure disposition requires its explicit note_reasons/local-disposition binding"])
     if set(result.get("confirmation_actions", [])) - {"commit_promises", "commit_transfer", "schedule_callback"}:
         raise GuardCompileError(["confirmation_actions includes an unsupported customer-write action"])
     if set(result.get("transfer_prerequisites", {})) != set(result.get("transfer_reasons", {})):

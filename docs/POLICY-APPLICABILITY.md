@@ -19,6 +19,24 @@ Policies with multiple products, or without typed scope, retain the explicit
 ordering and resolution requirements. A new amendment must explicitly override
 the previous applicability rule; document order alone grants no precedence.
 
+An optional source-backed `product_count_bounds` rule retains explicit account
+cardinality separately: a nonempty object with `min`, `max`, or both, containing
+nonnegative integers. When both are supplied the minimum cannot exceed the
+maximum. There is no default count and it introduces no ordering rule. The
+maximum applies before ordering or projecting account data; the minimum applies
+only after an account has loaded, preserving pre-account identity, callback and
+transfer paths. An account-loading plan cannot combine single-product scope
+with a minimum above one. Without an account consumer, those optional bounds
+remain frozen metadata rather than force collection work. The intrinsic
+single-product upper bound remains one even if a supplied maximum is looser.
+The existing account parser still requires a nonempty product array. Zero is
+accepted as bound data; this change does not add an empty-account closing path.
+
+The original generated A+B policy preserved its 1–3 product requirement only in
+descriptive `account_product_scope` metadata. The new typed interface enables a
+fresh extraction to enforce that supplied bound. It neither rewrites that
+original generated policy nor retroactively gives its old graph a new guard.
+
 Promise commits do not universally require `nonpersistent_failures` or
 `promise_failure_disposition`. Without a supplied API guarantee, failures cannot
 authorize retries. Without a supplied disposition, the existing kernel retains

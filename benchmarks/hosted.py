@@ -8,6 +8,7 @@ from copy import deepcopy
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import urllib.request
@@ -158,8 +159,13 @@ def persona_for(row):
 
 
 class HostedBackend:
-    def __init__(self, client, deadline=None, opener=None, team_key=None):
+    def __init__(self, client, deadline=None, opener=None, team_key=None, *, reserve=0):
+        if type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0:
+            raise ValueError("hosted request reserve must be a finite nonnegative number")
+        if reserve and deadline is None:
+            raise ValueError("a hosted request reserve requires a shared deadline")
         self.client, self.deadline = client, deadline
+        self.reserve = reserve
         self.opener = opener or urllib.request.build_opener(NoRedirect()).open
         self.team_key = team_key or os.environ.get("FREYA_BANK_TEAM_KEY", "")
         if len(self.team_key) < 16:
@@ -168,7 +174,7 @@ class HostedBackend:
     def bank(self, path, body=None):
         if not (path == "/v1/practice/sessions" or path.startswith("/v1/practice/ledger/")):
             raise ValueError("bank route is outside the official evaluator allowlist")
-        timeout = self.deadline.timeout(cap=20) if self.deadline else 20
+        timeout = self.deadline.timeout(cap=20, reserve=self.reserve) if self.deadline else 20
         req = urllib.request.Request(BANK + path, data=json.dumps(body).encode() if body is not None else None,
                                      headers={"User-Agent": "Mozilla/5.0 (hackathon-evaluator)", "Content-Type": "application/json", "x-team-key": self.team_key},
                                      method="POST" if body is not None else "GET")
@@ -351,7 +357,7 @@ def run_builder_tests(client, deployment, cases_path, output_dir, deadline):
             raise ValueError("manifest and candidate freeze do not match")
         check_holdout_config(verified, deployment)
     deadline.require(reserve=300)
-    backend = HostedBackend(client, deadline)
+    backend = HostedBackend(client, deadline, reserve=300)
     pinned = deployment if all(k in deployment for k in ("workflow_id", "workflow", "version_id", "version_number")) else None
     result = evaluate(backend, deployment["agent_id"], rows, reps=1, deployment=pinned)
     output.mkdir(parents=True, exist_ok=True)

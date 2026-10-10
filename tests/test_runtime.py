@@ -15,6 +15,11 @@ class RuntimeTests(unittest.TestCase):
         (PROJECT / ".test-tmp").mkdir(exist_ok=True)
         self.tmp = tempfile.TemporaryDirectory(dir=PROJECT / ".test-tmp")
         self.directory = Path(self.tmp.name)
+        # These tests isolate generation/process parsing. Dedicated preflight
+        # tests exercise the mandatory isolation gate and before-brief boundary.
+        self.isolation = patch.object(CodexGenerator, "check_isolation")
+        self.isolation.start()
+        self.addCleanup(self.isolation.stop)
 
     def tearDown(self):
         self.tmp.cleanup()

@@ -35,14 +35,19 @@ class PolicyError(ValueError):
 _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "business_weekdays",
                   "band_ranges", "deadline_days", "floor_fields", "callback_window",
                   "note_reasons", "close_reasons", "transfer_reasons", "require_confirmation",
-                  "promise_failure_limit", "tool_aliases"}
+                  "promise_failure_limit", "tool_aliases", "persuasion_limits", "identity_hint_exemptions",
+                  "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
+                  "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
+_PROFILE_KINDS.add("wire_codes")
+_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
+                         "close_precedence", "identity_close", "promise_failure_disposition"}
 
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
     def strings(item: Any, *, empty: bool = False) -> bool:
         return isinstance(item, list) and (empty or bool(item)) and all(isinstance(x, str) and x for x in item)
     valid = True
-    if kind in {"identity_wrong_limit", "promise_failure_limit"}:
+    if kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
     elif kind in {"identity_fields", "note_reasons"}:
         valid = strings(value) and len(set(value)) == len(value)
@@ -72,6 +77,23 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = isinstance(value, dict) and bool(value) and all(isinstance(k, str) and k and strings(v, empty=True) for k, v in value.items())
     elif kind == "require_confirmation":
         valid = type(value) is bool
+    elif kind == "persuasion_limits":
+        valid = isinstance(value, dict) and bool(value) and all(isinstance(k, str) and k and type(v) is int and v >= 0 for k, v in value.items())
+    elif kind in {"identity_hint_exemptions", "write_retryable_errors"}:
+        valid = strings(value, empty=True) and len(set(value)) == len(value)
+    elif kind == "confirmation_scope":
+        valid = isinstance(value, str) and value in {"each", "batch"}
+    elif kind in {"action_fields", "result_fields", "product_fields"}:
+        valid = isinstance(value, dict) and all(isinstance(k, str) and k and
+                    ((isinstance(v, str) and bool(v)) or (isinstance(v, dict) and bool(v) and
+                     all(isinstance(x, str) and x and isinstance(y, str) and y for x, y in v.items()))) for k, v in value.items())
+    elif kind == "wire_codes":
+        # Other bank goals may add typed code categories. Preserve them as data;
+        # the action-binding compiler interprets only its four known categories.
+        valid = isinstance(value, dict) and all(isinstance(k, str) and k
+                    and isinstance(v, dict) and bool(v) and all(isinstance(x, str) and x and
+                    isinstance(y, str) and y for x, y in v.items()) and len(set(v.values())) == len(v)
+                    for k, v in value.items())
     elif kind == "callback_window":
         valid = isinstance(value, dict) and isinstance(value.get("start"), str) and isinstance(value.get("end"), str)
         if valid:
@@ -83,6 +105,40 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         if valid:
             valid = type(value.get("allow_today", False)) is bool and type(value.get("next_business_days", 0)) is int and value.get("next_business_days", 0) >= 0
     return [] if valid else [f"policy rule {kind} has an invalid structured value"]
+
+
+def _execution_errors(kind: str, value: Any) -> list[str]:
+    """Additional guard inputs are typed here; legacy extension IR remains data."""
+    if kind not in _EXECUTION_ONLY_KINDS:
+        return _profile_errors(kind, value)
+    def text(item: Any) -> bool:
+        return isinstance(item, str) and bool(item)
+    if kind in {"confirmation_actions", "close_precedence"}:
+        valid = isinstance(value, list) and bool(value) and all(text(item) for item in value) and len(set(value)) == len(value)
+    elif kind == "product_order":
+        valid = (isinstance(value, dict) and set(value) == {"field", "direction", "tie_breaker"}
+                 and text(value["field"]) and value["direction"] in ("ascending", "descending")
+                 and value["tie_breaker"] == "account_order")
+    elif kind == "identity_close":
+        valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
+                 and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}
+                         and text(proposal.get("outcome")) and ("reason" not in proposal or text(proposal["reason"]))
+                         for proposal in value.values()))
+    elif kind == "promise_failure_disposition":
+        valid = (isinstance(value, dict) and set(value) == {"reason", "clear_pending"}
+                 and text(value["reason"]) and type(value["clear_pending"]) is bool)
+    else:  # An exact trusted HTTP-status/error pair; no free prose predicates.
+        valid = isinstance(value, dict)
+        if valid:
+            for operation, failures in value.items():
+                if (not text(operation) or not isinstance(failures, list)
+                        or any(not isinstance(failure, dict) or set(failure) - {"http_status", "error"}
+                               or type(failure.get("http_status")) is not int or not 100 <= failure["http_status"] <= 599
+                               or ("error" in failure and not text(failure["error"])) for failure in failures)
+                        or len({canonical_json(failure) for failure in failures}) != len(failures)):
+                    valid = False
+                    break
+    return [] if valid else [f"execution rule {kind} has an invalid structured value"]
 
 
 def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None,
@@ -409,7 +465,15 @@ def validate_callback(day: Any, at: Any, now: Any, policy: Mapping[str, Any]) ->
 
 
 def _true(value: Any) -> bool:
-    return value is True or value in ("true", "True")
+    return value is True or (isinstance(value, str) and value in ("true", "True"))
+
+
+def _boolean(value: Any) -> bool:
+    if value is True or (isinstance(value, str) and value in ("true", "True")):
+        return True
+    if value is False or (isinstance(value, str) and value in ("false", "False")):
+        return False
+    raise PolicyError("tool evidence must contain an explicit boolean")
 
 
 def _result_data(result: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -421,31 +485,118 @@ def _result_data(result: Mapping[str, Any]) -> Mapping[str, Any]:
     return data
 
 
+def _write_result(result: Mapping[str, Any]) -> str:
+    """An explicit rejection is distinct from a transport/unknown-persistence result."""
+    try:
+        data = _result_data(result)
+        return "recorded" if _boolean(data.get("ok")) else "rejected"
+    except PolicyError:
+        return "unknown_persistence"
+
+
+def _counter(state: Mapping[str, Any], group: str, product_id: str) -> int:
+    counts = state.get(group, {})
+    if not isinstance(counts, Mapping):
+        raise PolicyError("invalid per-product counters")
+    value = counts.get(product_id, 0)
+    if type(value) is not int or value < 0:
+        raise PolicyError("counter must be a nonnegative integer")
+    return value
+
+
+def _promise_unknown(state: Mapping[str, Any], product_id: str) -> bool:
+    return _write_unknown(state, "promise_status", product_id)
+
+
+def _write_unknown(state: Mapping[str, Any], group: str, product_id: str) -> bool:
+    statuses = state.get(group, {})
+    if not isinstance(statuses, Mapping):
+        raise PolicyError("invalid write statuses")
+    return statuses.get(product_id) == "unknown_persistence"
+
+
+def _failure_limit(policy: Mapping[str, Any], kind: str) -> int:
+    limit = rule_value(policy, kind)
+    if type(limit) is not int or limit < 1:
+        raise PolicyError("policy must supply a positive " + kind)
+    return limit
+
+
+def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = None,
+                             *, required_kinds: tuple[str, ...] | list[str] = ()) -> dict[str, Any]:
+    """Freeze typed helper inputs, with no interpretation of extension prose.
+
+    Only the caller's requested kinds are mandatory. Unknown extensions do not
+    become executable rules; an unknown requested kind fails closed.
+    """
+    kinds = _PROFILE_KINDS | _EXECUTION_ONLY_KINDS
+    if not isinstance(required_kinds, (list, tuple)) or any(kind not in kinds for kind in required_kinds):
+        raise PolicyError("requested execution rule kind is unsupported")
+    profile = {}
+    absent = object()
+    for kind in sorted(kinds):
+        value = rule_value(policy, kind, absent)
+        if value is absent:
+            if kind in required_kinds:
+                raise PolicyError("required execution rule is missing: " + kind)
+            continue
+        errors = _execution_errors(kind, value)
+        if errors:
+            raise PolicyError("; ".join(errors))
+        profile[kind] = copy.deepcopy(value)
+    if "band_ranges" in profile:
+        bands = {band["name"] for band in profile["band_ranges"]}
+        for kind in ("deadline_days", "persuasion_limits"):
+            if kind in profile and set(profile[kind]) != bands:
+                raise PolicyError(kind + " must cover exactly the declared bands")
+    out = {"version": 1, "policy_sha256": digest(policy), "profile": profile}
+    if bindings is not None:
+        from .action_bindings import checked_action_bindings
+        out["bindings_sha256"] = checked_action_bindings(policy, bindings)["sha256"]
+    out["sha256"] = digest(out)
+    return out
+
+
 def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, Any],
                     policy: Mapping[str, Any]) -> dict[str, Any]:
     """Only successful API evidence advances identity; unreadable/errors don't count."""
+    assert_action_allowed(state, "verify_identity")
     fields = rule_value(policy, "identity_fields", [])
     limit = rule_value(policy, "identity_wrong_limit")
-    if not fields or type(limit) is not int or limit < 1 or field not in fields:
+    if _profile_errors("identity_fields", fields) or type(limit) is not int or limit < 1 or field not in fields:
         raise PolicyError("identity policy is missing or invalid")
-    out = copy.deepcopy(dict(state))
-    verified = list(out.get("verified_fields", []))
-    wrong = int(out.get("wrong_answers", 0))
-    if out.get("identity_status") == "failed" or wrong >= limit:
+    verified = state.get("verified_fields", [])
+    wrong = state.get("wrong_answers", 0)
+    if (not isinstance(verified, list) or verified != fields[:len(verified)]
+            or type(wrong) is not int or wrong < 0):
+        raise PolicyError("identity state is malformed")
+    if state.get("identity_status") == "failed" or wrong >= limit:
         raise PolicyError("identity check is already exhausted")
     expected = next((name for name in fields if name not in verified), None)
     if field != expected:
         raise PolicyError("security questions must follow policy order")
     data = _result_data(result)
-    if _true(data.get("ok")):
-        if _true(data.get("verified")):
+    ok = _boolean(data.get("ok"))
+    passed = _boolean(data.get("verified")) if ok else False
+    remaining = data.get("wrong_answers_left")
+    if "wrong_answers_left" in data and (type(remaining) is not int or not 0 <= remaining <= limit):
+        raise PolicyError("service identity counter is malformed")
+    exemptions = rule_value(policy, "identity_hint_exemptions", ["day_month_swapped"])
+    if _profile_errors("identity_hint_exemptions", exemptions):
+        raise PolicyError("identity hint exemptions must be explicit strings")
+    hint = data.get("hint")
+    if hint is not None and (not isinstance(hint, str) or hint not in exemptions):
+        raise PolicyError("identity hint has no declared counter meaning")
+    verified = list(verified)
+    if ok:
+        if passed:
             verified.append(field)
-        elif data.get("hint") != "day_month_swapped":
+        elif hint not in exemptions:
             wrong += 1
     # The service's counter is authoritative and may reflect earlier attempts.
-    remaining = data.get("wrong_answers_left")
-    if _true(data.get("ok")) and type(remaining) is int and 0 <= remaining <= limit:
+    if ok and remaining is not None:
         wrong = max(wrong, limit - remaining)
+    out = copy.deepcopy(dict(state))
     out.update(verified_fields=verified, wrong_answers=wrong,
                identity_status="failed" if wrong >= limit else "verified" if all(f in verified for f in fields) else "pending")
     return out
@@ -453,6 +604,7 @@ def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, A
 
 def stage_commitment(state: Mapping[str, Any], products: list[dict[str, Any]], product_id: str,
                      amount: Any, day: Any, now: Any, policy: Mapping[str, Any]) -> dict[str, Any]:
+    assert_action_allowed(state, "create_promise")
     product = product_by_id(products, product_id)
     errors = validate_commitment(product, amount, day, now, policy)
     if errors:
@@ -460,6 +612,11 @@ def stage_commitment(state: Mapping[str, Any], products: list[dict[str, Any]], p
     out = copy.deepcopy(dict(state))
     if out.get("closed") or out.get("transfer") or product_id in out.get("recorded_promises", {}) or product_id in out.get("recorded_notes", {}):
         raise PolicyError("cannot stage this commitment in current call state")
+    if _promise_unknown(state, product_id) or _write_unknown(state, "note_status", product_id):
+        raise PolicyError("promise persistence must be reconciled before another disposition")
+    failures = _counter(state, "promise_failures", product_id)
+    if failures and failures >= _failure_limit(policy, "promise_failure_limit"):
+        raise PolicyError("product promise failure budget is exhausted")
     out.get("pending_notes", {}).pop(product_id, None)
     out.setdefault("pending_promises", {})[product_id] = {"amount_cents": money_to_cents(amount), "date": _date(day).isoformat()}
     out["confirmation_status"] = "pending"
@@ -469,124 +626,224 @@ def stage_commitment(state: Mapping[str, Any], products: list[dict[str, Any]], p
 def confirm_commitments(state: Mapping[str, Any]) -> dict[str, Any]:
     """Called only by an application after it has established explicit consent."""
     out = copy.deepcopy(dict(state))
-    if not out.get("pending_promises") or out.get("closed") or out.get("transfer"):
+    if not out.get("pending_promises") or out.get("closed") or out.get("close_attempted") or out.get("close_status") == "unknown_persistence" or out.get("transfer"):
         raise PolicyError("no active commitments to confirm")
     out["confirmation_status"] = "confirmed"
     return out
 
 
-def record_commitment_result(state: Mapping[str, Any], product_id: str, result: Mapping[str, Any]) -> dict[str, Any]:
-    out = copy.deepcopy(dict(state))
-    if out.get("closed") or out.get("transfer") or out.get("confirmation_status") != "confirmed":
+def assert_commitment_attempt_allowed(state: Mapping[str, Any], product_id: str,
+                                      policy: Mapping[str, Any]) -> None:
+    """Check before execution, not after spending another write attempt."""
+    assert_action_allowed(state, "create_promise")
+    if state.get("closed") or state.get("transfer") or state.get("confirmation_status") != "confirmed":
         raise PolicyError("recording requires confirmed active commitments")
-    if product_id not in out.get("pending_promises", {}) or product_id in out.get("recorded_promises", {}):
+    if product_id not in state.get("pending_promises", {}) or product_id in state.get("recorded_promises", {}):
         raise PolicyError("unknown or already recorded commitment")
-    data = _result_data(result)
-    if _true(data.get("ok")):
+    if product_id in state.get("recorded_notes", {}) or _promise_unknown(state, product_id) or _write_unknown(state, "note_status", product_id):
+        raise PolicyError("recorded notes or unknown persistence prohibit a promise write")
+    if _counter(state, "promise_failures", product_id) >= _failure_limit(policy, "promise_failure_limit"):
+        raise PolicyError("product promise failure budget is exhausted")
+
+
+def record_commitment_result(state: Mapping[str, Any], product_id: str, result: Mapping[str, Any],
+                             policy: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    status = _write_result(result)
+    if policy is not None:
+        assert_commitment_attempt_allowed(state, product_id, policy)
+    else:
+        assert_action_allowed(state, "create_promise")
+        # Preserve the legacy first-positive-result call without silently
+        # permitting failure retries when the bank's limit was not supplied.
+        if (status != "recorded" or _counter(state, "promise_failures", product_id)
+                or _promise_unknown(state, product_id) or _write_unknown(state, "note_status", product_id)):
+            raise PolicyError("failure/unknown write handling requires the supplied policy")
+        if (state.get("closed") or state.get("transfer") or state.get("confirmation_status") != "confirmed"
+                or product_id not in state.get("pending_promises", {}) or product_id in state.get("recorded_promises", {})):
+            raise PolicyError("recording requires an unrecorded confirmed active commitment")
+        if product_id in state.get("recorded_notes", {}):
+            raise PolicyError("a recorded note prohibits a promise write")
+    out = copy.deepcopy(dict(state))
+    out.setdefault("promise_status", {})[product_id] = status
+    if status == "recorded":
         promise = out["pending_promises"].pop(product_id)
         out.setdefault("recorded_promises", {})[product_id] = promise
-    else:
-        counts = out.setdefault("promise_failures", {})
-        counts[product_id] = counts.get(product_id, 0) + 1
+    elif status == "rejected":
+        out.setdefault("promise_failures", {})[product_id] = _counter(state, "promise_failures", product_id) + 1
+    return out
+
+
+def record_persuasion_attempt(state: Mapping[str, Any], products: list[dict[str, Any]], product_id: str,
+                              policy: Mapping[str, Any]) -> dict[str, Any]:
+    """Count an application-classified persuasion action for this stable ID."""
+    assert_action_allowed(state, "create_promise")
+    product = product_by_id(products, product_id)
+    limits = rule_value(policy, "persuasion_limits")
+    if _profile_errors("persuasion_limits", limits):
+        raise PolicyError("policy has no typed per-band persuasion limits")
+    limit = limits.get(product_band(product, policy))
+    if type(limit) is not int or limit < 0:
+        raise PolicyError("persuasion limit is missing for the product band")
+    if (state.get("closed") or state.get("transfer") or product_id in state.get("recorded_promises", {})
+            or product_id in state.get("recorded_notes", {}) or _promise_unknown(state, product_id)
+            or _write_unknown(state, "note_status", product_id)):
+        raise PolicyError("persuasion is not permitted in this product state")
+    count = _counter(state, "persuasion_attempts", product_id)
+    if count >= limit:
+        raise PolicyError("product persuasion budget is exhausted")
+    out = copy.deepcopy(dict(state))
+    out.setdefault("persuasion_attempts", {})[product_id] = count + 1
     return out
 
 
 def stage_note(state: Mapping[str, Any], products: list[dict[str, Any]], product_id: str,
-               reason: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+               reason: str, policy: Mapping[str, Any], *, bindings: dict | None = None) -> dict[str, Any]:
+    assert_action_allowed(state, "add_note")
+    from .action_bindings import checked_action_bindings, decode_action_value
+    decode_action_value(checked_action_bindings(policy, bindings), "notes", reason)
     product_by_id(products, product_id)
     if reason not in rule_value(policy, "note_reasons", []):
         raise PolicyError("note reason is not permitted by policy")
     out = copy.deepcopy(dict(state))
     if out.get("closed") or out.get("transfer") or product_id in out.get("recorded_promises", {}) or product_id in out.get("recorded_notes", {}):
         raise PolicyError("cannot note this product in current call state")
+    if _promise_unknown(state, product_id) or state.get("note_status", {}).get(product_id) == "unknown_persistence":
+        raise PolicyError("write persistence must be reconciled before a note")
     out.get("pending_promises", {}).pop(product_id, None)
     out["confirmation_status"] = "pending" if out.get("pending_promises") else "none"
     out.setdefault("pending_notes", {})[product_id] = reason
     return out
 
 
-def stage_transfer(state: Mapping[str, Any], queue: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+def stage_transfer(state: Mapping[str, Any], queue: str, policy: Mapping[str, Any], *, bindings: dict | None = None) -> dict[str, Any]:
+    assert_action_allowed(state, "transfer_to_agent")
+    from .action_bindings import checked_action_bindings, decode_action_value
+    decode_action_value(checked_action_bindings(policy, bindings), "queues", queue)
     reason = rule_value(policy, "transfer_reasons", {}).get(queue)
-    if reason is None or state.get("closed"):
+    if reason is None or state.get("closed") or state.get("transfer"):
         raise PolicyError("transfer is not permitted")
     out = copy.deepcopy(dict(state))
-    if out.get("recorded_notes"):
+    if out.get("recorded_notes") or "unknown_persistence" in out.get("note_status", {}).values():
         raise PolicyError("already recorded notes cannot be undone for a transfer")
     out.update(transfer={"queue": queue, "reason": reason, "status": "pending"},
-               pending_notes={}, pending_promises={})
+               pending_notes={}, pending_promises={}, confirmation_status="none")
     return out
 
 
 def record_note_result(state: Mapping[str, Any], product_id: str, result: Mapping[str, Any]) -> dict[str, Any]:
     """Commit a previously staged disposition only after positive tool evidence."""
+    assert_action_allowed(state, "add_note")
     out = copy.deepcopy(dict(state))
     if out.get("closed") or out.get("transfer") or product_id not in out.get("pending_notes", {}):
         raise PolicyError("no permitted staged note to record")
     if product_id in out.get("recorded_notes", {}):
         raise PolicyError("note is already recorded")
-    if _true(_result_data(result).get("ok")):
+    if state.get("note_status", {}).get(product_id) == "unknown_persistence":
+        raise PolicyError("unknown note persistence prohibits retries")
+    status = _write_result(result)
+    out.setdefault("note_status", {})[product_id] = status
+    if status == "recorded":
         out.setdefault("recorded_notes", {})[product_id] = out["pending_notes"][product_id]
-    else:
-        failures = out.setdefault("note_failures", {})
-        failures[product_id] = failures.get(product_id, 0) + 1
+    elif status == "rejected":
+        out.setdefault("note_failures", {})[product_id] = _counter(state, "note_failures", product_id) + 1
     return out
 
 
 def record_transfer_result(state: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
+    assert_action_allowed(state, "transfer_to_agent")
     out = copy.deepcopy(dict(state))
-    if out.get("closed") or not out.get("transfer"):
+    if out.get("closed") or not out.get("transfer") or out["transfer"].get("status") != "pending":
         raise PolicyError("no active transfer")
-    out["transfer"]["status"] = "recorded" if _true(_result_data(result).get("ok")) else "failed"
+    status = _write_result(result)
+    out["transfer"]["status"] = "failed" if status == "rejected" else status
     return out
 
 
-def choose_close(state: Mapping[str, Any], products: list[dict[str, Any]], policy: Mapping[str, Any]) -> dict[str, str]:
+def choose_close(state: Mapping[str, Any], products: list[dict[str, Any]], policy: Mapping[str, Any],
+                 *, bindings: dict | None = None) -> dict[str, str]:
     """Choose from recorded facts; precedence and reason vocabulary are policy inputs."""
+    from .action_bindings import checked_action_bindings, decode_action_value, encode_action_value
+    binding = checked_action_bindings(policy, bindings)
+    def proposal(meaning: str, reason: str | None = None) -> dict[str, str]:
+        out = {"outcome": encode_action_value(binding, "outcomes", meaning)}
+        if reason is not None:
+            out["reason"] = reason
+        validate_close(out, policy, bindings=bindings)
+        return out
+    if state.get("closed") or state.get("close_attempted") or state.get("close_status") == "unknown_persistence":
+        raise PolicyError("call is already closed")
     transfer = state.get("transfer", {})
     if transfer.get("status") == "recorded":
-        return {"outcome": "transferred", "reason": transfer["reason"]}
+        if rule_value(policy, "transfer_reasons", {}).get(transfer.get("queue")) != transfer.get("reason"):
+            raise PolicyError("recorded transfer queue/reason evidence does not match policy")
+        return proposal("transferred", transfer["reason"])
+    if transfer:
+        raise PolicyError("a transfer without confirmed success cannot establish a close")
     if state.get("recorded_promises"):
-        return {"outcome": "promise"}
+        return proposal("promise")
+    if "unknown_persistence" in state.get("promise_status", {}).values() or "unknown_persistence" in state.get("note_status", {}).values():
+        raise PolicyError("unreconciled persistence cannot establish a closing disposition")
     notes = state.get("pending_notes", {})
-    if products and all(notes.get(p["product_id"]) == "paid" for p in products):
-        return {"outcome": "paid"}
-    reason = next((notes[p["product_id"]] for p in products if notes.get(p["product_id"]) not in (None, "paid")), None)
-    if reason:
-        return {"outcome": "no_promise", "reason": reason}
+    meanings = [decode_action_value(binding, "notes", notes[p["product_id"]]) if p["product_id"] in notes else None for p in products]
+    if products and all(meaning == "paid" for meaning in meanings):
+        return proposal("paid")
+    meaning = next((meaning for meaning in meanings if meaning not in (None, "paid")), None)
+    if meaning:
+        return proposal("no_promise", encode_action_value(binding, "reasons", meaning))
     fallback = state.get("close_proposal")
     if isinstance(fallback, dict):
-        if fallback.get("outcome") in {"promise", "transferred"}:
+        if decode_action_value(binding, "outcomes", fallback.get("outcome")) in {"promise", "transferred"}:
             raise PolicyError("closing proposal lacks successful tool evidence")
-        validate_close(fallback, policy)
+        validate_close(fallback, policy, bindings=bindings)
         return dict(fallback)
     raise PolicyError("recorded facts do not establish a closing outcome")
 
 
-def validate_close(proposal: Mapping[str, Any], policy: Mapping[str, Any]) -> None:
+def validate_close(proposal: Mapping[str, Any], policy: Mapping[str, Any], *, bindings: dict | None = None) -> None:
+    from .action_bindings import checked_action_bindings, decode_action_value
+    if not isinstance(proposal, Mapping):
+        raise PolicyError("closing proposal must be an object")
+    binding = checked_action_bindings(policy, bindings)
     reasons = rule_value(policy, "close_reasons", {})
     outcome, reason = proposal.get("outcome"), proposal.get("reason")
+    decode_action_value(binding, "outcomes", outcome)
+    if reason not in (None, ""):
+        decode_action_value(binding, "reasons", reason)
     if outcome not in reasons or (reasons[outcome] and reason not in reasons[outcome]) or (not reasons[outcome] and reason not in (None, "")):
         raise PolicyError("closing outcome/reason is not permitted by policy")
 
 
 def record_close_result(state: Mapping[str, Any], proposal: Mapping[str, Any], result: Mapping[str, Any],
-                        policy: Mapping[str, Any]) -> dict[str, Any]:
-    validate_close(proposal, policy)
-    if state.get("closed"):
-        raise PolicyError("close_call must be the last and only successful close")
-    if proposal.get("outcome") == "promise" and not state.get("recorded_promises"):
+                        policy: Mapping[str, Any], *, bindings: dict | None = None) -> dict[str, Any]:
+    from .action_bindings import checked_action_bindings, decode_action_value
+    binding = checked_action_bindings(policy, bindings)
+    validate_close(proposal, policy, bindings=bindings)
+    if state.get("closed") or state.get("close_attempted") or state.get("close_status") == "unknown_persistence":
+        raise PolicyError("close_call must be the last and only close attempt")
+    semantic = decode_action_value(binding, "outcomes", proposal.get("outcome"))
+    if semantic == "promise" and not state.get("recorded_promises"):
         raise PolicyError("promise outcome requires a successfully recorded promise")
-    if proposal.get("outcome") == "transferred" and (state.get("transfer", {}).get("status") != "recorded"
-            or state.get("transfer", {}).get("reason") != proposal.get("reason")):
+    transfer = state.get("transfer", {})
+    if semantic == "transferred" and (transfer.get("status") != "recorded"
+            or transfer.get("reason") != proposal.get("reason")
+            or rule_value(policy, "transfer_reasons", {}).get(transfer.get("queue")) != proposal.get("reason")):
         raise PolicyError("transferred outcome requires a successful matching transfer")
+    if transfer and semantic != "transferred":
+        raise PolicyError("an active transfer requires its matching successful closing outcome")
+    if semantic != "transferred" and ("unknown_persistence" in state.get("promise_status", {}).values()
+                                      or "unknown_persistence" in state.get("note_status", {}).values()):
+        raise PolicyError("unknown persistence must be reconciled before closing")
     out = copy.deepcopy(dict(state))
-    if _true(_result_data(result).get("ok")):
+    status = _write_result(result)
+    out["close_attempted"] = True
+    out["close_status"] = status
+    if status == "recorded":
         out.update(closed=True, close=dict(proposal))
     return out
 
 
 def assert_action_allowed(state: Mapping[str, Any], action: str) -> None:
-    if state.get("closed"):
-        raise PolicyError("no tool call is permitted after close_call")
+    if state.get("closed") or state.get("close_attempted") or state.get("close_status") == "unknown_persistence":
+        raise PolicyError("no tool call is permitted after any close_call attempt")
     if state.get("transfer") and action in {"add_note", "create_promise"}:
         raise PolicyError("staged or completed transfers prohibit notes and pending promises")

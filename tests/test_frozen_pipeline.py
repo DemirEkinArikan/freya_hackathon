@@ -126,8 +126,15 @@ class WorkflowWireTests(unittest.TestCase):
             elif 'features' in argv:
                 out = '\n'.join(name + ' stable true' for name in (*DISABLED_FEATURES, 'skip_host_skill_discovery'))
             else:
-                calls.append((json.loads((directory / Path(argv[argv.index('--output-schema') + 1])).read_text()), kwargs))
-                out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}})
+                schema = json.loads(Path(argv[argv.index('--output-schema') + 1]).read_text())
+                if 'available_tools' in schema['properties']:
+                    response = {'available_tools': [], 'loaded_markers': [],
+                                'forbidden_content': 'UNAVAILABLE', 'environment_content': 'UNAVAILABLE'}
+                    out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': json.dumps(response)}})
+                    out += '\n' + json.dumps({'type': 'turn.completed'})
+                else:
+                    calls.append((schema, kwargs))
+                    out = json.dumps({'type': 'item.completed', 'item': {'type': 'agent_message', 'text': text}})
             return subprocess.CompletedProcess(argv, 0, out, '')
         return CodexGenerator(directory, Trace(directory / 'trace.jsonl'), Deadline(), run=run), calls
 

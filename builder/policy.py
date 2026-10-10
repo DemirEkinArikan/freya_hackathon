@@ -49,7 +49,7 @@ _PROFILE_KINDS.add("wire_codes")
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields"}
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices"}
 
 
 def _profile_errors(kind: str, value: Any) -> list[str]:
@@ -137,6 +137,15 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  or (set(value) == {"field", "direction", "tie_breaker"}
                      and text(value["field"]) and value["direction"] in ("ascending", "descending")
                      and value["tie_breaker"] == "account_order")))
+    elif kind == "identity_close_choices":
+        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"unreached", "incomplete"}
+                 and all(isinstance(choices, list) and bool(choices) for choices in value.values()))
+        if valid:
+            valid = all(isinstance(choice, dict) and set(choice) <= {"outcome", "reason", "requires"}
+                        and text(choice.get("outcome"))
+                        and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                        and ("reason" not in choice or text(choice["reason"]))
+                        for choices in value.values() for choice in choices)
     elif kind == "identity_close":
         valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
                  and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}

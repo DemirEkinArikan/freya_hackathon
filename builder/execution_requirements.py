@@ -11,7 +11,7 @@ import copy
 from typing import Any
 
 from .action_bindings import ActionBindingError, compile_action_bindings
-from .contract import PolicyContractError, compile_policy_contract
+from .contract import PolicyContractError, compile_policy_contract, _resolve_schema_refs
 from .guards import (GuardCompileError, compile_guarded_workflow,
                      execution_action_catalogue, required_execution_kinds)
 from .policy import PolicyError, compile_execution_policy, execution_rule_guidance
@@ -41,6 +41,83 @@ def _inspection_plan(actions: list[str], catalogue: dict) -> dict:
                        "success_node": "inspection", "blocked_node": "inspection",
                        "failure_node": "inspection"}
     return {"initial_node": "inspection", "nodes": nodes}
+
+
+def _failure_source_errors(active: dict, openapi: dict, permitted: set[str],
+                           operation_bindings: dict) -> list[str]:
+    """Bind literal witnesses to exact API responses, never interpret prose.
+
+    A matching quotation proves supplied annotation provenance and scope only;
+    it does not prove that the annotation entails the claimed nonpersistence.
+    Local references are resolved under the strict contract's existing rules.
+    """
+    guarantees = active.get("nonpersistent_failures", {}).get("value", {})
+    if set(guarantees) - permitted:
+        return ["nonpersistent_failures must name exact permitted API operation IDs"]
+    document = _resolve_schema_refs(openapi, openapi)
+
+    def witness_matches(operation: str, status: int, witness: Any) -> bool:
+        if (not isinstance(witness, dict) or set(witness) != {"pointer", "quote"}
+                or any(not isinstance(witness[key], str) or not witness[key].strip()
+                       for key in ("pointer", "quote"))):
+            return False
+        pointer = witness["pointer"]
+        if pointer.startswith("#/"):
+            pointer = pointer[1:]
+        if not pointer.startswith("/"):
+            return False
+        encoded = pointer[1:].split("/")
+        if any("~" in part.replace("~0", "").replace("~1", "") for part in encoded):
+            return False
+        parts = [part.replace("~1", "/").replace("~0", "~") for part in encoded]
+        if (len(parts) < 6 or parts[0] != "paths" or parts[3] != "responses"
+                or parts[4] != str(status)
+                or parts[2] not in {"get", "post", "put", "patch", "delete", "head", "options"}):
+            return False
+        try:
+            supplied = document["paths"][parts[1]][parts[2]]
+            actual = supplied.get("operationId") or parts[1].rstrip("/").rsplit("/", 1)[-1]
+            if actual != operation:
+                return False
+            value = document
+            for part in parts:
+                value = value[part]
+        except (KeyError, TypeError, AttributeError):
+            return False
+        return isinstance(value, str) and witness["quote"] in value
+
+    errors = []
+    for operation, rows in guarantees.items():
+        for row in rows:
+            if not witness_matches(operation, row["http_status"], row.get("api_source")):
+                errors.append("nonpersistent_failures requires a literal api_source pointer/quote scoped to its actual permitted operation and exact response status")
+
+    resolution = active.get("promise_failure_resolution", {}).get("value")
+    if ("commit_promises" in operation_bindings and isinstance(resolution, dict)
+            and "api_annotations" in resolution):
+        operation = operation_bindings["commit_promises"]["operation"]
+        annotations = resolution["api_annotations"]
+        if (resolution.get("operation") != operation or not isinstance(annotations, dict)
+                or annotations.get("document") != "openapi" or len(annotations) < 2):
+            errors.append("promise_failure_resolution api_annotations requires the selected actual promise operation, document openapi and exact response-status witnesses")
+        else:
+            for status, witness in annotations.items():
+                if status == "document":
+                    continue
+                if (not isinstance(status, str) or len(status) != 3 or not status.isascii()
+                        or not status.isdigit() or not 100 <= int(status) <= 599
+                        or not witness_matches(operation, int(status), witness)):
+                    errors.append("promise_failure_resolution api_annotations must bind literal witnesses to the selected actual operation and exact response status")
+                    continue
+                # Reconcile structured declared annotations only. We do not
+                # parse counter prose or supply omitted guarantees ourselves.
+                matches = [row for row in guarantees.get(operation, [])
+                           if row["http_status"] == int(status)
+                           and row.get("api_source", {}).get("pointer", "").removeprefix("#") == witness["pointer"].removeprefix("#")
+                           and row.get("api_source", {}).get("quote") == witness["quote"]]
+                if not matches:
+                    errors.append("promise_failure_resolution declared API annotation is omitted or differs from operative nonpersistent_failures api_source")
+    return sorted(set(errors))
 
 
 def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
@@ -109,6 +186,9 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
             errors.append("selected action lacks its permitted frozen API operation: " + action)
         operation_bindings[action] = {"operation_role": role, "operation": actual,
                                       "mode": "local_disposition" if local else "bank_api"}
+    if errors:
+        raise ExecutionRequirementsError(errors)
+    errors = _failure_source_errors(active, openapi, permitted, operation_bindings)
     if errors:
         raise ExecutionRequirementsError(errors)
     try:

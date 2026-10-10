@@ -6,13 +6,14 @@ hackathon implementation: fresh prompts, orchestration and domain logic, with
 no Launchway runtime, private prompts, clients or integrations imported.
 
 **Shared work:** [parent issue and 18 task issues](https://github.com/DemirEkinArikan/freya_hackathon/issues/1).
-Default leads are Demir (`DemirEkinArikan`) and Naci (`burhan-launchway`).
+Demir (`DemirEkinArikan`) currently continues alone; Naci (`burhan-launchway`)
+can join later. Collaborator participation and identity are not prerequisites.
 See [current evidence and remaining readiness gates](docs/READINESS.md) before
 claiming that the builder is ready for competition.
 
 ## Setup
 
-Use Python **3.11** on macOS/Linux (or WSL), `gh`, and your own authenticated
+Use Python **3.11** on macOS/Linux (or WSL), `gh`, and an authenticated
 Codex CLI. Python dependencies are standard-library only. Codex must support the
 isolation controls checked by the runtime; unsupported versions fail closed.
 The current default builder model is the locally configured `gpt-6.1-sol`, with
@@ -23,12 +24,13 @@ python3.11 --version
 codex login status
 python3.11 tools/verify_kit.py
 python3.11 -m unittest discover -s tests -v
-python3.11 -m builder.preflight --operator demir
+python3.11 -m builder.preflight
 ```
 
-Follow [runtime setup and isolation verification](docs/RUNTIME.md) on each
-collaborator's computer. `--probe-isolation` explicitly calls your own signed-in
-Codex account with synthetic fixtures and writes only bounded, sanitized
+Follow [runtime setup and isolation verification](docs/RUNTIME.md) in the active
+builder environment. `--operator` is an optional informational label, with no
+person/account verification. `--probe-isolation` explicitly calls the existing
+authenticated Codex session with synthetic fixtures and writes only bounded, sanitized
 metadata. Every real generation performs this audit before sending its brief;
 exposed tools, canaries or unresolved skill loading block generation.
 
@@ -38,7 +40,8 @@ sibling project's credentials. Configure the variables in `.env.example`.
 Staging operations need
 `FREYA_API_KEY`; hosted evaluation additionally needs one stable
 `FREYA_BANK_TEAM_KEY` of at least 16 characters. Share team credentials privately,
-never in an issue. Each collaborator keeps their own Codex account sign-in.
+never in an issue. Authentication files and credentials stay outside source
+and task comments; no collaborator account-ownership proof is required.
 
 ## Build interface
 
@@ -119,9 +122,10 @@ python3.11 tools/cowork.py complete T04 --commit <pushed-sha> \
   --pr <merged-pr-number-or-url> --checks 'command and result'
 ```
 
-Either person can claim Ready tasks. Naci can add `--takeover` to reclaim Demir's
-in-progress task after an announced absence or 30 minutes without an update;
-the command checks recent branch activity. Checkpoint and push every 15 minutes.
+Any repository user authorized by GitHub can claim ready tasks. Actor names,
+assignees and previous claims are recorded metadata, with no collaborator
+whitelist, person-specific takeover or timed handoff. Check current branch
+activity to avoid concurrent edits. Checkpoint and push every 15 minutes.
 Claims require pushed commits. When a task's deliverable and checks are complete,
 push the work, open a PR targeting `main`, and merge it directly without a separate
 review step. Then run `complete --pr` with the merged PR number or its HTTPS URL.

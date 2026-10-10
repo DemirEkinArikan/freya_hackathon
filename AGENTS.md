@@ -32,22 +32,22 @@ case success alone is not evidence of generalization.
 
 ## Coworking
 
-The user's revised plan gives Demir all open tasks from 16:36 to 17:36 Istanbul
-on 10 October, then Naci continues. Exact timezone-aware bounds are recorded in
-`docs/tasks.json` under `ownership_window`. This overrides the original split
-of default leads for that work window. At handoff, Naci checks branch activity
-and claims from the latest pushed checkpoint without an extra stale-time wait.
-Keep dependency and acceptance gates; prepare code independently where useful.
+The user's latest instruction gives Demir the work while Naci is unavailable.
+There is no required second computer, collaborator identity verification,
+account-ownership attestation, person-specific takeover or timed handoff.
+The earlier 17:36 Naci transition is superseded. Names and issue assignments
+are coordination metadata; GitHub permissions govern writes. Keep task
+dependencies and technical acceptance checks; prepare code independently where useful.
 Record completed work, checks, remaining blockers, branch/commit and any
-deployment/simulation lease before the handoff. There is no timed automatic
-reassignment; the next worker claims explicitly.
+deployment/simulation lease in each checkpoint. Returning collaborators can
+continue from the latest pushed checkpoint without a person or timer gate.
 
 Use the linked GitHub task issues as the source of active ownership. Either
-collaborator can claim a ready task. Default assignment is responsibility, not a
-lock. Checkpoint at least every 15 minutes and push the working branch.
-Naci can take over Demir's task after an announced absence or 30 minutes without
-an update, after checking branch activity and recording the starting commit.
-Check the latest issue claim before resuming. Never force-push another worker's
+authorized repository user can claim a ready task. Default assignment is
+responsibility, not a lock. Checkpoint at least every 15 minutes and push the
+working branch. Record the previous branch and starting commit when continuing
+another checkpoint. Check the latest issue claim and branch activity to avoid
+concurrent edits. Never force-push another worker's
 branch. When a task's deliverable and checks are complete, push the commit, open
 a PR targeting `main`, and merge it directly without a separate review step.
 Completion needs verification evidence and that merged same-repository PR;

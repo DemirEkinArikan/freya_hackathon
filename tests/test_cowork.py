@@ -112,8 +112,7 @@ class FakeGitHub:
 class CoworkTests(unittest.TestCase):
     def setUp(self):
         self.manifest = json.loads(cowork.TASKS.read_text())
-        # Legacy protocol tests remain independent of the real work window.
-        self.manifest.pop("ownership_window", None)
+        # Legacy ownership metadata is intentionally inert under the new protocol.
         self.gh = FakeGitHub()
         self.temp = tempfile.TemporaryDirectory()
         self.board_patch = patch.object(cowork, "BOARD", Path(self.temp.name) / "board.json")
@@ -151,83 +150,218 @@ class CoworkTests(unittest.TestCase):
             cowork.claim(self.gh, self.manifest, task, found["T02"], found,
                          SimpleNamespace(branch="task/t02", commit="abcdef0", takeover=False), "burhan-launchway")
 
-    def owner_checkpoint(self, found, minutes, offline=False):
+    def owner_checkpoint(self, found, minutes, offline=False, actor="DemirEkinArikan"):
         issue = self.gh.issues[found["T01"]["number"]]
         issue["labels"] = [{"name": "state:in-progress"}]
+        issue["assignees"] = [{"login": actor}]
         at = cowork.utcnow() - timedelta(minutes=minutes)
-        payload = {"actor": "DemirEkinArikan", "action": "checkpoint", "branch": "task/t01-demir", "commit": "a" * 40, "offline": offline}
-        self.gh.comments[issue["number"]] = [{"body": "<!-- freya-handoff: " + json.dumps(payload) + " -->", "user": {"login": "DemirEkinArikan"}, "created_at": at.isoformat()}]
+        payload = {"actor": actor, "action": "checkpoint", "branch": "task/t01-demir", "commit": "a" * 40, "offline": offline}
+        self.gh.comments[issue["number"]] = [{"body": "<!-- freya-handoff: " + json.dumps(payload) + " -->", "user": {"login": actor}, "created_at": at.isoformat()}]
         return copy.deepcopy(issue)
 
-    def test_takeover_rejects_active_owner_and_recent_branch_activity(self):
-        _, found = self.make_board(); task = self.manifest["tasks"][0]
-        args = SimpleNamespace(branch="task/t01-takeover", commit="abcdef0", takeover=True)
-        issue = self.owner_checkpoint(found, 5)
-        with self.assertRaisesRegex(RuntimeError, "still active"):
-            cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
-        issue = self.owner_checkpoint(found, 40)
-        self.gh.branch_at = cowork.utcnow() - timedelta(minutes=5)
-        with self.assertRaisesRegex(RuntimeError, "still active"):
-            cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
+    def test_normal_claim_replaces_recent_active_metadata_in_both_directions(self):
+        for previous, actor in (("DemirEkinArikan", "burhan-launchway"),
+                                ("burhan-launchway", "DemirEkinArikan"),
+                                ("other-worker", "authorized-new-worker")):
+            with self.subTest(previous=previous, actor=actor):
+                self.gh = FakeGitHub()
+                self.gh.actor = actor
+                _, found = self.make_board()
+                issue = self.owner_checkpoint(found, 0, actor=previous)
+                self.gh.branch_at = cowork.utcnow()
+                self.gh.calls.clear()
+                cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                             SimpleNamespace(branch="task/new-work", commit="abcdef0", takeover=False), actor)
+                self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": actor}])
+                handoff = cowork.handoff_comments(self.gh, issue)[-1]
+                self.assertEqual(handoff["action"], "takeover")
+                self.assertEqual(handoff["previous_owner"], previous)
+                self.assertEqual(handoff["previous_branch"], "task/t01-demir")
+                self.assertEqual(handoff["previous_commit"], "a" * 40)
+                self.assertFalse(any(path.startswith(self.gh.repo("commits") + "?") for _, path, _ in self.gh.calls))
+                intent = next(i for i, (method, path, _) in enumerate(self.gh.calls)
+                              if method == "POST" and path.endswith("/comments"))
+                assignment = next(i for i, (method, _, data) in enumerate(self.gh.calls)
+                                  if method == "PATCH" and "assignees" in data)
+                self.assertLess(intent, assignment)
 
-    def test_stale_or_announced_offline_takeover_is_allowed(self):
-        _, found = self.make_board(); task = self.manifest["tasks"][0]
-        args = SimpleNamespace(branch="task/t01-takeover", commit="abcdef0", takeover=True)
-        issue = self.owner_checkpoint(found, 40)
-        cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
-        issue = self.owner_checkpoint(found, 1, offline=True)
-        cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
-
-    def test_planned_handoff_protects_solo_owner_then_allows_recent_takeover(self):
-        _, found = self.make_board(); task = self.manifest["tasks"][0]
-        now = cowork.utcnow()
-        end = now + timedelta(minutes=60)
-        self.manifest["ownership_window"] = {
-            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
-            "starts_at": now.isoformat(), "handoff_at": end.isoformat(),
-            "scope": "all_open_tasks", "authorized_by": "user"}
-        issue = self.owner_checkpoint(found, 1)
-        self.gh.branch_at = now
-        args = SimpleNamespace(branch="task/t01-planned-handoff", commit="abcdef0", takeover=True)
-        mutations = len(self.gh.mutations)
-        with patch.object(cowork, "utcnow", return_value=now):
-            with self.assertRaisesRegex(RuntimeError, "solo work window"):
-                cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
-        self.assertEqual(len(self.gh.mutations), mutations)
-        # Exact handoff time ends the window, even with a recent pushed branch.
-        self.gh.branch_at = end
-        with patch.object(cowork, "utcnow", return_value=end):
-            cowork.claim(self.gh, self.manifest, task, issue, found, args, "burhan-launchway")
-        self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": "burhan-launchway"}])
-
-    def test_planned_window_does_not_bypass_dependencies_or_bad_authorization(self):
+    def test_takeover_flag_is_optional_person_independent_intent_metadata(self):
         _, found = self.make_board()
-        now = cowork.utcnow()
-        self.manifest["ownership_window"] = {
-            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
-            "starts_at": (now - timedelta(hours=2)).isoformat(),
-            "handoff_at": (now - timedelta(hours=1)).isoformat(),
-            "scope": "all_open_tasks", "authorized_by": "user"}
+        issue = self.owner_checkpoint(found, 0, actor="other-worker")
+        self.gh.actor = "authorized-new-worker"
+        cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                     SimpleNamespace(branch="task/new-work", commit="abcdef0", takeover=True), self.gh.actor)
+        self.assertEqual(cowork.handoff_comments(self.gh, issue)[-1]["action"], "takeover")
+
+    def test_legacy_window_and_actor_registry_do_not_gate_claims(self):
+        for window in ({"owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
+                        "starts_at": "2999-01-01T00:00:00+03:00", "handoff_at": "2999-01-02T00:00:00+03:00"},
+                       {"authorized_by": "inferred"}, "obsolete metadata"):
+            with self.subTest(window=window):
+                self.gh = FakeGitHub()
+                self.gh.actor = "authorized-new-worker"
+                _, found = self.make_board()
+                self.manifest["ownership_window"] = window
+                self.manifest["collaborators"] = {}
+                issue = self.owner_checkpoint(found, 0)
+                cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                             SimpleNamespace(branch="task/new-work", commit="abcdef0", takeover=False), self.gh.actor)
+                self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": self.gh.actor}])
+
+    def test_legacy_window_does_not_bypass_dependencies(self):
+        _, found = self.make_board()
+        self.manifest["ownership_window"] = "ignored"
         args = SimpleNamespace(branch="task/t02-next", commit="abcdef0", takeover=True)
         with self.assertRaisesRegex(RuntimeError, "Dependencies"):
-            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][1], found["T02"], found, args, "burhan-launchway")
-        self.manifest["ownership_window"]["authorized_by"] = "inferred"
-        with self.assertRaisesRegex(RuntimeError, "authorization"):
-            cowork.ownership_window(self.manifest)
+            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][1], found["T02"], found, args, "authorized-new-worker")
 
-    def test_parent_sync_preserves_window_and_displays_live_owner(self):
-        _, found = self.make_board()
-        now = cowork.utcnow()
-        self.manifest["ownership_window"] = {
-            "owner": "DemirEkinArikan", "next_owner": "burhan-launchway",
-            "starts_at": now.isoformat(), "handoff_at": (now + timedelta(hours=1)).isoformat(),
-            "scope": "all_open_tasks", "authorized_by": "user"}
-        found["T02"]["assignees"] = [{"login": "DemirEkinArikan"}]
+    def test_parent_and_task_templates_show_metadata_without_timed_assignment(self):
+        parent, found = self.make_board()
+        self.manifest["ownership_window"] = {"owner": "DemirEkinArikan", "next_owner": "burhan-launchway"}
+        found["T02"]["assignees"] = [{"login": "authorized-new-worker"}]
         body = cowork.parent_body(self.manifest, found)
-        self.assertIn("User-authorized ownership window", body)
-        self.assertIn("@burhan-launchway continues afterwards", body)
-        self.assertIn("Reproducible runtime — @DemirEkinArikan", body)
-        self.assertIn("Istanbul", body)
+        self.assertIn("Reproducible runtime — @authorized-new-worker", body)
+        self.assertIn("Assignees and actor names describe coordination, not permissions", body)
+        self.assertNotIn("User-authorized ownership window", body)
+        self.assertNotIn("Naci can reclaim", body)
+        self.assertNotIn("continues afterwards", body)
+        self.assertIn(cowork.COORDINATION_PROTOCOL, cowork.task_body(self.manifest["tasks"][0], found, parent))
+
+    def test_single_operator_preference_is_informational_and_sets_parent_metadata(self):
+        self.manifest["active_work"] = {"mode": "single_operator", "default_assignee": "unknown-preferred-worker"}
+        parent, found = self.make_board()
+        self.assertEqual(parent["assignees"], [{"login": "unknown-preferred-worker"}])
+        body = cowork.parent_body(self.manifest, found)
+        self.assertIn("@unknown-preferred-worker continues", body)
+        self.assertIn("does not restrict who may claim", body)
+        self.gh.actor = "different-authorized-worker"
+        cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], found["T01"], found,
+                     SimpleNamespace(branch="task/independent-work", commit="abcdef0", takeover=False), self.gh.actor)
+        self.assertEqual(self.gh.issues[found["T01"]["number"]]["assignees"], [{"login": self.gh.actor}])
+
+    def run_action(self, arguments):
+        with patch.object(cowork, "GitHub", return_value=self.gh), contextlib.redirect_stdout(io.StringIO()):
+            return cowork.main(arguments)
+
+    def test_unknown_authorized_github_actor_can_claim_checkpoint_and_complete(self):
+        _, found = self.make_board()
+        self.gh.actor = "authorized-new-worker"
+        self.assertEqual(self.run_action(["claim", "T01", "--branch", "task/new-worker", "--commit", "abcdef0"]), 0)
+        issue = self.gh.issues[found["T01"]["number"]]
+        issue["assignees"] = [{"login": "different-metadata-owner"}]
+        self.assertEqual(self.run_action(["checkpoint", "T01", "--branch", "task/new-worker", "--commit", "abcdef0",
+                                          "--done", "local changes", "--remaining", "verification"]), 0)
+        self.assertEqual(self.run_completion(), 0)
+        self.assertEqual(issue["state"], "closed")
+        self.assertEqual(cowork.handoff_comments(self.gh, issue)[-1]["actor"], "authorized-new-worker")
+
+    def test_checkpoint_and_completion_are_independent_of_demir_naci_assignment_direction(self):
+        for assigned, actor in (("DemirEkinArikan", "burhan-launchway"), ("burhan-launchway", "DemirEkinArikan")):
+            with self.subTest(assigned=assigned, actor=actor):
+                self.gh = FakeGitHub()
+                self.gh.actor = actor
+                _, _, issue = self.active_completion()
+                issue["assignees"] = [{"login": assigned}]
+                self.assertEqual(self.run_action(["checkpoint", "T01", "--branch", "task/handoff", "--commit", "abcdef0",
+                                                  "--done", "local changes", "--remaining", "verification"]), 0)
+                self.assertEqual(self.run_completion(), 0)
+                self.assertEqual(issue["state"], "closed")
+
+    def test_github_permission_denial_still_prevents_mutation(self):
+        _, found = self.make_board()
+        self.gh.actor = "authorized-new-worker"
+        original = self.gh.api
+        def denied(method, path, data=None):
+            if method != "GET":
+                raise RuntimeError("GitHub denied write permission")
+            return original(method, path, data)
+        self.gh.api = denied
+        before = copy.deepcopy(self.gh.issues)
+        with self.assertRaisesRegex(RuntimeError, "GitHub denied"):
+            self.run_action(["claim", "T01", "--branch", "task/new-worker", "--commit", "abcdef0"])
+        self.assertEqual(self.gh.issues, before)
+        self.assertEqual(self.gh.comments, {})
+
+    def test_handoff_actor_and_comment_author_are_informational_metadata(self):
+        _, found = self.make_board()
+        issue = self.owner_checkpoint(found, 0)
+        self.gh.comments[issue["number"]][0]["user"]["login"] = "handoff-recorder"
+        records = cowork.handoff_comments(self.gh, issue)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["actor"], "DemirEkinArikan")
+        self.assertEqual(records[0]["comment_author"], "handoff-recorder")
+
+    def test_claim_preserves_concurrent_issue_metadata_before_any_write(self):
+        _, found = self.make_board()
+        issue = found["T01"]
+        self.gh.issues[issue["number"]]["assignees"] = [{"login": "concurrent-worker"}]
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "changed concurrently"):
+            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                         SimpleNamespace(branch="task/handoff", commit="abcdef0", takeover=False), self.gh.actor)
+        self.assertEqual(self.gh.mutations, [])
+
+    def test_claim_detects_concurrent_reassignment_after_its_write(self):
+        _, found = self.make_board()
+        issue = found["T01"]
+        path = self.gh.repo(f"issues/{issue['number']}")
+        original, reads = self.gh.api, []
+        def reassigned(method, current_path, data=None):
+            if method == "GET" and current_path == path:
+                reads.append(path)
+                if len(reads) == 2:
+                    self.gh.issues[issue["number"]]["assignees"] = [{"login": "concurrent-worker"}]
+            return original(method, current_path, data)
+        self.gh.api = reassigned
+        with self.assertRaisesRegex(RuntimeError, "changed concurrently"):
+            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                         SimpleNamespace(branch="task/handoff", commit="abcdef0", takeover=False), self.gh.actor)
+        self.assertEqual(self.gh.issues[issue["number"]]["assignees"], [{"login": "concurrent-worker"}])
+
+    def test_claim_detects_other_branch_intent_even_for_same_actor(self):
+        _, found = self.make_board()
+        issue = found["T01"]
+        path = self.gh.repo(f"issues/{issue['number']}/comments")
+        original, reads = self.gh.api, []
+        def concurrent_branch(method, current_path, data=None):
+            if method == "GET" and current_path == path:
+                reads.append(path)
+                if len(reads) == 2:
+                    meta = {"actor": self.gh.actor, "action": "claim", "branch": "task/other-branch", "commit": "b" * 40}
+                    self.gh.comments[issue["number"]].append({"body": "<!-- freya-handoff: " + json.dumps(meta) + " -->",
+                                                               "user": {"login": self.gh.actor}, "created_at": cowork.utcnow().isoformat()})
+            return original(method, current_path, data)
+        self.gh.api = concurrent_branch
+        with self.assertRaisesRegex(RuntimeError, "changed concurrently"):
+            cowork.claim(self.gh, self.manifest, self.manifest["tasks"][0], issue, found,
+                         SimpleNamespace(branch="task/handoff", commit="abcdef0", takeover=False), self.gh.actor)
+
+    def test_completion_still_requires_ready_dependencies_and_active_lifecycle(self):
+        _, found = self.make_board()
+        self.gh.actor = "authorized-new-worker"
+        issue = self.gh.issues[found["T02"]["number"]]
+        issue["labels"] = [{"name": "state:in-progress"}]
+        self.gh.mutations.clear()
+        with self.assertRaisesRegex(RuntimeError, "Dependencies"):
+            self.run_action(["complete", "T02", "--commit", "abcdef0", "--pr", "23", "--checks", "local checks"])
+        self.assertEqual(self.gh.mutations, [])
+        closed = self.gh.issues[found["T01"]["number"]]
+        closed["state"] = "closed"
+        with self.assertRaisesRegex(RuntimeError, "open task"):
+            self.run_action(["checkpoint", "T01", "--branch", "task/handoff", "--commit", "abcdef0",
+                             "--done", "local changes", "--remaining", "none"])
+
+    def test_protocol_migrates_historical_identity_rules_without_changing_comments(self):
+        _, found = self.make_board()
+        issue = self.gh.issues[found["T01"]["number"]]
+        issue["body"] = issue["body"].replace(cowork.COORDINATION_PROTOCOL, cowork.LEGACY_COORDINATION) + "\nCustom context.\n"
+        self.owner_checkpoint(found, 0)
+        before = copy.deepcopy(self.gh.comments)
+        cowork.sync_protocol(self.gh, self.manifest, found)
+        self.assertIn(cowork.COORDINATION_PROTOCOL, issue["body"])
+        self.assertNotIn(cowork.LEGACY_COORDINATION, issue["body"])
+        self.assertIn("Custom context.", issue["body"])
+        self.assertEqual(self.gh.comments, before)
 
     def test_completion_unblocks_dependencies_without_changing_other_claims(self):
         parent, found = self.make_board()

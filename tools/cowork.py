@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared GitHub ownership, checkpoint and dependency queue; never calls Freya."""
+"""Shared GitHub coordination, checkpoint and dependency queue; never calls Freya."""
 from __future__ import annotations
 
 import argparse
@@ -9,10 +9,8 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -26,14 +24,23 @@ STATE_LABELS = {"state:ready", "state:blocked", "state:in-progress", "state:done
 COMPLETION_PROTOCOL = """After the deliverable and checks are complete, open a PR targeting `main` and
 merge it directly without a separate review step. Record completion only after
 that same-repository PR is merged and its head matches the pushed commit."""
+COORDINATION_PROTOCOL = """Anyone authorized by GitHub may claim a ready task and record checkpoints or
+completion. Assignees and actor names describe coordination, not permissions.
+An active claim can be replaced through a recorded handoff without a person,
+identity, stale-time or ownership-window gate. Check the latest branch/checkpoint,
+preserve existing branches and running simulation IDs, and never force-push
+another worker's branch. Record branch, commit, verification, remaining work,
+blockers, deployment IDs and running simulations. Check the latest claim before
+resuming."""
+LEGACY_COORDINATION = """Either collaborator can claim a ready task. Active work has one assignee. Naci
+may reclaim Demir's task after an announced absence or 30 minutes without an
+update, after checking branch activity. Checkpoint every 15 minutes and push
+work. Record branch, commit, verification, remaining work, blockers, deployment
+IDs and running simulations. Check the latest claim before resuming."""
 
 
 def utcnow():
     return datetime.now(timezone.utc)
-
-
-def timestamp(value):
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class GitHub:
@@ -101,6 +108,19 @@ def is_ready(task, found):
     return all(found.get(dep, {}).get("state") == "closed" for dep in task["depends_on"])
 
 
+def active_work_banner(manifest):
+    work = manifest.get("active_work")
+    if not isinstance(work, dict) or work.get("mode") != "single_operator":
+        return ""
+    lead = work.get("default_assignee")
+    if not isinstance(lead, str) or not lead:
+        return ""
+    return ("## Active work preference\n\n"
+            f"Current coordination preference: @{lead} continues the open work as a single operator. "
+            "This is informational metadata; it does not restrict who may claim, checkpoint or complete tasks. "
+            "No timed or automatic handoff is scheduled.\n\n")
+
+
 def task_body(task, found, parent):
     dep = ", ".join(f"[{d}]({found[d]['html_url']})" if d in found else d
                     for d in task["depends_on"]) or "None — initial ready task"
@@ -128,11 +148,7 @@ mark this task complete merely because code or mocks exist.
 
 ## Ownership and handoff
 
-Either collaborator can claim a ready task. Active work has one assignee. Naci
-may reclaim Demir's task after an announced absence or 30 minutes without an
-update, after checking branch activity. Checkpoint every 15 minutes and push
-work. Record branch, commit, verification, remaining work, blockers, deployment
-IDs and running simulations. Check the latest claim before resuming.
+{COORDINATION_PROTOCOL}
 {COMPLETION_PROTOCOL}
 
 ```text
@@ -145,43 +161,6 @@ Keep credentials, private product prompts, raw events and client data outside
 issues. Preserve the event model and bank-only tools. Hosted runs require
 explicit execution authorization and one shared simulation lease.
 """
-
-
-def ownership_window(manifest):
-    window = manifest.get("ownership_window")
-    if window is None:
-        return None
-    if not isinstance(window, dict):
-        raise RuntimeError("Ownership window must be an object")
-    actors = set(manifest["collaborators"].values())
-    if (not isinstance(window.get("owner"), str) or not isinstance(window.get("next_owner"), str)
-            or window.get("owner") not in actors or window.get("next_owner") not in actors
-            or window["owner"] == window["next_owner"] or window.get("scope") != "all_open_tasks"
-            or window.get("authorized_by") != "user"):
-        raise RuntimeError("Ownership window lacks registered owners and explicit user authorization")
-    try:
-        if not isinstance(window.get("starts_at"), str) or not isinstance(window.get("handoff_at"), str):
-            raise ValueError("timestamps must be strings")
-        start, end = timestamp(window["starts_at"]), timestamp(window["handoff_at"])
-    except (KeyError, ValueError, TypeError):
-        raise RuntimeError("Ownership window timestamps are invalid") from None
-    if start.tzinfo is None or end.tzinfo is None or start >= end:
-        raise RuntimeError("Ownership window requires ordered timezone-aware timestamps")
-    return window, start, end
-
-
-def ownership_banner(manifest):
-    planned = ownership_window(manifest)
-    if not planned:
-        return ""
-    window, start, end = planned
-    zone = ZoneInfo("Europe/Istanbul")
-    return ("## User-authorized ownership window\n\n"
-            f"@{window['owner']} owns all open tasks from {start.astimezone(zone):%d %B %Y %H:%M} "
-            f"until {end.astimezone(zone):%H:%M} Istanbul. @{window['next_owner']} continues afterwards. "
-            "At the handoff, claim each task from its latest pushed checkpoint; the planned takeover "
-            "does not require a further 30-minute stale wait. Ownership changes occur on explicit claims, "
-            "not on an automatic timer. Preserve branches, dependency gates and verification evidence.\n\n")
 
 
 def parent_body(manifest, found):
@@ -207,7 +186,7 @@ staging and persistent published slots. The independent hackathon implementation
 reuses at most reviewed generic utilities; no Launchway compiler, private
 prompts, integrations, customer material or sibling dependencies are submitted.
 
-{ownership_banner(manifest)}## Ordered shared queue
+{active_work_banner(manifest)}## Ordered shared queue
 
 {chr(10).join(rows)}
 
@@ -215,13 +194,12 @@ Dependencies determine readiness; independent ready tasks can proceed together.
 Default leads are responsibilities, not exclusive ownership. Each task is also
 a native sub-issue with individually editable assignment and dependencies.
 
-## Offline takeover
+## Coordination and handoff
 
-- Demir: @DemirEkinArikan. Naci: @burhan-launchway. Both have repository write access.
-- Claim any Ready task; record branch and pushed starting commit; active task has one assignee.
-- Checkpoint at least every 15 minutes. Naci can reclaim Demir's work after an announced absence or 30 minutes without an update.
-- Check recent branch activity before takeover; preserve the original branch and continue from the latest pushed checkpoint.
-- Returning workers check current ownership before resuming. No force-push of another worker's branch.
+{COORDINATION_PROTOCOL}
+
+- Claim any Ready task; record branch and pushed starting commit.
+- Checkpoint and push progress regularly. Preserve the original branch and continue from the recorded pushed checkpoint.
 - Finish checks, open a PR into `main`, and merge directly without a separate review step.
 - Completion verifies the merged same-repository PR's head against the pushed commit, records evidence, then unblocks dependent tasks.
 - Keep one simulation lease with owner, workflow/agent/version, IDs and start time. Actual server status controls stale-lease replacement.
@@ -273,8 +251,12 @@ def completion_protocol_body(body, task_id):
     if not isinstance(body, str) or body.count(old) + body.count(new) != 1:
         raise RuntimeError(f"{task_id} completion template is not recognized; review its description before syncing")
     body = body.replace(old, new)
+    if LEGACY_COORDINATION in body:
+        if body.count(LEGACY_COORDINATION) != 1:
+            raise RuntimeError(f"{task_id} coordination template is ambiguous; review its description before syncing")
+        body = body.replace(LEGACY_COORDINATION, COORDINATION_PROTOCOL)
     if COMPLETION_PROTOCOL not in body:
-        anchor = "IDs and running simulations. Check the latest claim before resuming.\n"
+        anchor = COORDINATION_PROTOCOL + "\n"
         if body.count(anchor) != 1:
             raise RuntimeError(f"{task_id} ownership template is not recognized; review its description before syncing")
         body = body.replace(anchor, anchor + COMPLETION_PROTOCOL + "\n")
@@ -310,9 +292,9 @@ def create_board(gh, manifest):
         return
     existing_labels = {x["name"] for x in gh.all(gh.repo("labels"))}
     specs = {"priority:first-place": ("B60205", "First-place critical path"),
-             "state:ready": ("0E8A16", "Dependencies complete; available to either collaborator"),
+             "state:ready": ("0E8A16", "Dependencies complete; available to authorized GitHub workers"),
              "state:blocked": ("D4C5F9", "Waiting for dependencies or required evidence"),
-             "state:in-progress": ("FBCA04", "Single active owner; checkpoint every 15 minutes"),
+             "state:in-progress": ("FBCA04", "Active coordination metadata; preserve branches and checkpoints"),
              "state:done": ("0075CA", "Completed with verified main merge, pushed commit and checks")}
     for phase in {t["phase"] for t in manifest["tasks"]}:
         specs[f"phase:{phase}"] = ("C2E0C6", f"{phase} phase")
@@ -321,8 +303,11 @@ def create_board(gh, manifest):
             gh.api("POST", gh.repo("labels"), {"name": name, "color": color, "description": description})
     parent, found = find_issues(gh, manifest)
     if parent is None:
+        work = manifest.get("active_work")
+        lead = work.get("default_assignee") if isinstance(work, dict) else None
+        parent_assignees = [lead] if isinstance(lead, str) and lead else list(manifest.get("collaborators", {}).values())
         parent = gh.api("POST", gh.repo("issues"), {"title": manifest["parent_title"],
-                       "body": parent_body(manifest, found), "assignees": list(manifest["collaborators"].values()),
+                       "body": parent_body(manifest, found), "assignees": parent_assignees,
                        "labels": ["priority:first-place"]})
         print("Created parent", parent["html_url"], flush=True)
     for task in manifest["tasks"]:
@@ -359,8 +344,9 @@ def handoff_comments(gh, issue):
                 record = json.loads(match.group(1))
             except json.JSONDecodeError:
                 continue
-            if record.get("actor") == comment.get("user", {}).get("login"):
+            if isinstance(record, dict):
                 record["at"] = comment["created_at"]
+                record["comment_author"] = comment.get("user", {}).get("login")
                 rows.append(record)
     return rows
 
@@ -420,37 +406,31 @@ def claim(gh, manifest, task, issue, found, args, actor):
         raise RuntimeError("Dependencies are not completed")
     active = "state:in-progress" in labels(issue)
     owner = next((x["login"] for x in issue.get("assignees", [])), None)
-    planned = ownership_window(manifest)
-    planned_takeover = False
-    if planned:
-        window, start, end = planned
-        now = utcnow()
-        if start <= now < end and actor != window["owner"]:
-            raise RuntimeError("The user-authorized solo work window is still active")
-        if now >= end and actor != window["next_owner"]:
-            raise RuntimeError("The planned handoff has started; the next owner must claim")
-        planned_takeover = (now >= end and actor == window["next_owner"] and owner == window["owner"])
-    if active and owner != actor:
-        if not args.takeover or actor != manifest["collaborators"]["Naci"] or owner != manifest["collaborators"]["Demir"]:
-            raise RuntimeError("Active ownership requires the authorized Naci takeover protocol")
-        records = [r for r in handoff_comments(gh, issue) if r["actor"] == owner]
-        last = records[-1] if records else {"at": issue["updated_at"], "offline": False}
-        recent = timestamp(last["at"])
-        if last.get("branch"):
-            commits = gh.api("GET", gh.repo("commits") + f"?sha={quote(last['branch'], safe='')}&per_page=1")
-            if commits:
-                recent = max(recent, timestamp(commits[0]["commit"]["committer"]["date"]))
-        if not planned_takeover and not last.get("offline") and utcnow() - recent < timedelta(minutes=manifest["takeover_stale_minutes"]):
-            raise RuntimeError("Owner or branch is still active; leave a handoff instead of racing")
+    records = [r for r in handoff_comments(gh, issue) if r.get("action") in ("claim", "takeover", "checkpoint")]
+    last = records[-1] if records else {}
     sha = require_pushed_commit(gh, args.commit)
-    updated = gh.api("PATCH", gh.repo(f"issues/{issue['number']}"),
-                     {"assignees": [actor], "labels": sorted((labels(issue) - STATE_LABELS) | {"state:in-progress"})})
-    record(gh, issue, actor, "takeover" if active and owner != actor else "claim",
-           branch=args.branch, commit=sha, offline=False, previous_owner=owner or "unassigned")
+    path = gh.repo(f"issues/{issue['number']}")
+    current = gh.api("GET", path)
+    if (current.get("state") != issue.get("state") or labels(current) != labels(issue)
+            or sorted(x["login"] for x in current.get("assignees", [])) != sorted(x["login"] for x in issue.get("assignees", []))):
+        raise RuntimeError("Claim metadata changed concurrently; reload the issue before continuing")
+    action = "takeover" if active and (owner != actor or args.takeover) else "claim"
+    values = {"branch": args.branch, "commit": sha, "offline": False, "previous_owner": owner or "unassigned",
+              "previous_branch": last.get("branch", "unrecorded"), "previous_commit": last.get("commit", "unrecorded")}
+    # Announce the intent before replacing assignment metadata; no branch is mutated.
+    record(gh, issue, actor, action + "_intent", **values)
+    metadata = {"assignees": [actor], "labels": sorted((labels(issue) - STATE_LABELS) | {"state:in-progress"})}
+    updated = gh.api("PATCH", path, metadata)
+    record(gh, issue, actor, action, **values)
     if not gh.dry_run:
-        verify = gh.api("GET", gh.repo(f"issues/{issue['number']}"))
-        if [x["login"] for x in verify["assignees"]] != [actor]:
-            raise RuntimeError("Ownership changed concurrently; stop and reconcile issue claims")
+        verify = gh.api("GET", path)
+        # This confirms our metadata write, not the human's identity or permission.
+        claims = [r for r in handoff_comments(gh, issue) if r.get("action") in ("claim", "takeover")]
+        latest = claims[-1] if claims else {}
+        if (verify.get("state") != "open" or labels(verify) != set(metadata["labels"])
+                or [x["login"] for x in verify.get("assignees", [])] != metadata["assignees"]
+                or any(latest.get(key) != value for key, value in {"actor": actor, "branch": args.branch, "commit": sha}.items())):
+            raise RuntimeError("Claim metadata changed concurrently; stop and reconcile issue claims")
     return updated
 
 
@@ -461,8 +441,8 @@ def main(argv=None):
     sub.add_parser("create-board")
     sub.add_parser("status")
     sub.add_parser("sync")
-    sub.add_parser("sync-protocol", help="Update known completion instructions only; preserve task state and handoffs")
-    cp = sub.add_parser("claim"); cp.add_argument("task"); cp.add_argument("--branch", required=True); cp.add_argument("--commit", required=True); cp.add_argument("--takeover", action="store_true")
+    sub.add_parser("sync-protocol", help="Update known completion/coordination instructions; preserve task state and handoffs")
+    cp = sub.add_parser("claim"); cp.add_argument("task"); cp.add_argument("--branch", required=True); cp.add_argument("--commit", required=True); cp.add_argument("--takeover", action="store_true", help="Optional handoff intent metadata; no actor or stale-time gate")
     hp = sub.add_parser("checkpoint"); hp.add_argument("task"); hp.add_argument("--branch", required=True); hp.add_argument("--commit", required=True); hp.add_argument("--done", required=True); hp.add_argument("--remaining", required=True); hp.add_argument("--blocker", default="none"); hp.add_argument("--offline", action="store_true")
     dp = sub.add_parser("complete"); dp.add_argument("task"); dp.add_argument("--commit", required=True); dp.add_argument("--checks", required=True); dp.add_argument("--pr", required=True)
     args = ap.parse_args(argv)
@@ -485,8 +465,6 @@ def main(argv=None):
     if args.action == "sync-protocol":
         print(json.dumps({"dry_run": gh.dry_run, "updates": sync_protocol(gh, manifest, found)})); return 0
     actor = gh.api("GET", "user")["login"]
-    if actor not in manifest["collaborators"].values():
-        raise RuntimeError("Only the two registered collaborators can use ownership commands")
     task = next((t for t in manifest["tasks"] if t["id"] == args.task), None)
     if not task:
         raise RuntimeError("Unknown task ID")
@@ -494,13 +472,15 @@ def main(argv=None):
     if args.action == "claim":
         claim(gh, manifest, task, issue, found, args, actor)
     else:
-        if issue["state"] != "open" or "state:in-progress" not in labels(issue) or [x["login"] for x in issue["assignees"]] != [actor]:
+        if issue["state"] != "open" or "state:in-progress" not in labels(issue):
             raise RuntimeError("Claim the open task before checkpointing or completing it")
         sha = require_pushed_commit(gh, args.commit)
         if args.action == "checkpoint":
             record(gh, issue, actor, "checkpoint", branch=args.branch, commit=sha,
                    done=args.done, remaining=args.remaining, blocker=args.blocker, offline=args.offline)
         else:
+            if not is_ready(task, found):
+                raise RuntimeError("Dependencies are not completed")
             pr = require_merged_pr(gh, args.pr, sha)
             record(gh, issue, actor, "complete", commit=sha, checks=args.checks, pr=pr, merged_into="main")
             gh.api("PATCH", gh.repo(f"issues/{issue['number']}"), {"state": "closed", "state_reason": "completed"})

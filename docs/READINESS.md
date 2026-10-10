@@ -1,6 +1,6 @@
 # Shared implementation checkpoint — 10 October 2026
 
-The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. The revised user plan gives Demir all open tasks until **17:36:47 Istanbul on 10 October**, then Naci continues from the latest pushed checkpoints. Exact window bounds and the next owner are recorded in `docs/tasks.json`. Original manifest assignees are default leads; live issue assignees show current ownership. Closed tasks retain their historical owners. The account that created an issue remains its author independently of its assignee.
+The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Demir currently continues alone; Naci is unavailable. The latest user instruction supersedes the earlier 17:36 handoff: no timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Issue assignments describe coordination and do not grant permissions. Closed tasks retain their historical records.
 
 The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue assignees remain the source of active ownership; source availability does not complete acceptance gates.
 
@@ -50,7 +50,8 @@ residual tools and an unknown diagnostic; GPT-5.5 reports tools and loaded conte
 No canary exposure or tool event occurred. Those absences do not establish
 isolation. Substantive generation audits first and remains disabled after failure.
 An already-installed older alpha CLI is an untested option, not an accepted
-runtime. Naci must independently verify his own sign-in and machine. See
+runtime. No collaborator identity, account-ownership or second-computer
+verification is required. See
 [runtime evidence and setup](RUNTIME.md).
 
 Older successful policy extractions demonstrate source/provenance work only; they

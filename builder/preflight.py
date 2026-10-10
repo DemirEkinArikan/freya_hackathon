@@ -244,8 +244,8 @@ def preflight(*, executable: str = "codex", run: Callable = run_bounded) -> dict
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--operator", required=True, choices=("demir", "naci"), help="Self-attestation label, never inferred from credentials")
-    ap.add_argument("--probe-isolation", action="store_true", help="Explicitly call your own signed-in Codex account with synthetic fixtures; no Freya calls")
+    ap.add_argument("--operator", help="Optional informational label; no collaborator or account-ownership verification")
+    ap.add_argument("--probe-isolation", action="store_true", help="Explicitly call the existing Codex sign-in with synthetic fixtures; no Freya calls")
     ap.add_argument("--model", default="gpt-6.1-sol")
     ap.add_argument("--codex", default="codex")
     ap.add_argument("--output", type=Path, default=Path("artifacts/runtime-preflight.json"))
@@ -260,9 +260,9 @@ def main(argv=None) -> int:
     if not output.is_relative_to(root / "artifacts") or output.is_symlink():
         ap.error("Output must be a regular file beneath this repository's artifacts directory")
     report = {"schema_version": 1, "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-              "operator_attestation": args.operator, "account_ownership": "operator must attest this is their own sign-in",
-              "local": preflight(executable=args.codex), "isolation": {"status": "not_run"},
-              "two_computer_acceptance": "pending independent report from each collaborator's computer"}
+              "local": preflight(executable=args.codex), "isolation": {"status": "not_run"}}
+    if args.operator is not None:
+        report["operator_label"] = args.operator
     if args.probe_isolation and report["local"]["status"] == "pass":
         report["isolation"] = isolation_probe(root / "artifacts" / "runtime-probes", executable=args.codex, model=args.model)
     report["status"] = "pass" if report["local"]["status"] == "pass" and report["isolation"]["status"] in {"pass", "not_run"} else "fail"

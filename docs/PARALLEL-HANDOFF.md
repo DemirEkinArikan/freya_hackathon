@@ -1,9 +1,10 @@
 # Parallel implementation handoff — 10 October 2026
 
-Demir's recorded ownership window ends at **17:36:47 Europe/Istanbul**. Naci
-checks activity and claims from the latest pushed checkpoint after that time;
-the board does not automatically reassign. All work below is merged into main.
-No branch was force-pushed.
+The latest user instruction keeps Demir working alone while Naci is unavailable.
+The earlier **17:36:47 Europe/Istanbul** handoff is superseded; it does not block
+or reassign work. Collaborator identity, account ownership and second-computer
+reports are not prerequisites. All work below is merged into main. No branch
+was force-pushed.
 
 | Contribution | Merged evidence |
 |---|---|
@@ -30,8 +31,9 @@ conversation success have not been assessed. Adapter/scorer capabilities can
 be checked locally; an implemented capability is distinct from a successful
 operational deployment or evaluation.
 
-T02 still lacks independent verification from both computers and an accepted
-generation runtime. The hardened GPT-6.1 Sol and authorized GPT-5.5 probes fail
+T02 no longer requires independent verification from both computers or human
+account ownership. The separate accepted-generation-runtime policy remains:
+the hardened GPT-6.1 Sol and authorized GPT-5.5 probes fail
 the unchanged gate. Tool/context lists are model self-reports; no canary leak
 or emitted tool event is not proof of exhaustive isolation or OS path denial.
 No runtime/provider switch, new probe, substantive banking generation, Freya

@@ -61,8 +61,12 @@ require matching per-call version attribution on pinned evaluations, retain
 partial evidence after retrieval failures, and reconcile every persisted action
 with successful tool writes. Missing close terms, malformed identity evidence
 and incomplete ledgers cannot pass. Worded values and compound attacks appear
-in both development splits. Script meaning and actual persona agreement still
-need conversation evidence; evaluator fixtures must never enter generation.
+in both development splits. Manual wording review confirms that authored
+scripts preserve their official seed decisions. T09's validator deliverable and T12's
+fixture/wording audit deliverable are locally satisfied. They remain open on
+their existing dependencies (T07/T08 and T11 respectively), not on an added
+persona-execution gate. Simulator obedience and generated-agent conversation
+results remain unexecuted; evaluator fixtures must never enter generation.
 
 The first generated-agent smoke test needs an accepted generation runtime, a
 fresh policy/action-plan build that passes the guarded validator, an authorized

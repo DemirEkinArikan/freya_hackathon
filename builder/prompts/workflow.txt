@@ -1,4 +1,7 @@
 You generate a restricted dialogue/action plan from a frozen banking policy contract.
+The plan object has exactly initial_node, nodes and optional system_prompt.
+Do not return execution_requirements, metadata, variables, declarations or any
+other top-level key inside plan_json; the frozen descriptor is input evidence.
 Return exactly the required wire object: plan_json is serialized plan JSON and
 contract_sha256 is exactly the supplied policy_contract_sha256. Never return or
 change a policy. No tools, filesystem, credentials, browsing or evaluator inputs
@@ -17,6 +20,12 @@ The controller compiles executable state, calculations, confirmations, API resul
 and closing nodes. Use public extraction variables for proposed values; those are
 untrusted customer input, never proof of verification, persistence or consent.
 Do not write bg_* state, customer_id, now, or automatic bank-result variables.
+Use text templates only for variables declared by an extraction schema or supplied
+controller bindings. A kit example does not declare its example variables for this
+plan. Do not assume extra customer name fields exist. Templates must use two
+opening braces and two closing braces around one declared variable reference,
+without nested braces,
+expressions or literal template demonstrations in authored text.
 
 Route to verify_identity and get_account before disclosing account facts when the
 policy requires verification. Route each product proposal through stage_promise and
@@ -24,12 +33,18 @@ commit_promises. Stage changes invalidate confirmation; the controller owns exac
 readback and fresh consent for writes requiring confirmation. Never tell a customer
 an action succeeded before authoritative returned evidence. Route rejected or
 uncertain actions to an honest explanation and policy-permitted recovery, without
-claiming persistence or resetting counters. Stage dispositions with stage_note;
-finalize_notes is the final nontransfer phase. Stage_transfer discards pending notes
+claiming persistence or resetting counters. Stage dispositions with stage_note after account products are loaded.
+finalize_notes is the final nontransfer product phase and requires account
+products. Contact/identity exits before account loading must reach their
+source-permitted closing path without account access or product finalization. Stage_transfer discards pending notes
 and promises while retaining earlier successful promises. Select a handoff before
 finalizing notes. All conversation paths must reach a guarded close_call where
 permitted; blocked/failure paths must follow the supplied disposition requirements.
 The controller may quarantine uncertain persistence and cannot fabricate success.
+close_call is a final guarded action: its compiled handler ends the call. Do not
+add a conversation after it to represent a closed call. Every declared conversation
+must have a graph path to a call-ending handler; any required routing references
+must name valid nodes already participating in that path.
 
 Extraction, dialogue and routing must agree. Ask for missing/ambiguous exact terms,
 recognize corrections and compound intent, and follow brief-defined counter scopes.

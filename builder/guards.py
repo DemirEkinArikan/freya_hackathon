@@ -236,8 +236,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             else:
                 for op, cases in value.items():
                     for case in cases:
-                        if not isinstance(case, dict) or set(case) - {"http_status", "error"} or type(case.get("http_status")) is not int or not 100 <= case["http_status"] <= 599 or ("error" in case and not isinstance(case["error"], str)):
-                            errors.append("nonpersistent failure classifications need HTTP status100..599 and optional exact error")
+                        if (not isinstance(case, dict) or set(case) - {"http_status", "error", "api_source"}
+                                or type(case.get("http_status")) is not int or not 100 <= case["http_status"] <= 599
+                                or ("error" in case and (not isinstance(case["error"], str) or not case["error"]))
+                                or ("api_source" in case and
+                                    (not isinstance(case["api_source"], dict)
+                                     or set(case["api_source"]) != {"pointer", "quote"}
+                                     or any(not isinstance(case["api_source"][key], str) or not case["api_source"][key]
+                                            for key in ("pointer", "quote"))))):
+                            errors.append("nonpersistent failure classifications need HTTP status100..599, optional exact error and optional pointer/quote API witness")
         elif kind == "identity_close":
             if not isinstance(value, dict) or set(value) != {"failed", "incomplete", "unreached"} or any(not isinstance(p, dict) or set(p) - {"outcome", "reason"} or not isinstance(p.get("outcome"), str) or ("reason" in p and not isinstance(p["reason"], str)) for p in value.values()):
                 errors.append("identity_close requires failed, incomplete and unreached outcome/reason records")
@@ -665,6 +672,13 @@ def guard_close(state, proposed, profile, maps):
         if reason is not None:
             facts['no_promise'] = dict(outcome='no_promise', reason=reason)
     proposal = next((facts[outcome] for outcome in profile['close_precedence'] if outcome in facts), None)
+    if proposal is None and len(facts) == 1:
+        # A source may rank only overlapping outcomes. One protected fact
+        # needs no invented precedence; ordinary policy eligibility still
+        # validates the selected outcome and reason below.
+        proposal = list(facts.values())[0]
+    elif proposal is None and len(facts) > 1:
+        raise ValueError('closing has ambiguous unranked protected facts')
     if proposal is None:
         table = profile['identity_close']
         if state['identity_status'] == 'failed' and not state['account_loaded']:

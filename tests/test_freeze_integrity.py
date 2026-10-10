@@ -178,3 +178,28 @@ class FreezeIntegrityTests(unittest.TestCase):
         value = self.freeze(); value["status"] = "consumed"; self.rewrite(value)
         with self.assertRaisesRegex(ValueError, "disclosure metadata"):
             verify_freeze(self.record)
+
+    def test_freeze_record_under_source_is_rejected_before_any_output_is_created(self):
+        before = candidate_digest(self.candidate)
+        for name in ("freeze.json", "new-output/freeze.json", "new-output/record.bin"):
+            record = self.candidate / name
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                freeze_candidate(self.candidate, record, self.config)
+            self.assertFalse(record.exists())
+            self.assertFalse((self.candidate / "new-output").exists())
+            self.assertEqual(candidate_digest(self.candidate), before)
+
+    def test_freeze_output_cannot_follow_a_symlinked_parent(self):
+        target = self.root / "output-target"; target.mkdir()
+        parent = self.root / "linked-output"; parent.symlink_to(target, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            freeze_candidate(self.candidate, parent / "freeze.json", self.config)
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_source_and_config_cannot_follow_symlinked_ancestors(self):
+        linked = self.root / "linked-parent"; linked.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            candidate_digest(linked / "candidate")
+        with self.assertRaises(ValueError):
+            freeze_candidate(self.candidate, self.record, linked / "runtime.json")
+        self.assertFalse(self.record.exists())

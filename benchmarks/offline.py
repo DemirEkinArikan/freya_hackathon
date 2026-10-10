@@ -152,10 +152,22 @@ def main():
     ap.add_argument("--profile")
     ap.add_argument("--ledgers", help="JSON object mapping fixture_id to observed normalized ledger")
     args = ap.parse_args()
-    manifest = json.loads(Path(args.cases).read_text())
+    from builder.safety import read_json
+    manifest = read_json(Path(args.cases))
     errors = check_manifest(manifest)
     selected = [c for c in manifest["cases"] if args.split == "all" or c["split"] == args.split]
     profiles = {p["profile_id"]: p for p in manifest["profiles"]}
+    # Reservation inspection remains read-only. Assessing authored holdouts or
+    # a candidate for their policy requires the original unchanged freeze,
+    # regardless of the independent author's choice of profile identifier.
+    assess_rows = args.check_helpers or args.check_equivalence or args.ledgers
+    held_rows = any(c["split"] == "holdout" and not c["status"].startswith("reserved")
+                    for c in selected)
+    held_profile = args.candidate_contract and any(
+        c["split"] == "holdout" and c["profile_id"] == args.profile for c in manifest["cases"])
+    if (assess_rows and held_rows) or held_profile:
+        from .freeze import verify_holdout_manifest
+        verify_holdout_manifest(manifest)
     result = {"count": len(selected), "materialized": sum(not c["status"].startswith("reserved") for c in selected),
               "reserved": sum(c["status"].startswith("reserved") for c in selected), "errors": errors,
               "claim": "Contract/helper checks only. No conversation, model or API executed."}

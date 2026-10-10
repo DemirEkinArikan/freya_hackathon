@@ -1,8 +1,14 @@
 # T05 full controller acceptance
 
-T05 remains open until a fresh guarded banking build completes in at most
-1800 seconds and the actual stored, published workflow is exported. Local
-regressions and merged source establish implementation readiness only.
+T05 remains open until a fresh audited policy-and-workflow banking build
+completes in at most 1800 seconds through the documented CLI. An accepted
+`--generate-only` run can establish this controller's generation evidence
+without waiting for mock-bank TLS or hosted conversations. Local regressions
+and merged source alone do not establish that actual generation result.
+
+The live procedure below verifies the wider deployment/export milestone.
+Publication and conversation evidence remain required by their relevant tasks
+and submission gates; they are not additional hosted-trial dependencies of T05.
 
 ## Preserved failed public build
 

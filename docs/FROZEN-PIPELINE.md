@@ -21,8 +21,13 @@ inputs, builds protected action nodes and validates the exact workflow through a
 trusted guard context. Model-authored code, APIs, tools and terminals are refused.
 Artifacts include policy, contract, plan, execution profile, API action bindings,
 guard manifest, workflow and sanitized trace. Before publication the authored form
-is checked; read-back must match the exact controller-authenticated definition,
-excluding only the adapter-owned agent_config. Export uses the platform snapshot.
+is checked; read-back must preserve every controller-authenticated value and list
+order. Only reviewed serialization defaults at exact schema locations may be
+added; unknown additions, missing authored keys and changed values/types fail
+before hosted tests or export. The existing adapter-owned `agent_config` boundary
+remains, with the fixed event model checked again. Export uses the complete
+platform snapshot, including accepted defaults; normalization never rewrites it.
+See [readback acceptance](T05-READBACK.md) for the evidence and current scope.
 
 `action_guard_compilation_verified` establishes deterministic compilation and
 structural integrity. It does not prove policy extraction completeness, dialogue

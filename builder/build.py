@@ -16,6 +16,7 @@ if __package__ in (None, ""):
     __package__ = "builder"
 
 from .platform import FreyaClient, PlatformError
+from .readback import verify_readback
 from .contract import compile_policy_contract, PolicyContractError
 from .runtime import CodexGenerator, Deadline, DeadlineExceeded, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
@@ -488,13 +489,10 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             deployment["reasoning_effort"] = args.reasoning_effort
             if args.test_brief:
                 deployment["brief"] = args.test_brief
-            # Revalidate the actual stored workflow, before optional tests.
-            deployed_definition = {k: v for k, v in deployment["workflow"].items() if k != "agent_config"}
-            # Validate the authored form; the adapter separately verifies injected model config.
-            # Auth is controller-bound after exact guarded compilation. Readback
-            # must preserve that exact definition; metadata is not a proof.
-            if canonical_json(deployed_definition) != canonical_json(runtime_workflow):
-                raise ValueError("Deployed definition differs from the controller-authenticated guarded workflow")
+            # Preserve all controller-bound values; accept only reviewed defaults
+            # at their schema locations. Export/tests keep the full server snapshot.
+            accepted_defaults = verify_readback(runtime_workflow, deployment["workflow"])
+            trace.emit("deployment_readback", verified=True, accepted_default_fields=accepted_defaults)
             deployed_errors = validate_workflow(candidate["workflow"], openapi, candidate["policy"],
                                                 guard_context=guard_context)
             if deployed_errors:

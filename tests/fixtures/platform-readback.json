@@ -1,0 +1,149 @@
+{
+  "source": "T03 synthetic staging acceptance, 2026-10-10T16:57:38Z; adapter-owned agent_config reduced to fixed-model assertion",
+  "authored": {
+    "initial_node": "greeting",
+    "system_prompt": "You are a synthetic platform test assistant. Speak English. Do not request personal information.",
+    "nodes": {
+      "greeting": {
+        "name": "greeting",
+        "node_type": "conversation",
+        "task_message": "Greet the caller briefly in English. This is revision two of the platform verification. When they say goodbye, let the farewell transition end the call.",
+        "on_enter": {
+          "type": "tts",
+          "text": "Hello. This is a platform verification call."
+        },
+        "transitions": [
+          {
+            "target_node": "done",
+            "description": "The caller says goodbye.",
+            "condition": {
+              "operator": "matches_intent",
+              "description": "The caller says goodbye or asks to end the test."
+            }
+          }
+        ]
+      },
+      "done": {
+        "name": "done",
+        "node_type": "end_call",
+        "on_enter": {
+          "type": "tts",
+          "text": "Goodbye. Verification complete."
+        },
+        "disable_inactivity_monitor": true,
+        "transitions": [],
+        "terminal": {
+          "type": "function",
+          "function": {
+            "name": "test_finished",
+            "handler": "__function__:end_call",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "message_mode": {
+                  "type": "string",
+                  "default": "none"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "stored": {
+    "nodes": {
+      "done": {
+        "name": "done",
+        "tools": [],
+        "on_enter": {
+          "text": "Goodbye. Verification complete.",
+          "type": "tts"
+        },
+        "terminal": {
+          "type": "function",
+          "function": {
+            "name": "test_finished",
+            "handler": "__function__:end_call",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "message_mode": {
+                  "type": "string",
+                  "default": "none"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "node_type": "end_call",
+        "assertions": [],
+        "passthrough": false,
+        "pre_actions": [],
+        "transitions": [],
+        "role_message": "",
+        "task_message": "",
+        "interruptible": true,
+        "max_node_turns": null,
+        "response_mapping": [],
+        "extraction_schema": [],
+        "max_turn_transition": null,
+        "truncation_strategy": "keep_all",
+        "suppress_tool_results": false,
+        "truncation_window_size": 10,
+        "on_enter_first_entry_only": false,
+        "disable_inactivity_monitor": true,
+        "passthrough_default_transition": null,
+        "return_to_previous_on_interrupt": false
+      },
+      "greeting": {
+        "name": "greeting",
+        "tools": [],
+        "on_enter": {
+          "text": "Hello. This is a platform verification call.",
+          "type": "tts"
+        },
+        "node_type": "conversation",
+        "assertions": [],
+        "passthrough": false,
+        "pre_actions": [],
+        "transitions": [
+          {
+            "condition": {
+              "mode": "exact",
+              "operator": "matches_intent",
+              "description": "The caller says goodbye or asks to end the test."
+            },
+            "description": "The caller says goodbye.",
+            "target_node": "done"
+          }
+        ],
+        "role_message": "",
+        "task_message": "Greet the caller briefly in English. This is revision two of the platform verification. When they say goodbye, let the farewell transition end the call.",
+        "interruptible": true,
+        "max_node_turns": null,
+        "response_mapping": [],
+        "extraction_schema": [],
+        "max_turn_transition": null,
+        "truncation_strategy": "keep_all",
+        "suppress_tool_results": false,
+        "truncation_window_size": 10,
+        "on_enter_first_entry_only": false,
+        "disable_inactivity_monitor": false,
+        "passthrough_default_transition": null,
+        "return_to_previous_on_interrupt": false
+      }
+    },
+    "agent_config": {
+      "llmConfig": {
+        "provider": "experimental-5",
+        "model": "experimental-5"
+      }
+    },
+    "global_nodes": {},
+    "initial_node": "greeting",
+    "system_prompt": "You are a synthetic platform test assistant. Speak English. Do not request personal information.",
+    "test_variables": {}
+  }
+}

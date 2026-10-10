@@ -56,6 +56,11 @@ _REQUIRED = {
 }
 
 
+def execution_rule_requirements() -> dict[str, list[str]]:
+    """Publish the compiler interface to extraction without supplying rule values."""
+    return {action: sorted(kinds) for action, kinds in _REQUIRED.items()}
+
+
 class GuardCompileError(ValueError):
     def __init__(self, errors: list[str]):
         self.errors = tuple(sorted(set(errors)))

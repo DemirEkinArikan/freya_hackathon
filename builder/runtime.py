@@ -27,16 +27,24 @@ class GenerationError(RuntimeError):
 
 
 class Deadline:
-    def __init__(self, seconds: float = 1800, clock: Callable[[], float] = time.monotonic):
-        self.clock = clock
-        self.start = clock()
+    def __init__(self, seconds: float = 1800, clock: Callable[[], float] | None = None,
+                 wall_clock: Callable[[], float] | None = None):
+        # Some platforms' monotonic clock excludes suspend. Wall time prevents
+        # such pauses extending the event budget; monotonic time resists rollback.
+        self.clock = clock or time.monotonic
+        self.wall_clock = wall_clock or (time.time if clock is None else clock)
+        self.start = self.clock()
+        self.wall_start = self.wall_clock()
         self.limit = self.start + seconds
+        self._elapsed = 0.0
 
     def remaining(self) -> float:
-        return max(0.0, self.limit - self.clock())
+        return max(0.0, self.limit - self.start - self.elapsed())
 
     def elapsed(self) -> float:
-        return max(0.0, self.clock() - self.start)
+        self._elapsed = max(self._elapsed, self.clock() - self.start,
+                            self.wall_clock() - self.wall_start)
+        return self._elapsed
 
     def require(self, seconds: float = 0, reserve: float = 0) -> None:
         if self.remaining() <= seconds + reserve:
@@ -146,6 +154,7 @@ def run_bounded(argv: list[str], *, input: str | None = None, text: bool = True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=text,
                                start_new_session=True, **kwargs)
     started = time.monotonic()
+    wall_started = time.time()
     remaining, payload = timeout, input
     while True:
         interval = min(30, remaining) if on_progress else remaining
@@ -154,7 +163,7 @@ def run_bounded(argv: list[str], *, input: str | None = None, text: bool = True,
             break
         except subprocess.TimeoutExpired as exc:
             payload = None  # communicate has already submitted/closed stdin.
-            elapsed = time.monotonic() - started
+            elapsed = max(time.monotonic() - started, time.time() - wall_started)
             if on_progress and interval < remaining and elapsed < timeout:
                 try:
                     on_progress(elapsed, exc.output, exc.stderr)
@@ -182,6 +191,8 @@ def run_bounded(argv: list[str], *, input: str | None = None, text: bool = True,
                         stream.close()
             exc.timeout = timeout
             raise exc
+    if max(time.monotonic() - started, time.time() - wall_started) > timeout:
+        raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr)
     result = subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
     if check and result.returncode:
         raise subprocess.CalledProcessError(result.returncode, argv, output=stdout, stderr=stderr)
@@ -272,6 +283,7 @@ class CodexGenerator:
         self.trace.emit("generation_progress", elapsed_seconds=round(elapsed, 2),
                         stdout_characters=len(stdout), stderr_characters=len(stderr), last_event=last_event,
                         remaining_seconds=round(self.deadline.remaining(), 2))
+        self.deadline.require(reserve=300)
 
     def _record_output(self, stdout: Any, stderr: Any, *, partial: bool = False) -> None:
         stdout, stderr = self._text(stdout), self._text(stderr)

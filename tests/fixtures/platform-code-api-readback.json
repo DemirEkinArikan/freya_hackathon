@@ -1,0 +1,384 @@
+{
+  "source": "Synthetic code/API serialization probe, 2026-10-10T18:46:32Z; agent_config reduced to fixed-model assertion",
+  "authored": {
+    "initial_node": "probe_code",
+    "nodes": {
+      "probe_code": {
+        "name": "probe_code",
+        "node_type": "code",
+        "on_enter": {
+          "type": "silent"
+        },
+        "passthrough": true,
+        "passthrough_default_transition": "bg_terminal",
+        "pre_actions": [
+          {
+            "type": "function",
+            "function": {
+              "name": "code_exec",
+              "handler": "__function__:code_exec",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "default": "vars['bg_route'] = 'ready'\n"
+                  },
+                  "timeout_ms": {
+                    "type": "number",
+                    "default": 10000
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "target_node": "probe_api",
+            "description": "ready",
+            "condition": {
+              "logic": "or",
+              "conditions": [
+                {
+                  "variable": "bg_route",
+                  "operator": "equals",
+                  "operand": "ready"
+                }
+              ]
+            }
+          },
+          {
+            "target_node": "bg_terminal",
+            "description": "always",
+            "condition": {
+              "operator": "always"
+            }
+          }
+        ]
+      },
+      "probe_api": {
+        "name": "probe_api",
+        "node_type": "api_request",
+        "on_enter": {
+          "type": "silent"
+        },
+        "passthrough": true,
+        "passthrough_default_transition": "bg_terminal",
+        "pre_actions": [
+          {
+            "type": "function",
+            "config": {
+              "timeoutMs": 10000,
+              "maxRetries": 0
+            },
+            "function": {
+              "name": "get_account",
+              "handler": "__function__:api_call",
+              "description": "The late products. Refused until both questions are passed.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "default": "https://freya-bank-mock.freyavoice.workers.dev/v1/get_account"
+                  },
+                  "method": {
+                    "type": "string",
+                    "default": "POST"
+                  },
+                  "connect_retries": {
+                    "type": "number",
+                    "default": 0
+                  },
+                  "headers": {
+                    "type": "object",
+                    "properties": {
+                      "Content-Type": {
+                        "type": "string",
+                        "default": "application/json"
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "customer_id": {
+                        "type": "string",
+                        "default": "{{customer_id}}"
+                      }
+                    },
+                    "required": [
+                      "customer_id"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "response_mapping": [
+          {
+            "variable": "probe_ok",
+            "path": "data.ok"
+          }
+        ],
+        "transitions": [
+          {
+            "target_node": "bg_terminal",
+            "description": "always",
+            "condition": {
+              "operator": "always"
+            }
+          }
+        ]
+      },
+      "bg_terminal": {
+        "name": "bg_terminal",
+        "node_type": "end_call",
+        "on_enter": {
+          "type": "silent"
+        },
+        "disable_inactivity_monitor": true,
+        "terminal": {
+          "type": "function",
+          "function": {
+            "name": "end_call",
+            "handler": "__function__:end_call",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "message_mode": {
+                  "type": "string",
+                  "default": "none"
+                }
+              }
+            }
+          }
+        },
+        "transitions": []
+      }
+    }
+  },
+  "stored": {
+    "nodes": {
+      "probe_api": {
+        "name": "probe_api",
+        "tools": [],
+        "on_enter": {
+          "type": "silent"
+        },
+        "node_type": "api_request",
+        "assertions": [],
+        "passthrough": true,
+        "pre_actions": [
+          {
+            "type": "function",
+            "config": {
+              "timeoutMs": 10000,
+              "maxRetries": 0
+            },
+            "function": {
+              "name": "get_account",
+              "handler": "__function__:api_call",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "default": "https://freya-bank-mock.freyavoice.workers.dev/v1/get_account"
+                  },
+                  "body": {
+                    "type": "object",
+                    "required": [
+                      "customer_id"
+                    ],
+                    "properties": {
+                      "customer_id": {
+                        "type": "string",
+                        "default": "{{customer_id}}"
+                      }
+                    }
+                  },
+                  "method": {
+                    "type": "string",
+                    "default": "POST"
+                  },
+                  "headers": {
+                    "type": "object",
+                    "properties": {
+                      "Content-Type": {
+                        "type": "string",
+                        "default": "application/json"
+                      }
+                    }
+                  },
+                  "connect_retries": {
+                    "type": "number",
+                    "default": 0
+                  }
+                }
+              },
+              "description": "The late products. Refused until both questions are passed."
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "condition": {
+              "mode": "exact",
+              "operator": "always"
+            },
+            "description": "always",
+            "target_node": "bg_terminal"
+          }
+        ],
+        "role_message": "",
+        "task_message": "",
+        "interruptible": true,
+        "max_node_turns": null,
+        "response_mapping": [
+          {
+            "path": "data.ok",
+            "variable": "probe_ok",
+            "description": ""
+          }
+        ],
+        "extraction_schema": [],
+        "max_turn_transition": null,
+        "truncation_strategy": "keep_all",
+        "suppress_tool_results": false,
+        "truncation_window_size": 10,
+        "on_enter_first_entry_only": false,
+        "disable_inactivity_monitor": false,
+        "passthrough_default_transition": "bg_terminal",
+        "return_to_previous_on_interrupt": false
+      },
+      "probe_code": {
+        "name": "probe_code",
+        "tools": [],
+        "on_enter": {
+          "type": "silent"
+        },
+        "node_type": "code",
+        "assertions": [],
+        "passthrough": true,
+        "pre_actions": [
+          {
+            "type": "function",
+            "function": {
+              "name": "code_exec",
+              "handler": "__function__:code_exec",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "default": "vars['bg_route'] = 'ready'\n"
+                  },
+                  "timeout_ms": {
+                    "type": "number",
+                    "default": 10000
+                  }
+                }
+              },
+              "description": ""
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "condition": {
+              "logic": "or",
+              "conditions": [
+                {
+                  "mode": "exact",
+                  "operand": "ready",
+                  "operator": "equals",
+                  "variable": "bg_route"
+                }
+              ]
+            },
+            "description": "ready",
+            "target_node": "probe_api"
+          },
+          {
+            "condition": {
+              "mode": "exact",
+              "operator": "always"
+            },
+            "description": "always",
+            "target_node": "bg_terminal"
+          }
+        ],
+        "role_message": "",
+        "task_message": "",
+        "interruptible": true,
+        "max_node_turns": null,
+        "response_mapping": [],
+        "extraction_schema": [],
+        "max_turn_transition": null,
+        "truncation_strategy": "keep_all",
+        "suppress_tool_results": false,
+        "truncation_window_size": 10,
+        "on_enter_first_entry_only": false,
+        "disable_inactivity_monitor": false,
+        "passthrough_default_transition": "bg_terminal",
+        "return_to_previous_on_interrupt": false
+      },
+      "bg_terminal": {
+        "name": "bg_terminal",
+        "tools": [],
+        "on_enter": {
+          "type": "silent"
+        },
+        "terminal": {
+          "type": "function",
+          "function": {
+            "name": "end_call",
+            "handler": "__function__:end_call",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "message_mode": {
+                  "type": "string",
+                  "default": "none"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "node_type": "end_call",
+        "assertions": [],
+        "passthrough": false,
+        "pre_actions": [],
+        "transitions": [],
+        "role_message": "",
+        "task_message": "",
+        "interruptible": true,
+        "max_node_turns": null,
+        "response_mapping": [],
+        "extraction_schema": [],
+        "max_turn_transition": null,
+        "truncation_strategy": "keep_all",
+        "suppress_tool_results": false,
+        "truncation_window_size": 10,
+        "on_enter_first_entry_only": false,
+        "disable_inactivity_monitor": true,
+        "passthrough_default_transition": null,
+        "return_to_previous_on_interrupt": false
+      }
+    },
+    "agent_config": {
+      "llmConfig": {
+        "provider": "experimental-5",
+        "model": "experimental-5"
+      }
+    },
+    "global_nodes": {},
+    "initial_node": "probe_code",
+    "system_prompt": "",
+    "test_variables": {}
+  }
+}

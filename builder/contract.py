@@ -185,6 +185,12 @@ def _superseded_ids(rules: list[dict[str, Any]], by_id: dict[str, dict[str, Any]
     return sorted(ancestors)
 
 
+def api_provenance_source(openapi: Any) -> dict[str, str]:
+    """Optional quoteable source derived only from the supplied API contract."""
+    text = canonical_json(openapi)
+    return {"id": "tool-api", "file": "supplied-openapi.json", "sha256": digest(text), "text": text}
+
+
 def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
     """Return a deep-copied, deterministic contract or raise PolicyContractError.
 
@@ -193,6 +199,12 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any) -> dict[str
     a constraint or replacing it with another kind is unsupported; represent the
     unresolved requirement explicitly rather than silently erasing a constraint.
     """
+    # Briefs remain mandatory sources. API provenance is optional, but when
+    # declared its exact document/hash are reconstructed by the controller.
+    declared = policy.get("sources", []) if isinstance(policy, dict) else []
+    if (isinstance(sources, list) and isinstance(declared, list)
+            and any(isinstance(source, dict) and source.get("id") == "tool-api" for source in declared)):
+        sources = [*sources, api_provenance_source(openapi)]
     manifest, documents, errors = _source_inventory(sources)
     errors.extend(validate_policy(policy, documents, strict=True))
     if isinstance(policy, dict):

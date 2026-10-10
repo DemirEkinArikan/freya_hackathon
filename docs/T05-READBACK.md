@@ -16,17 +16,19 @@ pair, with agent config reduced to the fixed-model assertion. It contains no
 credentials or customer records and is never a generation input. Original local
 artifacts remain under `artifacts/t03-naci-acceptance-20261010/`.
 
-The admitted additions are empty root `global_nodes`/`test_variables`, reviewed
-common fields on conversation/end_call nodes, `mode: exact` on their direct
-matches_intent conditions, and an empty end-call function description. These
-rules do not match arbitrary nested parameter schemas or other dictionary keys.
-If a field was explicitly authored, it remains mandatory and immutable, even if
-its value happens to equal a default.
+A second live synthetic probe at 2026-10-10 21:46 Istanbul verified code and
+api_request nodes (workflow `dadccec2-157e-4aae-aab1-87ef06ceaa0d`, version 1).
+Its authored fields were preserved and its exact stored snapshot was exported.
+The 55 additions are retained in `tests/fixtures/platform-code-api-readback.json`.
+No simulation, bank API execution or Freya model inference occurred in that probe.
 
-Only conversation/end_call types and direct matches_intent conditions have
-retained live evidence here. Defaults for code/api_request nodes, nested condition
-groups, other conditions, tool schemas and mappings remain unaccepted until their
-actual serialization is reviewed. Do not weaken this boundary to complete a build.
+The admitted additions are empty root global_nodes/test_variables/system_prompt;
+reviewed common fields on conversation/end_call/code/api_request nodes; exact mode
+on direct matches_intent/always and one-level grouped equals conditions; empty
+end-call/code function descriptions; and empty API response-mapping descriptions.
+These rules do not match arbitrary nested parameter schemas or other dictionary
+keys. Authored fields remain mandatory and immutable, even at a default value.
+Other condition operators/deeper groups and unreviewed fields still fail closed.
 The kit's max_node_turns example default is 10, but this live server returned null
 for an omitted cap; this comparator admits only that observed addition. An authored
 cap may never be changed to null.
@@ -50,5 +52,4 @@ python3.11 -m unittest discover -s tests -v
 ```
 
 T05 still needs a complete valid public banking build within 30 minutes and live
-acceptance of its generated guarded workflow. This local change does not close
-T05, merge T02 PR #48, start a simulation or authorize new platform mutations.
+acceptance of its generated guarded workflow. These changes do not close T05 or merge T02 PR #48. See [the Brief A attempt](T05-BRIEF-A-ATTEMPT.md) for the remaining source-policy blocker.

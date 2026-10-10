@@ -1,9 +1,18 @@
 # Frozen policy and guarded generation
 
+Policy may cite the supplied OpenAPI through the optional controller-derived
+`tool-api` source; its exact text/hash are validated alongside mandatory briefs.
+API guarantees must not be attributed to unrelated brief quotations. Extraction
+receives the compiler's action-to-required-rule interface, never fabricated values.
+Independent provenance/shape errors are returned in the same bounded repair. A
+source ambiguity surviving one extraction review stops as `unsupported_policy`,
+retaining both rejected outputs instead of repeatedly spending model turns.
+
 The default builder extracts policy once, resolves amendment precedence against all
 source fingerprints and the supplied OpenAPI, then freezes its contract. Explicit
 `--policy-file` resumption revalidates that policy against current inputs. A shared
-30-minute deadline covers isolation auditing, extraction, generation, bounded
+30-minute deadline uses both monotonic and wall elapsed time (never regaining
+spent time after clock rollback) and covers isolation auditing, extraction, generation, bounded
 repairs and export; 300 seconds remain reserved for export.
 
 Subsequent fresh generation calls receive resolved active values, the permitted

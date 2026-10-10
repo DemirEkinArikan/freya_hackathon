@@ -141,7 +141,7 @@ class RuntimeTests(unittest.TestCase):
         process = Mock(pid=1234, returncode=0)
         process.communicate.side_effect = [subprocess.TimeoutExpired(["codex"], 30, output=b'{"type":"turn.started"}\n'), ("done", "")]
         progress = Mock()
-        with patch("builder.runtime.subprocess.Popen", return_value=process), patch("builder.runtime.time.monotonic", side_effect=[0, 30]):
+        with patch("builder.runtime.subprocess.Popen", return_value=process), patch("builder.runtime.time.monotonic", side_effect=[0, 30, 31]):
             result = run_bounded(["codex"], input="safe", timeout=90, on_progress=progress)
         self.assertEqual(result.stdout, "done")
         self.assertEqual(progress.call_count, 1)

@@ -20,7 +20,7 @@ _NODE_DEFAULTS = {
     "truncation_strategy": "keep_all", "truncation_window_size": 10,
 }
 # Only node types present in retained live evidence may acquire these defaults.
-_OBSERVED_NODE_TYPES = {"conversation", "end_call"}
+_OBSERVED_NODE_TYPES = {"conversation", "end_call", "code", "api_request"}
 
 
 class ReadbackMismatch(ValueError):
@@ -29,7 +29,7 @@ class ReadbackMismatch(ValueError):
 
 def _defaults(path: tuple, expected: dict, authored: dict) -> dict:
     if not path:
-        return {"global_nodes": {}, "test_variables": {}}
+        return {"global_nodes": {}, "test_variables": {}, "system_prompt": ""}
     if len(path) < 2 or path[0] != "nodes":
         return {}
     node = authored.get("nodes", {}).get(path[1], {})
@@ -37,9 +37,22 @@ def _defaults(path: tuple, expected: dict, authored: dict) -> dict:
         return {}
     if len(path) == 2:
         return _NODE_DEFAULTS
+    # Direct intent/always and one-level grouped equals are observed on the
+    # retained controller-shaped probe. Other condition shapes remain strict.
     if (len(path) == 5 and path[2] == "transitions" and type(path[3]) is int
-            and path[4] == "condition" and expected.get("operator") == "matches_intent"):
+            and path[4] == "condition" and expected.get("operator") in {"matches_intent", "always"}):
         return {"mode": "exact"}
+    if (len(path) == 7 and path[2] == "transitions" and type(path[3]) is int
+            and path[4:6] == ("condition", "conditions") and type(path[6]) is int
+            and expected.get("operator") == "equals"):
+        return {"mode": "exact"}
+    if (len(path) == 5 and path[2] == "pre_actions" and type(path[3]) is int
+            and path[4] == "function" and node["node_type"] == "code"
+            and expected.get("handler") == "__function__:code_exec"):
+        return {"description": ""}
+    if (len(path) == 4 and path[2] == "response_mapping" and type(path[3]) is int
+            and node["node_type"] == "api_request"):
+        return {"description": ""}
     if (path[2:] == ("terminal", "function") and node["node_type"] == "end_call"
             and expected.get("handler") == "__function__:end_call"):
         return {"description": ""}

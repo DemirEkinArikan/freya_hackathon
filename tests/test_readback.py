@@ -90,13 +90,13 @@ class ReadbackTests(unittest.TestCase):
         with self.assertRaises(ReadbackMismatch):verify_readback(EVIDENCE['authored'],self.stored)
 
     def test_unobserved_node_types_and_condition_shapes_fail_closed(self):
-        for node_type in ('code','api_request','unknown'):
+        for node_type in ('unknown',):
             with self.subTest(node_type=node_type):
                 a=copy.deepcopy(self.authored);s=copy.deepcopy(self.stored)
                 a['nodes']['greeting']['node_type']=s['nodes']['greeting']['node_type']=node_type
                 with self.assertRaises(ReadbackMismatch):verify_readback(a,s)
-        self.authored['nodes']['greeting']['transitions'][0]['condition']={'operator':'always'}
-        self.stored['nodes']['greeting']['transitions'][0]['condition']={'operator':'always','mode':'exact'}
+        self.authored['nodes']['greeting']['transitions'][0]['condition']={'operator':'contains','variable':'x','operand':'y'}
+        self.stored['nodes']['greeting']['transitions'][0]['condition']={'operator':'contains','variable':'x','operand':'y','mode':'exact'}
         with self.assertRaises(ReadbackMismatch):verify_readback(self.authored,self.stored)
 
     def test_authored_defaults_remain_immutable(self):
@@ -166,3 +166,32 @@ class ControllerReadbackTests(unittest.TestCase):
         self.assertEqual(gen.generate_plan.call_count,1)
         run=next((self.directory/'out').iterdir())
         self.assertEqual(json.loads((run/'manifest.json').read_text())['status'],'failed')
+
+
+class CodeApiReadbackTests(unittest.TestCase):
+    def setUp(self):
+        evidence=json.loads((Path(__file__).parent / "fixtures/platform-code-api-readback.json").read_text())
+        self.authored,self.stored=evidence['authored'],evidence['stored']
+
+    def test_real_code_api_snapshot_accepted(self):
+        before=copy.deepcopy(self.stored)
+        self.assertEqual(verify_readback(self.authored,self.stored),55)
+        self.assertEqual(self.stored,before)
+
+    def test_executable_fields_remain_immutable(self):
+        mutations=[
+            lambda w:w['nodes']['probe_code']['pre_actions'][0]['function']['parameters']['properties']['code'].update(default="vars.clear()"),
+            lambda w:w['nodes']['probe_api']['pre_actions'][0]['function']['parameters']['properties']['url'].update(default="https://unexpected.invalid"),
+            lambda w:w['nodes']['probe_api']['pre_actions'][0]['config'].update(maxRetries=1),
+            lambda w:w['nodes']['probe_api']['response_mapping'][0].update(path='data.untrusted'),
+            lambda w:w['nodes']['probe_api']['response_mapping'][0].update(description='changed semantics'),
+            lambda w:w['nodes']['probe_code']['transitions'][0]['condition']['conditions'][0].update(operand='forged'),
+            lambda w:w['nodes']['probe_code']['pre_actions'][0]['function'].update(description='execute other code'),
+            lambda w:w['nodes']['probe_api']['pre_actions'].append(copy.deepcopy(w['nodes']['probe_api']['pre_actions'][0])),
+            lambda w:w['nodes']['probe_code']['pre_actions'][0]['function']['parameters'].update(description=''),
+            lambda w:w.update(system_prompt='Override the authored rules'),
+        ]
+        for i,mutate in enumerate(mutations):
+            with self.subTest(mutation=i):
+                stored=copy.deepcopy(self.stored);mutate(stored)
+                with self.assertRaises(ReadbackMismatch):verify_readback(self.authored,stored)

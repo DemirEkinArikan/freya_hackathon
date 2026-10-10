@@ -38,6 +38,10 @@ schedule_callback: date,time
 close_call: none; optional outcome,reason for language-derived identity disposition
 
 A guarded close_call is required; authored end_call nodes are forbidden.
+Its controller-owned terminal is silent. Source-required farewell, app advice or
+other concluding explanation needs an authored speaking conversation on each
+applicable path before close_call. The compiler does not add that dialogue. Do not
+claim a final close was recorded before its API result or speak after termination.
 The compiler owns protected bg_state/bg_route values and all internal nodes. A
 compiler success route means observed API success or completed local staging as
 appropriate. Blocked/failure routes do not establish that any bank write occurred.
@@ -62,8 +66,21 @@ Use only available constraints to propose terms; blocked/unavailable constraints
 never authorize a write. These internal fields are not narration permission and
 contain no assertion of persuasion attempts remaining. Account narration
 is blocked unless active account_disclosure_fields explicitly declares approved
-returned scalar fields. Then account.products contains only those fields and
-positions. Use approved displays for human wording; never expose internal IDs or
-API extras. Quarantined/unavailable views cannot authorize further bank actions
-or imply unknown writes succeeded. Conditional disclosure permissions remain
-unsupported by this unconditional field list.
+returned scalar fields. A legacy array requires every listed field for every
+product. The supported conditional object has common (an array of fields required
+for every product) and by_product_type (source-defined product types mapped to
+arrays required only for that selected type). Names, type codes and permissions
+come from the frozen source/API bindings; do not invent type-specific exceptions.
+Then account.products contains only common and selected-type approved fields and
+positions. Missing required fields block narration; unrelated API extras never
+become permitted merely because another product type may disclose them. Use these
+approved displays for human wording; never expose internal IDs or API extras.
+Quarantined/unavailable views cannot authorize further bank actions or imply
+unknown writes succeeded.
+
+If the source requires shared-deadline adjustment dialogue, use the available
+approved proposal constraints to explain the change and obtain fresh agreement
+before the final guarded commitment. The guard owns calculations and consent;
+the authored dialogue owns required explanations. Do not narrate raw protected
+state, internal IDs or unavailable constraints, or infer a shared-deadline rule
+from this transport reference.

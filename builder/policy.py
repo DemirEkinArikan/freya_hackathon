@@ -80,7 +80,7 @@ _SHAPE_GUIDANCE = {
     "result_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "product_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique",
-    "nonpersistent_failures": "an object mapping operation names to arrays of unique objects containing only http_status (integer 100..599) and optional error (nonempty string)",
+    "nonpersistent_failures": "an object mapping actual operation names to arrays of unique objects containing http_status (integer 100..599), optional error (nonempty string), and optional api_source containing exactly pointer and quote (nonempty strings); controller execution requires a literal OpenAPI witness scoped to that operation's exact response status",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique nonempty outcome strings",
@@ -274,9 +274,14 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         if valid:
             for operation, failures in value.items():
                 if (not text(operation) or not isinstance(failures, list)
-                        or any(not isinstance(failure, dict) or set(failure) - {"http_status", "error"}
+                        or any(not isinstance(failure, dict) or set(failure) - {"http_status", "error", "api_source"}
                                or type(failure.get("http_status")) is not int or not 100 <= failure["http_status"] <= 599
-                               or ("error" in failure and not text(failure["error"])) for failure in failures)
+                               or ("error" in failure and not text(failure["error"]))
+                               or ("api_source" in failure and
+                                   (not isinstance(failure["api_source"], dict)
+                                    or set(failure["api_source"]) != {"pointer", "quote"}
+                                    or not text(failure["api_source"]["pointer"])
+                                    or not text(failure["api_source"]["quote"]))) for failure in failures)
                         or len({canonical_json(failure) for failure in failures}) != len(failures)):
                     valid = False
                     break

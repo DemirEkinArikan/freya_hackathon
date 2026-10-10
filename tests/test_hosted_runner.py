@@ -2,6 +2,7 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -252,18 +253,23 @@ class HostedRunnerTests(unittest.TestCase):
                 active[0] = True
             def __exit__(self, *_):
                 active[0] = False
-        client = FreyaClient(api_key="mock-only", deadline=deadline, lease_path=Path("mock-shared.lock"),
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        lease_path = Path(directory.name) / "mock-shared.lock"
+        client = FreyaClient(api_key="mock-only", deadline=deadline, lease_path=lease_path,
                              sleep=lambda seconds: now.__setitem__(0, now[0] + seconds))
         requests = []
         def request(method, route, body=None, **kwargs):
             self.assertTrue(active[0])
             requests.append((method, route))
+            if route == "/api/v2/workspaces":
+                return {"workspaces": [{"id": "mock-workspace"}]}
             return {"simulation": {"id": "mock-simulation", "status": "running"}}
         client.request = request
         backend = HostedBackend(client, team_key="mock-team-key-only")
         with patch("builder.platform.FileLock", MockLease), self.assertRaises(DeadlineExceeded):
             backend.simulate("agent", "mock", {"persona": {"customer_id": "mock-customer"}})
-        self.assertEqual(entered, [(Path("mock-shared.lock"), deadline)])
+        self.assertEqual(entered, [(lease_path, deadline)])
         self.assertFalse(active[0])
         self.assertEqual(now[0], 15)
         self.assertEqual(sum(method == "POST" for method, _ in requests), 1)
@@ -273,7 +279,7 @@ class HostedRunnerTests(unittest.TestCase):
         offsets = []
         def request(method, route, params):
             offsets.append(params)
-            return {"runs": [{"id": index} for index in range(params["offset"], min(params["offset"] + 100, 101))], "runsTotal": 101}
+            return {"runs": [{"id": "run-" + str(index)} for index in range(params["offset"], min(params["offset"] + 100, 101))], "runsTotal": 101}
         client.request = request
         backend = HostedBackend(client, team_key="mock-team-key-only")
         result = backend.iteration({"simulation_id": "simulation", "iteration_id": "iteration"})

@@ -325,6 +325,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         # The disclosure compiler additionally binds every selected wire code
         # to the exact get_account product-type schema.
         codes = result.get("wire_codes", {}).get("product_types", {})
+        if any(kind in codes.values() and codes.get(kind, kind) != kind for kind in disclosure["by_product_type"]):
+            raise GuardCompileError(["account disclosure key is ambiguous between semantic and wire product types"])
         selected = {codes.get(kind, kind): fields for kind, fields in disclosure["by_product_type"].items()}
         if len(selected) != len(disclosure["by_product_type"]):
             raise GuardCompileError(["account disclosure product-type keys collide through frozen code bindings"])
@@ -537,6 +539,10 @@ def _disclosure_schema(contract: dict, profile: dict, catalog: dict) -> dict:
         if not isinstance(type_schema, dict) or type_schema.get("type") != "string":
             raise GuardCompileError(["conditional account disclosure requires an exact string product-type schema"])
         enum = type_schema.get("enum")
+        sourced = contract["active_rules"]["account_disclosure_fields"]["value"]["by_product_type"]
+        codes = profile.get("wire_codes", {}).get("product_types", {})
+        if enum is not None and any(kind in enum and codes.get(kind, kind) != kind for kind in sourced):
+            raise GuardCompileError(["account disclosure semantic product-type key shadows a supplied API code"])
         if enum is not None and any(kind not in enum for kind in selected["by_product_type"]):
             raise GuardCompileError(["account disclosure product-type key is outside the supplied API enum"])
         return {"mode": "by_product_type", "type_schema": copy.deepcopy(type_schema),

@@ -167,6 +167,13 @@ class ConditionalDisclosureTests(unittest.TestCase):
                 self.assertEqual(variables["bg_quarantined"], "yes")
                 self.assertEqual(json.loads(variables["bg_facts"])["latest_action"]["status"], "fact_projection_failed")
 
+    def test_semantic_keys_cannot_shadow_supplied_wire_type_codes(self):
+        value = {"common": ["kind_wire"], "by_product_type": {"KIND_A": ["ending_digits"]}}
+        for codes in ({"source-alpha": "KIND_A", "KIND_A": "KIND_B"}, {"KIND_A": "KIND_B"}):
+            context = authored(value, renamed=True, codes=codes)
+            with self.subTest(codes=codes), self.assertRaises(GuardCompileError):
+                compile_guarded_workflow(**context)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -163,7 +163,10 @@ def _local_disposition_errors(actions: list[str], contract: dict, execution: dic
             or execution["profile"].get("record_notes") is not False):
         return []
     normalized = _profile(contract, execution, inspection_plan, bindings)
-    if ("paid" in normalized.get("close_reasons", {})
+    # The supplied precedence array contains account outcomes only. Identity
+    # dispositions can legitimately use the same global outcome vocabulary;
+    # their presence grants no account-paid path or missing local marker.
+    if ("paid" in normalized.get("close_precedence", [])
             and "paid" not in normalized.get("note_reasons", [])):
         return ["local disposition coverage cannot represent the supported paid closing meaning; source-backed note_reasons must include its local marker after frozen wire decoding; record_notes false does not authorize add_note or supply a default"]
     return []

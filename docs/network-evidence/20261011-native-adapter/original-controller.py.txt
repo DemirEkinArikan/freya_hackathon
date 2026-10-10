@@ -1,0 +1,170 @@
+"""Isolated authorized T11 runtime driver, never a builder/model input."""
+import argparse
+import datetime as dt
+import hashlib
+import http.client
+import ipaddress
+import json
+from pathlib import Path
+import socket
+import subprocess
+import ssl
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+from benchmarks.hosted import BANK, HostedBackend, NoRedirect, evaluate, load_cases
+from builder.config import load_local_environment
+from builder.platform import FreyaClient, _payload
+from builder.runtime import Deadline, FileLock
+from builder.safety import digest, sanitize
+
+PRIMARY = Path('/Users/demirekinarikan/VsCode/freya_hackathon')
+HERE = Path(__file__).resolve().parent
+ap = argparse.ArgumentParser()
+ap.add_argument('--bank-ip', required=True)
+ap.add_argument('--deploy-only', action='store_true')
+ap.add_argument('--run-existing', action='store_true')
+args = ap.parse_args()
+bank_ip = str(ipaddress.IPv4Address(args.bank_ip))
+host = urllib.parse.urlsplit(BANK).hostname
+context = ssl.create_default_context()
+assert context.check_hostname and context.verify_mode == ssl.CERT_REQUIRED
+deadline = Deadline(1800)
+events = []
+
+def event(kind, **fields):
+    item = {'time':dt.datetime.now(dt.timezone.utc).isoformat(), 'event':kind, **fields}
+    events.append(item)
+    (HERE/'adapter-events.json').write_text(json.dumps(events, indent=2)+'\n')
+    print(json.dumps(item), flush=True)
+
+class RoutedBankConnection(http.client.HTTPSConnection):
+    def __init__(self, requested_host, **kwargs):
+        super().__init__(requested_host, **kwargs)
+        if self.host != host or self.port != 443:
+            raise ValueError('Only the documented bank host and TLS port may use this route')
+        def connect(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+            if address != (host, 443):
+                raise ValueError('Proxy/tunnel host differs from the documented bank origin')
+            return socket.create_connection((bank_ip,443), timeout, source_address)
+        self._create_connection = connect
+
+class BankHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        parsed = urllib.parse.urlsplit(req.full_url)
+        if parsed.scheme != 'https' or parsed.hostname != host or parsed.port not in (None,443):
+            raise ValueError('Bank-only transport refuses a different origin')
+        return self.do_open(RoutedBankConnection,req,context=context)
+
+bank_open = urllib.request.build_opener(NoRedirect(),BankHandler()).open
+
+class TimedClient(FreyaClient):
+    def request(self, method, path, body=None, params=None):
+        start = time.monotonic()
+        result = super().request(method,path,body,params)
+        item = {'method':method,'route_kind':'platform','elapsed_seconds':round(time.monotonic()-start,3)}
+        if '/iterations/' in path and isinstance(result,dict) and isinstance(result.get('runs'),list):
+            item.update(route_kind='iteration_page',simulation_id=path.split('/')[4],iteration_id=path.split('/')[6],
+                        offset=(params or {}).get('offset'),runs=len(result['runs']),total=result.get('runsTotal'))
+        timings.append(item)
+        return result
+    def run_simulation(self, agent_id,name,variables_by_persona,max_seconds=90,concurrency=2):
+        event('simulation_about_to_start', agent_id=agent_id, canonical_lease=str(self.lease_path), personas=len(variables_by_persona))
+        return super().run_simulation(agent_id,name,variables_by_persona,90,concurrency)
+
+timings=[]
+load_local_environment(PRIMARY/'.env')
+client=TimedClient(deadline=deadline,reserve=300,lease_path=PRIMARY/'artifacts/.simulation.lock')
+
+class WitnessBackend(HostedBackend):
+    def __init__(self):
+        super().__init__(client,deadline,opener=self.open_bank,reserve=300)
+        self.freshness=[]
+        self.pending=[]
+        self.forwards=[]
+    def open_bank(self,req,timeout):
+        start=time.monotonic()
+        try:
+            response=bank_open(req,timeout=timeout)
+        except BaseException as exc:
+            timings.append({'route_kind':'bank','method':req.get_method(),'elapsed_seconds':round(time.monotonic()-start,3),'failure_type':type(exc).__name__})
+            raise
+        timings.append({'route_kind':'bank','method':req.get_method(),'http_status':response.status,'elapsed_seconds':round(time.monotonic()-start,3)})
+        return response
+    def practice_session(self,seed):
+        session=super().practice_session(seed)
+        witness={'bank_case_id':seed,'variables_sha256':digest(session),
+                 'customer_fingerprint':hashlib.sha256(session['customer_id'].encode()).hexdigest(),
+                 'session_field_present':'session_id' in session}
+        if 'session_id' in session:
+            witness['session_fingerprint']=hashlib.sha256(session['session_id'].encode()).hexdigest()
+        self.freshness.append(witness)
+        self.pending.append(digest(session))
+        return session
+    def simulate(self,agent_id,name,variables,concurrency=2):
+        actual=sorted(digest(v) for v in variables.values())
+        match=actual==sorted(self.pending)
+        self.forwards.append({'repetition':len(self.forwards)+1,'server_variables_forwarded_unchanged':match,'personas':len(variables)})
+        self.pending=[]
+        if not match:
+            raise ValueError('Practice server variables changed before simulation')
+        return super().simulate(agent_id,name,variables,concurrency)
+
+backend=WitnessBackend()
+event('start',source_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),controller_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),budget_seconds=1800,reserve_seconds=300,
+      transport={'original_origin':BANK,'bank_ip_input':bank_ip,'public_ca':True,'hostname_validation':True,'sni':host,'global_dns_changed':False},
+      model_calls=0,generated_candidate=False)
+
+if args.run_existing:
+    deployment=json.loads((HERE/'adapter-deployment.json').read_text())
+else:
+    authored=json.loads((PRIMARY/'artifacts/t03-platform-acceptance/20261010-live-smoke/authored.workflow.json').read_text())
+    client.validate_workflow('t11-compatible-greeting-v1',authored)
+    deployment=client.save_workflow('t11-compatible-greeting-v1',authored,state_file=PRIMARY/'artifacts/.freya-slots.json')
+    (HERE/'adapter-deployment.json').write_text(json.dumps(deployment,indent=2)+'\n')
+    client.export_workflow(deployment,HERE/'adapter-export.workflow.json')
+event('deployment_verified',**{k:deployment[k] for k in ('workflow_id','agent_id','version_id','version_number','published')},graph_sha256=digest(deployment['workflow']))
+if args.deploy_only:
+    event('end',status='deployed_only',simulations_started=0)
+    raise SystemExit(0)
+
+with FileLock(client.lease_path,deadline,reserve=300):
+    lease=json.loads(client.lease_path.with_suffix('.json').read_text())
+    if lease.get('creation_pending'):
+        raise RuntimeError('Canonical lease has pending creation')
+    actual=_payload(client.request('GET',f"/api/v2/simulations/{lease['simulation_id']}"),'simulation',dict)
+    if actual.get('id')!=lease['simulation_id'] or actual.get('status') not in ('completed','failed'):
+        raise RuntimeError('Canonical lease is not authoritatively terminal')
+    event('lease_reconciled',simulation_id=lease['simulation_id'],actual_status=actual['status'],lease_changed=False)
+
+_,all_rows=load_cases(ROOT/'benchmarks/fixtures/hosted.json',split='train',brief='A')
+rows=[r for r in all_rows if r['bank_case_id']=='PUB-01'][:2]
+assert len(rows)==2
+event('fixture_selection',fixtures=[{'fixture_id':r['fixture_id'],'bank_case_id':r['bank_case_id'],'style':r['style']} for r in rows],repetitions=2)
+result=evaluate(backend,deployment['agent_id'],rows,reps=2,concurrency=2,deployment=deployment)
+(HERE/'adapter-results.private.json').write_text(json.dumps(result,indent=2)+'\n')
+client.export_workflow(deployment,HERE/'adapter-final-export.workflow.json')
+failures=[f for r in result['rows'] for f in r.get('failures',[])]
+compatibility={'status':result['status'],'requested_calls':4,'observed_rows':len(result['rows']),
+               'customer_fingerprints_unique':len({w['customer_fingerprint'] for w in backend.freshness})==4,
+               'fresh_sessions':backend.freshness,'forwarding_witness':backend.forwards,
+               'deployment':{k:deployment[k] for k in ('workflow_id','agent_id','version_id','version_number','published')},
+               'graph_sha256':digest(deployment['workflow']),'deployment_pin':result['deployment_pin'],
+               'simulations':result['simulations'],'calls':[{'fixture_id':r['fixture_id'],'bank_case_id':r.get('bank_case_id'),
+                   'repetition':r['repetition'],'simulation_id':r.get('simulation_id'),'iteration_id':r.get('iteration_id'),
+                   'call_id':r.get('call_id'),'version_attribution':r.get('version_attribution'),
+                   'ledger_retrieved':isinstance(r.get('ledger'),dict),'transcript_messages':len((r.get('transcript') or {}).get('messages',[])),
+                   'judge_outcome':(r.get('judge') or {}).get('outcome'),
+                   'failure_categories':sorted({f['category'] for f in r.get('failures',[])})} for r in result['rows']],
+               'timings':timings,'infrastructure_or_evidence_failures':sum(f['category'] in ('infrastructure','evidence') for f in failures),
+               'passed_banking_cases':result['passed'],'total_banking_cases':result['total'],
+               'claim':'Adapter compatibility only. Synthetic greeting agent does not implement banking policy.'}
+(HERE/'adapter-compatibility.json').write_text(json.dumps(compatibility,indent=2)+'\n')
+event('end',status=result['status'],observed_rows=len(result['rows']),
+      infrastructure_or_evidence_failures=compatibility['infrastructure_or_evidence_failures'],
+      deployment_pin_verified=result['deployment_pin']['verified'],per_call_version_verified=result['deployment_pin']['per_call_version_verified'],
+      runtime_seconds=round(deadline.elapsed,3))

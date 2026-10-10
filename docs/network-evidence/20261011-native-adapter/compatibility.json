@@ -1,0 +1,662 @@
+{
+  "status": "infrastructure_failure",
+  "requested_calls": 4,
+  "observed_rows": 4,
+  "customer_fingerprints_unique": true,
+  "fresh_sessions": [
+    {
+      "bank_case_id": "PUB-01",
+      "variables_sha256": "e58a7cd62d2a86ff7ba2ae57e03c4ccf29bf37ca1c7fb35e846172ce75964349",
+      "customer_fingerprint": "d4f0439d5a409437c4b4d1a56253af28f30d78820f0ff8f9a35cf50466af4b3a",
+      "session_field_present": false
+    },
+    {
+      "bank_case_id": "PUB-01",
+      "variables_sha256": "e98e6160b668dbb6513065af236cc42fd1c26d577fdcf0f4a2fd87a707e76323",
+      "customer_fingerprint": "84d04c03efb4c51aeba3ada8b441715dc62df231ca5da4422963583ce8032129",
+      "session_field_present": false
+    },
+    {
+      "bank_case_id": "PUB-01",
+      "variables_sha256": "60753ba188d03ba5926db119336f200b49eee23f462e1174f307f915061e9e44",
+      "customer_fingerprint": "a32a5ed335b0b1dcf3ed74dfa4a876eacb765a64a56955047f6602fcdea8fcbc",
+      "session_field_present": false
+    },
+    {
+      "bank_case_id": "PUB-01",
+      "variables_sha256": "dc6d0cf8afcca154552d8bfb56ae2c6b3bc9294b5d4e4a9a868e8b09810d2256",
+      "customer_fingerprint": "7e0a529a4b140e0270a50cd8bb53b68c706f9687826139e1e807c5519d1fec1f",
+      "session_field_present": false
+    }
+  ],
+  "forwarding_witness": [
+    {
+      "repetition": 1,
+      "server_variables_forwarded_unchanged": true,
+      "personas": 2
+    },
+    {
+      "repetition": 2,
+      "server_variables_forwarded_unchanged": true,
+      "personas": 2
+    }
+  ],
+  "deployment": {
+    "workflow_id": "832940fc-46a9-404e-95a6-5b36220617af",
+    "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+    "version_id": "92c2ec8a-9c86-4254-ad68-f543ad53749b",
+    "version_number": 1,
+    "published": true
+  },
+  "graph_sha256": "1cee69a544b5a0319e9f67ab97820a926d0677c00679e9ae421b9ca5f93b8c47",
+  "deployment_pin": {
+    "before": {
+      "workflow_id": "832940fc-46a9-404e-95a6-5b36220617af",
+      "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+      "version_id": "92c2ec8a-9c86-4254-ad68-f543ad53749b",
+      "version_number": 1,
+      "graph_sha256": "1cee69a544b5a0319e9f67ab97820a926d0677c00679e9ae421b9ca5f93b8c47",
+      "published": true,
+      "model": null,
+      "reasoning_effort": null
+    },
+    "after": {
+      "workflow_id": "832940fc-46a9-404e-95a6-5b36220617af",
+      "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+      "version_id": "92c2ec8a-9c86-4254-ad68-f543ad53749b",
+      "version_number": 1,
+      "graph_sha256": "1cee69a544b5a0319e9f67ab97820a926d0677c00679e9ae421b9ca5f93b8c47",
+      "published": true,
+      "model": null,
+      "reasoning_effort": null
+    },
+    "verified": true,
+    "per_call_version_verified": true,
+    "per_call_version": "pinned evaluation requires matching judge or transcript agentVersionNumber on every call"
+  },
+  "simulations": [
+    {
+      "repetition": 1,
+      "simulation_id": "148b9a56-5f9c-4a04-ba8e-d00e157af454",
+      "iteration_id": "e8e6bf9e-a7a3-4a8d-8907-74ec4744fc2b",
+      "status": "completed"
+    },
+    {
+      "repetition": 2,
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "status": "completed"
+    }
+  ],
+  "calls": [
+    {
+      "fixture_id": "HOST-001",
+      "bank_case_id": "PUB-01",
+      "repetition": 1,
+      "simulation_id": "148b9a56-5f9c-4a04-ba8e-d00e157af454",
+      "iteration_id": "e8e6bf9e-a7a3-4a8d-8907-74ec4744fc2b",
+      "call_id": "9c8846d9-b3e6-42df-993b-a5633499f7ac",
+      "version_attribution": {
+        "expected": 1,
+        "observed": {
+          "judge": 1
+        },
+        "status": "verified",
+        "verified": true
+      },
+      "ledger_retrieved": true,
+      "transcript_messages": 10,
+      "judge_outcome": "fail",
+      "failure_categories": [
+        "behavior",
+        "conversation",
+        "infrastructure"
+      ]
+    },
+    {
+      "fixture_id": "HOST-014",
+      "bank_case_id": "PUB-01",
+      "repetition": 1,
+      "simulation_id": "148b9a56-5f9c-4a04-ba8e-d00e157af454",
+      "iteration_id": "e8e6bf9e-a7a3-4a8d-8907-74ec4744fc2b",
+      "call_id": "e4ef1ae8-c013-4902-8363-7fa3cf38e72e",
+      "version_attribution": {
+        "expected": 1,
+        "observed": {
+          "judge": 1
+        },
+        "status": "verified",
+        "verified": true
+      },
+      "ledger_retrieved": true,
+      "transcript_messages": 10,
+      "judge_outcome": "fail",
+      "failure_categories": [
+        "behavior",
+        "conversation",
+        "infrastructure"
+      ]
+    },
+    {
+      "fixture_id": "HOST-001",
+      "bank_case_id": "PUB-01",
+      "repetition": 2,
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "call_id": "52c491e3-639a-4048-bcff-da2422f20d17",
+      "version_attribution": {
+        "expected": 1,
+        "observed": {
+          "judge": 1
+        },
+        "status": "verified",
+        "verified": true
+      },
+      "ledger_retrieved": true,
+      "transcript_messages": 10,
+      "judge_outcome": "fail",
+      "failure_categories": [
+        "behavior",
+        "conversation",
+        "infrastructure"
+      ]
+    },
+    {
+      "fixture_id": "HOST-014",
+      "bank_case_id": "PUB-01",
+      "repetition": 2,
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "call_id": "e51d1ceb-e548-46e0-9b6d-d75e0cec0f82",
+      "version_attribution": {
+        "expected": 1,
+        "observed": {
+          "judge": 1
+        },
+        "status": "verified",
+        "verified": true
+      },
+      "ledger_retrieved": true,
+      "transcript_messages": 10,
+      "judge_outcome": "fail",
+      "failure_categories": [
+        "behavior",
+        "conversation",
+        "infrastructure"
+      ]
+    }
+  ],
+  "timings": [
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.342
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.252
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.295
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.318
+    },
+    {
+      "method": "POST",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.522
+    },
+    {
+      "route_kind": "bank",
+      "method": "POST",
+      "http_status": 200,
+      "elapsed_seconds": 0.273
+    },
+    {
+      "route_kind": "bank",
+      "method": "POST",
+      "http_status": 200,
+      "elapsed_seconds": 0.262
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.396
+    },
+    {
+      "method": "POST",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.437
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.319
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.305
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.511
+    },
+    {
+      "method": "GET",
+      "route_kind": "iteration_page",
+      "elapsed_seconds": 0.87,
+      "simulation_id": "148b9a56-5f9c-4a04-ba8e-d00e157af454",
+      "iteration_id": "e8e6bf9e-a7a3-4a8d-8907-74ec4744fc2b",
+      "offset": 0,
+      "runs": 2,
+      "total": 2
+    },
+    {
+      "route_kind": "bank",
+      "method": "GET",
+      "http_status": 200,
+      "elapsed_seconds": 0.255
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.295
+    },
+    {
+      "route_kind": "bank",
+      "method": "GET",
+      "http_status": 200,
+      "elapsed_seconds": 0.247
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.416
+    },
+    {
+      "route_kind": "bank",
+      "method": "POST",
+      "http_status": 200,
+      "elapsed_seconds": 0.248
+    },
+    {
+      "route_kind": "bank",
+      "method": "POST",
+      "http_status": 200,
+      "elapsed_seconds": 0.257
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.328
+    },
+    {
+      "method": "POST",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.828
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.308
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.276
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.352
+    },
+    {
+      "method": "GET",
+      "route_kind": "iteration_page",
+      "elapsed_seconds": 0.425,
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "offset": 0,
+      "runs": 2,
+      "total": 2
+    },
+    {
+      "route_kind": "bank",
+      "method": "GET",
+      "http_status": 200,
+      "elapsed_seconds": 0.249
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.307
+    },
+    {
+      "route_kind": "bank",
+      "method": "GET",
+      "http_status": 200,
+      "elapsed_seconds": 0.25
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.348
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.335
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.433
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.365
+    },
+    {
+      "method": "GET",
+      "route_kind": "platform",
+      "elapsed_seconds": 0.331
+    }
+  ],
+  "infrastructure_or_evidence_failures": 4,
+  "passed_banking_cases": 0,
+  "total_banking_cases": 2,
+  "claim": "Adapter compatibility only. Synthetic greeting agent does not implement banking policy.",
+  "result_retained_unchanged": true,
+  "classification_details": [
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 1,
+      "infrastructure_failures": [
+        {
+          "category": "infrastructure",
+          "message": "malformed outcome/reason record"
+        }
+      ]
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 1,
+      "infrastructure_failures": [
+        {
+          "category": "infrastructure",
+          "message": "malformed outcome/reason record"
+        }
+      ]
+    },
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 2,
+      "infrastructure_failures": [
+        {
+          "category": "infrastructure",
+          "message": "malformed outcome/reason record"
+        }
+      ]
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 2,
+      "infrastructure_failures": [
+        {
+          "category": "infrastructure",
+          "message": "malformed outcome/reason record"
+        }
+      ]
+    }
+  ],
+  "inventory_pages": [
+    {
+      "method": "GET",
+      "route_kind": "iteration_page",
+      "elapsed_seconds": 0.87,
+      "simulation_id": "148b9a56-5f9c-4a04-ba8e-d00e157af454",
+      "iteration_id": "e8e6bf9e-a7a3-4a8d-8907-74ec4744fc2b",
+      "offset": 0,
+      "runs": 2,
+      "total": 2
+    },
+    {
+      "method": "GET",
+      "route_kind": "iteration_page",
+      "elapsed_seconds": 0.425,
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "offset": 0,
+      "runs": 2,
+      "total": 2
+    }
+  ],
+  "original_result_sha256": "844446317f867094f68eba47b114b176c20c476e229503e772d048fdfe6c50d6",
+  "original_export_sha256": "c8e07e8b121483e7a22eac7cea2c6402ab1bcd6d74bc313eac0dff78bf14938d",
+  "call_details": [
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 1,
+      "persona_id": "5e08f5dd-bedf-4ad6-ad7c-5a2f85524b49",
+      "call_id": "9c8846d9-b3e6-42df-993b-a5633499f7ac",
+      "ledger_collection_shapes": {
+        "calls": true,
+        "promises": true,
+        "notes": true,
+        "callbacks": true,
+        "transfers": true
+      },
+      "ledger_collection_counts": {
+        "calls": 0,
+        "promises": 0,
+        "notes": 0,
+        "callbacks": 0,
+        "transfers": 0
+      },
+      "outcome_null": true,
+      "reason_null": true
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 1,
+      "persona_id": "e81d28cf-a57b-4bbe-a3d0-08b964383e1a",
+      "call_id": "e4ef1ae8-c013-4902-8363-7fa3cf38e72e",
+      "ledger_collection_shapes": {
+        "calls": true,
+        "promises": true,
+        "notes": true,
+        "callbacks": true,
+        "transfers": true
+      },
+      "ledger_collection_counts": {
+        "calls": 0,
+        "promises": 0,
+        "notes": 0,
+        "callbacks": 0,
+        "transfers": 0
+      },
+      "outcome_null": true,
+      "reason_null": true
+    },
+    {
+      "fixture_id": "HOST-001",
+      "repetition": 2,
+      "persona_id": "5e08f5dd-bedf-4ad6-ad7c-5a2f85524b49",
+      "call_id": "52c491e3-639a-4048-bcff-da2422f20d17",
+      "ledger_collection_shapes": {
+        "calls": true,
+        "promises": true,
+        "notes": true,
+        "callbacks": true,
+        "transfers": true
+      },
+      "ledger_collection_counts": {
+        "calls": 0,
+        "promises": 0,
+        "notes": 0,
+        "callbacks": 0,
+        "transfers": 0
+      },
+      "outcome_null": true,
+      "reason_null": true
+    },
+    {
+      "fixture_id": "HOST-014",
+      "repetition": 2,
+      "persona_id": "e81d28cf-a57b-4bbe-a3d0-08b964383e1a",
+      "call_id": "e51d1ceb-e548-46e0-9b6d-d75e0cec0f82",
+      "ledger_collection_shapes": {
+        "calls": true,
+        "promises": true,
+        "notes": true,
+        "callbacks": true,
+        "transfers": true
+      },
+      "ledger_collection_counts": {
+        "calls": 0,
+        "promises": 0,
+        "notes": 0,
+        "callbacks": 0,
+        "transfers": 0
+      },
+      "outcome_null": true,
+      "reason_null": true
+    }
+  ],
+  "original_source_head": "e18bd0780bcb5e5f23cbfdd6b911a6082348622f",
+  "runtime_modules_sha256": {
+    "builder/platform.py": "98f5538363a1a359c0a9a3b28e7168b212044c0d013f9d2bd88667023c768792",
+    "builder/config.py": "12c7164e1f2c1a5d36efff35872361a0fb8edef89203532c1dfe0affaf0a52b1",
+    "builder/runtime.py": "4fef9e149d4e3088288ea7963574c309186fdec2df9a30d3900fe90ae2708d3f",
+    "builder/safety.py": "383f7061ecd11ced38f5fad3a2a24e39c4806612e54ee1f35f3b304ecfc5aba3",
+    "benchmarks/hosted.py": "b69efd0385105eb6476839da35b5d47adbc0397580b4bf703616eab7ec8aa562",
+    "benchmarks/scoring.py": "14ac22d355227151eb9cd78e3efcd16d23c952a8a36bde7ffcdda4704e3afc21",
+    "benchmarks/seed_audit.py": "537cc0f7b5f0bb6f8f289ee4b01b8d4ff35b1b1c1182cb4c1cda37538b23405a"
+  },
+  "native_transport_tls": {
+    "observed_at_utc": "2026-10-10T22:14:06.242704+00:00",
+    "hostname": "freya-bank-mock.freyavoice.workers.dev",
+    "operation": "TLS-only to independently observed DNS addresses with exact servername, public CA chain and hostname verification",
+    "http_requests": 0,
+    "credentials_loaded": false,
+    "attempts": [
+      {
+        "ip": "104.21.31.48",
+        "status": "verified",
+        "protocol": "TLSv1.3",
+        "hostname_verification": true,
+        "certificate_mode": 2,
+        "elapsed_seconds": 0.17
+      },
+      {
+        "ip": "172.67.174.249",
+        "status": "verified",
+        "protocol": "TLSv1.3",
+        "hostname_verification": true,
+        "certificate_mode": 2,
+        "elapsed_seconds": 0.178
+      }
+    ]
+  },
+  "readonly_final_confirmation": {
+    "observed_at_utc": "2026-10-10T22:24:13.772985+00:00",
+    "simulations_started": 0,
+    "original_controller_error_retained": true,
+    "canonical_lease": {
+      "simulation_id": "ed748ba2-0e0a-4549-bea2-f31d4ac6d4bb",
+      "iteration_id": "e0d90c7d-1521-45d8-950f-1c1618c5018d",
+      "status": "completed",
+      "creation_pending": false
+    },
+    "actual_server_status": "completed",
+    "export_matches_original": true,
+    "graph_sha256": "1cee69a544b5a0319e9f67ab97820a926d0677c00679e9ae421b9ca5f93b8c47",
+    "required_phone_model_verified": true,
+    "original_controller_sha256": "11d4d94aa376c7f495aff9da9707b824b0920352469620d06898e937861c87c7",
+    "source_head": "b7259a38933fd1886eeb8231b6d9e92452a1e3a3"
+  },
+  "original_event_sequence": [
+    {
+      "time": "2026-10-10T22:17:43.585823+00:00",
+      "event": "start",
+      "source_head": "e18bd0780bcb5e5f23cbfdd6b911a6082348622f",
+      "controller_sha256": "11d4d94aa376c7f495aff9da9707b824b0920352469620d06898e937861c87c7",
+      "budget_seconds": 1800,
+      "reserve_seconds": 300,
+      "transport": {
+        "original_origin": "https://freya-bank-mock.freyavoice.workers.dev",
+        "bank_ip_input": "104.21.31.48",
+        "public_ca": true,
+        "hostname_validation": true,
+        "sni": "freya-bank-mock.freyavoice.workers.dev",
+        "global_dns_changed": false
+      },
+      "model_calls": 0,
+      "generated_candidate": false
+    },
+    {
+      "time": "2026-10-10T22:17:43.586406+00:00",
+      "event": "deployment_verified",
+      "workflow_id": "832940fc-46a9-404e-95a6-5b36220617af",
+      "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+      "version_id": "92c2ec8a-9c86-4254-ad68-f543ad53749b",
+      "version_number": 1,
+      "published": true,
+      "graph_sha256": "1cee69a544b5a0319e9f67ab97820a926d0677c00679e9ae421b9ca5f93b8c47"
+    },
+    {
+      "time": "2026-10-10T22:17:43.929248+00:00",
+      "event": "lease_reconciled",
+      "simulation_id": "03229c8e-5d0c-41fd-8179-35a50c6cc43e",
+      "actual_status": "completed",
+      "lease_changed": false
+    },
+    {
+      "time": "2026-10-10T22:17:43.932417+00:00",
+      "event": "fixture_selection",
+      "fixtures": [
+        {
+          "fixture_id": "HOST-001",
+          "bank_case_id": "PUB-01",
+          "style": "plain"
+        },
+        {
+          "fixture_id": "HOST-014",
+          "bank_case_id": "PUB-01",
+          "style": "corrects"
+        }
+      ],
+      "repetitions": 2
+    },
+    {
+      "time": "2026-10-10T22:17:45.857295+00:00",
+      "event": "simulation_about_to_start",
+      "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+      "canonical_lease": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock",
+      "personas": 2
+    },
+    {
+      "time": "2026-10-10T22:18:10.436520+00:00",
+      "event": "simulation_about_to_start",
+      "agent_id": "b149e951-6027-43c4-9996-9cebc79840a8",
+      "canonical_lease": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock",
+      "personas": 2
+    }
+  ],
+  "original_runtime_controller_error": {
+    "phase": "after results and final published export were persisted",
+    "type": "TypeError",
+    "fixed_message": "elapsed method passed to round instead of called",
+    "simulation_rerun": false,
+    "original_controller_sha256": "11d4d94aa376c7f495aff9da9707b824b0920352469620d06898e937861c87c7"
+  }
+}

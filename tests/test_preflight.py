@@ -56,7 +56,34 @@ class PreflightTests(unittest.TestCase):
         report = inspect_probe(subprocess.CompletedProcess([], 1, json.dumps(warning) + "\n" + response(), ""), {})
         self.assertIn("unknown_cli_diagnostic", report["failures"])
         self.assertIn("nonzero_exit", report["failures"])
-        self.assertNotIn("Unknown sensitive diagnostic", json.dumps(report))
+        self.assertEqual(report["unknown_cli_diagnostics"], ["Unknown sensitive diagnostic"])
+        self.assertEqual(report["unknown_cli_diagnostic_count"], 1)
+        self.assertFalse(report["unknown_cli_diagnostics_truncated"])
+
+    def test_unknown_diagnostic_metadata_redacts_before_clipping_and_discards_other_text(self):
+        credential = "opaque-known-credential"
+        canary = "random-never-in-prompt"
+        message = "Unsupported diagnostic " + credential + " " + canary + " /Users/private-user/config.toml " + "x" * 2500 + " sk-actualtoken12345678"
+        error = json.dumps({"type": "item.completed", "item": {"type": "error", "message": message}})
+        report = inspect_probe(subprocess.CompletedProcess([], 0, error + "\n" + response(), "raw stderr must disappear"),
+                               {"forbidden_file": canary}, known_secrets=(credential,))
+        text = json.dumps(report)
+        self.assertIn("unknown_cli_diagnostic", report["failures"])
+        self.assertIn("canary_exposed", report["failures"])
+        self.assertIn("[REDACTED]", report["unknown_cli_diagnostics"][0])
+        self.assertIn("[HOST_PATH]", report["unknown_cli_diagnostics"][0])
+        self.assertEqual(len(report["unknown_cli_diagnostics"][0]), 2000)
+        self.assertTrue(report["unknown_cli_diagnostics_truncated"])
+        for forbidden in (credential, canary, "private-user", "raw stderr", "sk-actualtoken12345678"):
+            self.assertNotIn(forbidden, text)
+
+    def test_unknown_diagnostic_retention_is_bounded_and_never_whitelists_errors(self):
+        events = [json.dumps({"type": "item.completed", "item": {"type": "error", "message": "Unrecognized diagnostic " + str(n)}}) for n in range(12)]
+        report = inspect_probe(subprocess.CompletedProcess([], 0, "\n".join(events) + "\n" + response(), ""), {})
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["unknown_cli_diagnostic_count"], 12)
+        self.assertEqual(len(report["unknown_cli_diagnostics"]), 8)
+        self.assertTrue(report["unknown_cli_diagnostics_truncated"])
 
     def test_probe_material_is_synthetic_and_cleaned_and_canaries_absent_from_prompt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -70,6 +97,13 @@ class PreflightTests(unittest.TestCase):
                 self.assertIn("--ignore-user-config", argv)
                 self.assertIn("--ignore-rules", argv)
                 self.assertIn("project_doc_max_bytes=0", argv)
+                self.assertIn("skills.bundled.enabled=false", argv)
+                self.assertIn("skills.include_instructions=false", argv)
+                self.assertIn("cloud.skills.enabled=false", argv)
+                self.assertIn("tools.experimental_request_user_input.enabled=false", argv)
+                self.assertIn("tools.update_plan.enabled=false", argv)
+                self.assertEqual(argv[argv.index("code_mode") - 1], "--disable")
+                self.assertEqual(argv[argv.index("code_mode_only") - 1], "--disable")
                 return subprocess.CompletedProcess(argv, 0, response(), "")
             report = isolation_probe(Path(tmp), run=run)
             self.assertEqual(report["status"], "pass")

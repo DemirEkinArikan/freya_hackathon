@@ -220,3 +220,19 @@ skills. Neither run exposed a random canary or emitted a tool action.
 preserves those results and the exact experimental controls. They do not replace
 the production configuration or newer evidence. No new probe was run while
 archiving this metadata, and neither result authorizes banking generation.
+
+## Current controls audit at 17:43 Istanbul
+
+A fresh synthetic audit under CLI 0.162.0-alpha.2 and GPT-5.5 tested the current
+restricted argv, including `unified_exec=false`. Python, CLI authentication and
+required capabilities passed. The audit completed successfully as a process and
+reported zero exposed canaries, zero omitted skills, zero unknown CLI diagnostics
+and no tool action. It still reported two available tools, including
+`functions.apply_patch`; the other name was excluded from retained diagnostics.
+The audit therefore fails the unchanged generation-isolation gate. No banking
+brief was sent and no Freya call was made by this audit.
+
+[Reviewed audit metadata](runtime-evidence/current-controls-20261010.json)
+records the source commit, model and controls. No named worker, account-ownership
+attestation or second-computer report is required for acceptance. A passing
+generation-isolation check remains necessary.

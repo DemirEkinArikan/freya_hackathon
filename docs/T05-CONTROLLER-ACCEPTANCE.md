@@ -21,13 +21,13 @@ or patching the generated graph is not acceptance.
 
 ## Source and controller boundary checks
 
-`tests/test_controller_acceptance.py` exercises eight controller boundaries
+`tests/test_controller_acceptance.py` exercises twelve controller boundaries
 using synthetic policies, an injected model transport or a fake platform:
 
 - Real generator audit failure prevents any substantive model process, freeze
   or platform initialization.
 - Repeated briefs retain supplied order, distinct source IDs and fingerprints,
-  including duplicate filenames; extraction receives only sources and API.
+  including duplicate filenames; extraction receives sources/API and value-free controller interface metadata.
 - Resumed policy inputs are revalidated before plans or platform operations.
 - A plan cannot substitute the frozen contract fingerprint.
 - Policy and plan failures share the two-repair budget and retain attempts.
@@ -44,10 +44,21 @@ per-attempt retention, strict stored-equivalence checks, experimental-5
 publication and export read-back/version validation. It found two pre-live
 hooks: require executable semantics before freeze, including resumed policies;
 and use the canonical shared simulation lease across output directories.
-The primary integration thread owns those controller edits. This dedicated
-acceptance branch owns this document and its test module.
+The isolated acceptance integration patch implements only those coordinated
+hooks, preserving the original primary/worktree branches. It validates the
+requirements descriptor inside bounded extraction repairs and on explicit
+resumption before freeze, persists/hash-binds it, and includes it unchanged in
+plan context. Plans cannot add or omit frozen selected capabilities.
 
-Required integration regressions additionally cover pre-freeze missing-kind
+The requirements calculation honors source-backed singleton applicability before
+aggregating missing kinds. Explicit ordering/resolution rules remain operative.
+An active promise failure disposition conditionally requires its note reason
+vocabulary, even without note API roles; membership uses the frozen wire-code
+mapping. Sources without guarantees or failure dispositions retain conservative
+quarantine rather than invented defaults. The T18 explicit shared-lease hook is
+preserved; input and artifact confinement remains unchanged.
+
+Integration regressions additionally cover pre-freeze missing-kind
 repair/exhaustion, disabled-operation applicability, local dispositions without
 `add_note` permission, API-bound replay guarantees, frozen descriptor context
 and identical shared lease paths across distinct output directories. Source
@@ -87,7 +98,7 @@ source checks or a synthetic platform smoke cannot substitute for them.
 
 ## Current acceptance evidence
 
-At this checkpoint the eight dedicated regressions pass under Python 3.11.
+At this checkpoint the twelve dedicated regressions pass under Python 3.11.
 Under the canonical lock, read-only staging requests at
 `2026-10-10T20:58:28.754935+00:00` confirmed the recorded synthetic simulation
 `03229c8e-5d0c-41fd-8179-35a50c6cc43e` is actually `completed`, with matching
@@ -96,5 +107,5 @@ readback was shared with the primary thread; future simulation admission still
 rechecks server status under the same lock.
 The full source checks and focused PR head are recorded in the T05 issue
 checkpoint accompanying this document. No fresh model generation, deployment,
-simulation or banking acceptance is claimed by this branch. Required generic
-hooks and actual accepted fresh banking publication/export remain outstanding.
+simulation or banking acceptance is claimed by this branch. The integrated hooks are under full-suite and independent review. Actual
+accepted fresh banking publication/export remains outstanding.

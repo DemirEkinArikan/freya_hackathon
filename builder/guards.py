@@ -1137,7 +1137,7 @@ def guard_result(state, data, profile, catalog, expected_action):
                 and parts[4] == str(status)):
             sourced_failure = True
     bodyless_failure = (type(status) is int and 400 <= status <= 599 and sourced_failure
-                        and ('ok' not in data or type(ok) is str and ok == ''))
+                        and (ok is None or type(ok) is str and ok == ''))
     # Every close result is terminal, including malformed or negative evidence.
     # Attempting a close does not establish that the bank recorded it.
     if action == 'close_call':
@@ -1149,9 +1149,11 @@ def guard_result(state, data, profile, catalog, expected_action):
         state['attempts'][tx['key']]['status'] = 'recorded' if state['closed'] else 'unknown_persistence'
         return state, 'closed', dict(), ''
     if (action == 'commit_promises' and not guard_true(ok) and 'promise_id' in data
-            and not (type(data['promise_id']) is str and data['promise_id'] == '')):
-        # A record identity contradicts rejection/no-body evidence. Null and
-        # malformed IDs are also uncertain, rather than permission to replay.
+            and not (type(data['promise_id']) is str and data['promise_id'] == ''
+                     or data['promise_id'] is None and type(status) is int
+                     and 400 <= status <= 599 and sourced_failure)):
+        # A record identity contradicts rejection/no-body evidence. Nonempty or
+        # malformed IDs are uncertain, rather than permission to replay.
         state['quarantined'] = True
         state['attempts'][tx['key']]['status'] = 'unknown_persistence'
         return state, 'failure', dict(), ''
@@ -1414,7 +1416,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         # Transport only the actual immutable HTTP envelope status. The kit
         # documents hooks before response_mapping; API pre_action automatic
         # result-key naming is insufficiently explicit to use as evidence.
-        tool["post_process_code"] = "try:\n    if isinstance(result, dict):\n        if 'data' not in result or result['data'] is None or type(result['data']) is str and result['data'] == '':\n            result['data'] = dict()\n        if isinstance(result.get('data'), dict):\n            result['data'].pop('bg_http_status', None)\n            if 'status_code' in result:\n                result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
+        tool["post_process_code"] = "try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}

@@ -1,8 +1,19 @@
 # T05 full controller acceptance
 
-T05 remains open until a fresh guarded banking build completes in at most
-1800 seconds and the actual stored, published workflow is exported. Local
-regressions and merged source establish implementation readiness only.
+T05 remains open until a fresh audited policy-and-workflow banking build
+completes in at most 1800 seconds through the documented CLI. An accepted
+`--generate-only` run can establish this controller's generation evidence
+without waiting for mock-bank TLS or hosted conversations. Local regressions
+and merged source alone do not establish that actual generation result.
+
+The live procedure below verifies the wider deployment/export milestone.
+Publication and conversation evidence remain required by their relevant tasks
+and submission gates; they are not additional hosted-trial dependencies of T05.
+
+This acceptance lane follows the explicit wider request for a fresh complete
+guarded banking build and actual published/stored/read-back/exported proof.
+A generate-only result cannot complete this lane's deliverable. It makes no
+hosted conversation or generalization claim.
 
 ## Preserved failed public build
 
@@ -160,12 +171,20 @@ generation subprocess was stopped at `2026-10-10T21:58:25.652179Z`, after
 482.872 seconds measured from the controller's global remaining-time event.
 The controller retained a failed manifest and end trace; policy repair had not
 frozen a policy, and no deployment, export or simulation occurred. A separate source
-repair must transport actual envelope status for genuinely empty bodies and
+repair must transport actual envelope status for empty or opaque error bodies and
 qualify only proof-scoped, noncontradictory error responses for replay. It must
 preserve strict negative payload qualification on successful transport,
 immutable request bodies, confirmation, retry limits, uncertain-persistence
 quarantine and the sourced exhaustion disposition. After checked source lands,
 another fresh complete build and actual publication/readback/export are needed.
+
+The integrated T08 transport repair handles nonobject error bodies because the
+exact API status guarantee can specify no JSON body schema. Those opaque bodies
+provide no success evidence. Replay still requires the operation/path/method/status
+witness and any exact error classifier; unqualified status, successful transport
+without explicit negative evidence, malformed flags and contradictory record
+identities remain blocked. Null/empty success and receipt fields mean absence only
+on the qualified failure path, never successful persistence.
 
 The same source review found supplied call symbols could not be used in authored
 opening templates unless falsely declared as extracted conversation values.

@@ -1,5 +1,33 @@
 # Shared implementation checkpoint — 10 October 2026
 
+## Closure audit — 11 October 2026
+
+The live board has six closed tasks and twelve open tasks, plus the parent.
+T09 (PR70) and T12 (PR61) have completed their own declared deliverables and
+await dependencies. The other open tasks have actual integration, generation,
+evaluation, freeze or hidden-submission work remaining. Merging preparation
+code is not the same as completing those deliverables.
+
+The defects found at main `18024c3` were the direct-script CLI import failure,
+unwired PR69 production repair diagnostics, and compiler recovery cycles after
+quarantine or blocked close. PR74, PR75 and PR76 repaired those respectively.
+The combined PR76 checked tree passes 953 local tests; these are source checks,
+not an actual generated banking build or conversation result.
+T05 needs a fresh successful audited policy/workflow build within 30 minutes;
+that local generation acceptance does not wait for hosted bank TLS. T11 still
+lacks actual fresh-session/ledger/runner compatibility because bank TLS failed.
+T15–T18 still need real evaluation, fresh holdouts, final live rehearsal/freeze,
+and the two hidden builds/submission respectively.
+
+Extra per-task gates have been corrected: T09 does not need its own hosted
+trials, T08 does not acquire a separate three-repetition requirement, and T11
+need not wait for T05 or create a large simulation solely to force pagination.
+Overall winning-readiness and submission checks remain unchanged.
+
+Earlier checkpoint text below is historical. In particular, T02 and T03 are
+now closed with actual runtime/staging evidence; the earlier no-execution
+statements do not revoke authorized staging or simulation use.
+
 The task board is live: [parent issue](https://github.com/DemirEkinArikan/freya_hackathon/issues/1), 18 native sub-issues and native dependency links. Anyone may work on any issue at any time. Issue assignments and names are informational; no named worker, timed transition, collaborator identity verification, account-ownership attestation or second-computer prerequisite blocks work. Dependencies govern completion rather than starting independent work. Closed tasks retain their historical records.
 
 The shared integration branch is `main`. Completed tasks receive a focused PR and merge directly after their checks; task completion verifies the merged PR and its pushed head. Task issue checkpoints coordinate branches and progress; source availability does not complete acceptance gates.

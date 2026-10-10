@@ -188,16 +188,22 @@ class BodylessFailureGuardTests(unittest.TestCase):
                 self.assertEqual(session.variables["bg_body"], original)
                 self.assertFalse(session.state["quarantined"])
 
-    def test_mapped_hook_never_turns_arbitrary_malformed_body_into_failure_proof(self):
+    def test_opaque_error_body_requires_exact_status_guarantee(self):
         for body in ([], 0, False, " ", "malformed-json", ["anything"]):
-            session = Session()
-            session.confirm()
-            with self.subTest(body=body):
-                transported = session.result("commit", {"status_code": 472, "data": body})
-                self.assertEqual(transported["data"], body)
-                self.assertTrue(session.state["quarantined"])
-                self.assertEqual(session.variables["bg_body"], "")
-                self.assertFalse(session.state["promise_failures"])
+            for status in (472, 473, 200):
+                session = Session()
+                original = session.confirm()
+                with self.subTest(body=body, status=status):
+                    transported = session.result("commit", {"status_code": status, "data": body})
+                    self.assertEqual(transported["data"], {"bg_http_status": status})
+                    if status == 472:
+                        self.assertEqual(session.variables["bg_route"], "allow")
+                        self.assertEqual(session.variables["bg_body"], original)
+                        self.assertEqual(session.state["promise_failures"], {"invented-product": 1})
+                    else:
+                        self.assertTrue(session.state["quarantined"])
+                        self.assertEqual(session.variables["bg_body"], "")
+                        self.assertFalse(session.state["promise_failures"])
 
     def test_hook_discards_forged_body_status_and_copies_only_actual_envelope_status(self):
         session = Session()
@@ -222,14 +228,15 @@ class BodylessFailureGuardTests(unittest.TestCase):
         self.assertTrue(result[0]["quarantined"])
         self.assertFalse(result[0]["promise_failures"])
 
-    def test_null_or_malformed_ok_is_not_bodyless_negative_evidence(self):
+    def test_malformed_or_positive_ok_is_not_bodyless_negative_evidence(self):
         session = Session()
         session.confirm()
-        for ok in (None, 0, 1, [], {}, " ", "FALSE", "unknown", True, "true", "True"):
+        for ok in (0, 1, [], {}, " ", "FALSE", "unknown", True, "true", "True"):
             with self.subTest(ok=ok):
                 result = session.kernel_result({"_http_status": 472, "ok": ok})
                 self.assertTrue(result[0]["quarantined"])
                 self.assertFalse(result[0]["promise_failures"])
+        self.assertEqual(session.kernel_result({"_http_status": 472, "ok": None, "promise_id": None})[1], "allow")
 
     def test_bodyless_needs_exact_witness_operation_path_method_status_and_error(self):
         for defect in ("missing", "path", "method", "status", "quote", "operation", "error", "escape"):
@@ -275,12 +282,13 @@ class BodylessFailureGuardTests(unittest.TestCase):
         for ok in (False, "false", "False"):
             with self.subTest(ok=ok):
                 self.assertEqual(session.kernel_result({"_http_status": 207, "ok": ok})[1], "allow")
+        self.assertTrue(session.kernel_result({"_http_status": 207, "ok": False, "promise_id": None})[0]["quarantined"])
 
     def test_contradictory_or_malformed_promise_identity_never_authorizes_replay(self):
         session = Session()
         session.confirm()
         for ok in ("", False, "false"):
-            for receipt in ("recorded-Q", None, 0, False, [], {}, " "):
+            for receipt in ("recorded-Q", 0, False, [], {}, " "):
                 with self.subTest(ok=ok, receipt=receipt):
                     result = session.kernel_result({"_http_status": 472, "ok": ok, "promise_id": receipt})
                     self.assertTrue(result[0]["quarantined"])

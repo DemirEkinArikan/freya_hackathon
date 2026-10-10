@@ -30,7 +30,16 @@ class HoldoutConsumerTests(unittest.TestCase):
                          "split_counts": {"train": 36, "validation": 24, "holdout": 60},
                          "profiles": [{"profile_id": self.profile,
                                        "policy_documents": {"policy": "Invented policy packet."},
-                                       "openapi": {"synthetic_schema": True}}]}
+                                       "openapi": {"openapi": "3.0.3", "servers": [{"url": "https://consumer-test.invalid"}],
+                                           "paths": {"/close_call": {"post": {"operationId": "close_call",
+                                               "requestBody": {"content": {"application/json": {"schema": {
+                                                   "type": "object", "properties": {
+                                                       key: {"type": "string", "description": "Semantic field: " + key}
+                                                       for key in ("customer_id", "outcome", "reason")},
+                                                   "required": ["customer_id", "outcome"]}}}},
+                                               "responses": {"200": {"content": {"application/json": {"schema": {
+                                                   "type": "object", "properties": {"ok": {"type": "boolean", "description": "Semantic result field: ok."}},
+                                                   "required": ["ok"]}}}}}}}}}}]}
         self.path = self.root / "offline.json"
         self.contract = self.root / "candidate-contract.json"
         self.contract.write_text("{}")
@@ -101,3 +110,11 @@ class HoldoutConsumerTests(unittest.TestCase):
                                   "--candidate-contract", str(self.contract))
         compare.assert_called_once()
         self.assertEqual(result["contract_mismatches"], [])
+
+    def test_valid_freeze_cannot_export_an_incomplete_api_contract(self):
+        self.freeze()
+        self.manifest["profiles"][0]["openapi"]["paths"]["/close_call"]["post"]["responses"] = {}
+        self.save()
+        with self.assertRaisesRegex(ValueError, "response schema"):
+            export_profile(self.path, self.profile, self.root / "inputs", workspace_root=self.root)
+        self.assertFalse((self.root / "inputs").exists())

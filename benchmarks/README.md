@@ -79,3 +79,11 @@ real tool-call index. These checks assess recorded tool behavior; they do not
 prove spoken confirmation, persuasion counters or dialogue correctness.
 
 `run_builder_tests(client, deployment, cases_path, output_dir, deadline)` is an explicitly invoked controller hook, one repetition only. It accepts a single-brief subset or `deployment['brief']`; its caller owns execution authorization. Reserve 300 seconds for export through the scoped platform client deadline. Only sanitized failure categories/rule identifiers may feed a repair prompt; never feed oracles or customer scripts to code generation.
+
+## Recorded evaluation handoff
+
+Standalone hosted execution now retains each attempt under an exclusive
+`artifacts/evaluations/` directory. `benchmarks.bundle` validates original build
+and train/validation records for the existing T15 comparator. See
+[recording and integration boundaries](../docs/T11-EVALUATION-EVIDENCE.md).
+Mock records and missing build provenance cannot establish a live comparison.

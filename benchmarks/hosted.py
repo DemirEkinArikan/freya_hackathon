@@ -374,7 +374,7 @@ def main():
     ap.add_argument("--reps", type=int, default=3)
     ap.add_argument("--concurrency", type=int, default=5)
     ap.add_argument("--budget-seconds", type=int, default=1800)
-    ap.add_argument("--out", default=str(ROOT / "runs/hosted-results.json"))
+    ap.add_argument("--out", default=str(ROOT.parent / "artifacts/hosted-results.json"))
     ap.add_argument("--deployment-manifest", help="Verified builder manifest/export; required for held-out execution")
     actions = ap.add_mutually_exclusive_group()
     actions.add_argument("--execute", action="store_true")
@@ -404,12 +404,23 @@ def main():
     load_local_environment(ROOT.parent / ".env")
     deadline = Deadline(args.budget_seconds)
     client = FreyaClient(deadline=deadline, lease_path=ROOT.parent / "artifacts/.simulation.lock")
-    result = evaluate(HostedBackend(client, deadline), args.agent_id, rows, reps=args.reps, concurrency=args.concurrency, deployment=deployment)
+    from .evidence import record_evaluation
+    from builder.platform import AGENT_LLM, SIM_LLM
+    conditions = {"reps": args.reps, "concurrency": args.concurrency, "budget_seconds": args.budget_seconds,
+                  "builder_model": (deployment or {}).get("model"),
+                  "reasoning_effort": (deployment or {}).get("reasoning_effort"),
+                  "platform_base_url": client.base_url, "bank_base_url": BANK,
+                  "agent_llm": deepcopy(AGENT_LLM), "persona_llm": deepcopy(SIM_LLM),
+                  "analysis_llm": deepcopy(SIM_LLM)}
+    result, evidence_path = record_evaluation(
+        HostedBackend(client, deadline), args.agent_id, rows,
+        directory=ROOT.parent / "artifacts/evaluations", conditions=conditions, kind="live", deployment=deployment)
     from builder.safety import sanitize
     result = sanitize(result, secrets=[os.environ.get("FREYA_API_KEY", ""), os.environ.get("FREYA_BANK_TEAM_KEY", "")])
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(result, indent=2) + "\n")
-    print(json.dumps({k: result[k] for k in ("passed", "total", "reps", "status")}, indent=2))
+    print(json.dumps({**{k: result[k] for k in ("passed", "total", "reps", "status")},
+                      "evidence": str(evidence_path)}, indent=2))
     if result["passed"] != result["total"]: raise SystemExit(1)
 
 

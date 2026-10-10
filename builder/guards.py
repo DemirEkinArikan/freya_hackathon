@@ -535,7 +535,10 @@ def _disclosure_schema(contract: dict, profile: dict, catalog: dict) -> dict:
             raise GuardCompileError(["account disclosure field is missing or is not a supported scalar: " + field])
         approved[field] = copy.deepcopy(leaf)
     if conditional:
-        type_schema = properties.get(account["product_fields"]["type"])
+        type_field = account["product_fields"]["type"]
+        if type_field in forbidden:
+            raise GuardCompileError(["conditional account disclosure cannot classify products through an internal/customer identifier alias"])
+        type_schema = properties.get(type_field)
         if not isinstance(type_schema, dict) or type_schema.get("type") != "string":
             raise GuardCompileError(["conditional account disclosure requires an exact string product-type schema"])
         enum = type_schema.get("enum")

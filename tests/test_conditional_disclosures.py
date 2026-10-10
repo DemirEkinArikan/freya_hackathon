@@ -139,7 +139,7 @@ class ConditionalDisclosureTests(unittest.TestCase):
         self.assertNotIn("asset_reference", json.dumps(fields))
 
     def test_unsupported_types_non_scalar_fields_aliases_and_collisions_are_rejected(self):
-        for mode in ("unknown-type", "unknown-field", "identifier-alias", "non-scalar", "collision"):
+        for mode in ("unknown-type", "unknown-field", "identifier-alias", "non-scalar", "collision", "type-alias-collision"):
             value = {"common": ["kind_wire"], "by_product_type": {"KIND_A": ["ending_digits"]}}
             if mode == "unknown-type":
                 value["by_product_type"] = {"UNDECLARED": ["ending_digits"]}
@@ -150,6 +150,10 @@ class ConditionalDisclosureTests(unittest.TestCase):
             elif mode == "collision":
                 value["by_product_type"]["source-alpha"] = ["ending_digits"]
             context = authored(value, renamed=True, codes={"source-alpha": "KIND_A"})
+            if mode == "type-alias-collision":
+                profile = context["execution_policy"]["profile"]
+                profile["product_fields"]["type"] = "asset_reference"
+                context = recompile_context(context, profile)
             if mode == "non-scalar":
                 item = context["openapi"]["paths"]["/get_account"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["evidence_products"]["items"]
                 item["properties"]["ending_digits"] = {"type": "array", "items": {"type": "string"}}

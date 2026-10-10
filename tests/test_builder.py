@@ -14,6 +14,7 @@ from builder.safety import digest
 
 
 PROFILE = {
+    "execution_actions": ["close_call"],
     "close_reasons": {"no_promise": ["refused"], "not_verified": ["failed"], "not_reached": ["unclear"]},
     "record_notes": False, "resolve_all_products": False,
     "product_order": {"mode": "account_order"}, "close_precedence": ["no_promise"],

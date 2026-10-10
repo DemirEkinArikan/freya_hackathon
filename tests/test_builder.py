@@ -74,6 +74,14 @@ class BuilderTests(unittest.TestCase):
         return parser().parse_args(["--brief", str(self.directory / "brief.md"), "--tool-api", str(self.directory / "api.json"),
                                   "--output-dir", str(self.directory / "out"), *extra])
 
+    def generator(self):
+        generator = unittest.mock.Mock()
+        def workflow(prompt, *, contract_sha256):
+            return {"workflow": copy.deepcopy(generator.generate.return_value["workflow"]),
+                    "contract_sha256": contract_sha256}
+        generator.generate_workflow.side_effect = workflow
+        return generator
+
     def test_offline_fixture_never_constructs_client_or_calls_model(self):
         result = execute(self.args("--offline", "--workflow-file", str(self.directory / "fixture.json")),
                          client_factory=lambda **kw: self.fail("platform touched"))
@@ -85,19 +93,20 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(compiled["permitted_operations"][0]["name"], "close_call")
 
     def test_deadline_prevents_generation_when_export_reserve_is_unavailable(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(DeadlineExceeded):
             execute(self.args(), generator=generator, deadline=Deadline(299), client_factory=lambda **kw: self.fail("platform touched"))
         generator.generate.assert_not_called()
 
     def test_invalid_candidate_gets_only_two_repairs(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         broken = fixture()
         broken["workflow"]["initial_node"] = "missing"
         generator.generate.return_value = broken
         with self.assertRaises(ValueError):
             execute(self.args(), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
-        self.assertEqual(generator.generate.call_count, 3)
+        self.assertEqual(generator.generate.call_count, 1)
+        self.assertEqual(generator.generate_workflow.call_count, 3)
 
     def test_schema_enum_adapts_through_local_refs(self):
         api = contract()
@@ -117,7 +126,7 @@ class BuilderTests(unittest.TestCase):
         synthetic = contract()
         synthetic["servers"][0]["url"] = "https://synthetic-bank.invalid/v1"
         (self.directory / "api.json").write_text(json.dumps(synthetic))
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(BindingError):
             execute(self.args(), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
         generator.generate.assert_not_called()
@@ -167,7 +176,7 @@ class BuilderTests(unittest.TestCase):
         self.assertNotIn("test_cases", make_prompt(sources, openapi))
 
     def test_protected_generator_path_fails_before_model_or_client(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         args = self.args("--generate-only")
         args.brief = [PROJECT / "build-the-builder" / "public-test-set.json"]
         with self.assertRaisesRegex(ValueError, "Protected evaluator"):
@@ -175,7 +184,7 @@ class BuilderTests(unittest.TestCase):
         generator.generate.assert_not_called()
 
     def test_live_controller_exports_platform_snapshot_without_implicit_tests(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         result = execute(self.args(), generator=generator, client_factory=FakeClient,
                          test_runner=lambda *args: self.fail("implicit hosted test"))
@@ -188,7 +197,7 @@ class BuilderTests(unittest.TestCase):
         synthetic = contract()
         synthetic["servers"][0]["url"] = "https://synthetic-bank.invalid/v1"
         (self.directory / "api.json").write_text(json.dumps(synthetic))
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         result = execute(self.args("--generate-only"), generator=generator,
                          client_factory=lambda **kw: self.fail("Freya client initialized"))
@@ -201,7 +210,7 @@ class BuilderTests(unittest.TestCase):
     def test_uncited_overlay_cannot_be_accepted_or_deployed(self):
         overlay = self.directory / 'amendment.md'
         overlay.write_text('The following amendment replaces the contact procedure.')
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = fixture()
         args = self.args('--brief', str(overlay), '--generate-only')
         with self.assertRaises(ValueError):
@@ -212,7 +221,7 @@ class BuilderTests(unittest.TestCase):
     def test_policy_bypass_cannot_be_accepted_or_deployed(self):
         candidate = fixture()
         candidate['policy']['identity_wrong_limit'] = 1000
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.return_value = candidate
         with self.assertRaises(ValueError):
             execute(self.args('--generate-only'), generator=generator,
@@ -220,7 +229,7 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(generator.generate.call_count, 3)
 
     def test_extraction_only_emits_contract_without_creating_a_workflow(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         # Even a model-provided graph in the unused transport field cannot run.
         generator.generate.return_value = fixture()
         with patch.dict('os.environ', {'FREYA_API_KEY': ''}):
@@ -241,7 +250,7 @@ class BuilderTests(unittest.TestCase):
     def test_extraction_repairs_policy_errors_with_bounded_attempts(self):
         invalid = fixture()
         invalid['policy']['sources'][0]['sha256'] = '0' * 64
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         generator.generate.side_effect = [invalid, fixture()]
         result = execute(self.args('--extract-policy-only'), generator=generator,
                          client_factory=lambda **kw: self.fail('Freya initialized'))
@@ -258,14 +267,14 @@ class BuilderTests(unittest.TestCase):
                       ['--adopt-workflow', 'w'], ['--workflow-file', str(self.directory / 'fixture.json')],
                       ['--generate-only']):
             with self.subTest(flags=flags):
-                generator = unittest.mock.Mock()
+                generator = self.generator()
                 with self.assertRaises(ValueError):
                     execute(self.args('--extract-policy-only', *flags), generator=generator,
                             client_factory=lambda **kw: self.fail('Freya initialized'))
                 generator.generate.assert_not_called()
 
     def test_missing_live_credentials_fail_before_model_generation(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with patch.dict("os.environ", {"FREYA_API_KEY": ""}), self.assertRaisesRegex(PlatformError, "before live workflow generation"):
             execute(self.args(), generator=generator)
         generator.generate.assert_not_called()
@@ -296,7 +305,7 @@ class BuilderTests(unittest.TestCase):
         ]
         for result in results:
             with self.subTest(result=result):
-                generator = unittest.mock.Mock()
+                generator = self.generator()
                 generator.generate.return_value = fixture()
                 client = FakeClient()
                 runner = unittest.mock.Mock(return_value=result)
@@ -304,6 +313,7 @@ class BuilderTests(unittest.TestCase):
                     execute(self.args("--test-cases", str(self.directory / "fixture.json")), generator=generator,
                             client_factory=lambda **kw: client, test_runner=runner)
                 self.assertEqual(generator.generate.call_count, 1)
+                self.assertEqual(generator.generate_workflow.call_count, 1)
                 self.assertEqual(runner.call_count, 1)
                 self.assertEqual(client.saves, 1)
                 self.assertEqual(client.exports, 0)
@@ -314,8 +324,8 @@ class BuilderTests(unittest.TestCase):
                 self.assertTrue(any(event.get("event") == "tests" and event.get("result") == result for event in events))
 
     def test_behavioral_repair_has_actionable_diagnostic_without_evaluator_details(self):
-        generator = unittest.mock.Mock()
-        generator.generate.side_effect = [fixture(), fixture()]
+        generator = self.generator()
+        generator.generate.return_value = fixture()
         private_reason = "CASE_PRIVATE customer SecretName expected 123456 on 2028-12-31"
         runner = unittest.mock.Mock(side_effect=[
             {"status": "completed", "passed": 0, "total": 1, "failures": [
@@ -324,7 +334,7 @@ class BuilderTests(unittest.TestCase):
             {"status": "completed", "passed": 1, "total": 1, "failures": []}])
         result = execute(self.args("--test-cases", str(self.directory / "fixture.json")), generator=generator,
                          client_factory=FakeClient, test_runner=runner)
-        repair_prompt = generator.generate.call_args_list[1].args[0]
+        repair_prompt = generator.generate_workflow.call_args_list[1].args[0]
         self.assertIn("Ask identity factors in the order required by the supplied brief.", repair_prompt)
         self.assertNotIn(private_reason, repair_prompt)
         self.assertNotIn("CASE_PRIVATE", repair_prompt)
@@ -337,8 +347,8 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(result["repairs"], 1)
 
     def test_explicit_adoption_is_done_once_across_behavioral_repair(self):
-        generator = unittest.mock.Mock()
-        generator.generate.side_effect = [fixture(), fixture()]
+        generator = self.generator()
+        generator.generate.return_value = fixture()
         client = FakeClient()
         runner = unittest.mock.Mock(side_effect=[
             {"status": "completed", "passed": 0, "total": 1,
@@ -349,7 +359,7 @@ class BuilderTests(unittest.TestCase):
         self.assertEqual(client.adoptions, [("brief", "w")])
 
     def test_generate_only_refuses_hosted_cases_before_model(self):
-        generator = unittest.mock.Mock()
+        generator = self.generator()
         with self.assertRaises(ValueError):
             execute(self.args("--generate-only", "--test-cases", str(self.directory / "fixture.json")), generator=generator)
         generator.generate.assert_not_called()

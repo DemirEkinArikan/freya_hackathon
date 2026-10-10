@@ -20,6 +20,11 @@ The controller compiles executable state, calculations, confirmations, API resul
 and closing nodes. Use public extraction variables for proposed values; those are
 untrusted customer input, never proof of verification, persistence or consent.
 Do not write bg_* state, customer_id, now, or automatic bank-result variables.
+Use text templates only for variables declared by an extraction schema or supplied
+controller bindings. A kit example does not declare its example variables for this
+plan. Do not assume extra customer name fields exist. Templates must use one
+balanced pair of braces around a variable reference, without nested braces,
+expressions or literal template demonstrations in authored text.
 
 Route to verify_identity and get_account before disclosing account facts when the
 policy requires verification. Route each product proposal through stage_promise and
@@ -35,6 +40,10 @@ and promises while retaining earlier successful promises. Select a handoff befor
 finalizing notes. All conversation paths must reach a guarded close_call where
 permitted; blocked/failure paths must follow the supplied disposition requirements.
 The controller may quarantine uncertain persistence and cannot fabricate success.
+close_call is a final guarded action: its compiled handler ends the call. Do not
+add a conversation after it to represent a closed call. Every declared conversation
+must have a graph path to a call-ending handler; any required routing references
+must name valid nodes already participating in that path.
 
 Extraction, dialogue and routing must agree. Ask for missing/ambiguous exact terms,
 recognize corrections and compound intent, and follow brief-defined counter scopes.

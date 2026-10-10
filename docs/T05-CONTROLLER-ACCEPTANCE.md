@@ -124,7 +124,11 @@ contradicting a declared counted API failure, and partial priority selection
 preventing unique protected nonpromise outcomes. Both were reproduced in memory
 against the original frozen context using invented account state, without
 evaluator fixtures, bank calls or model feedback. This run is source-rejected
-and cannot complete T05 even if its controller later exports a workflow.
+and cannot complete T05. The controller ended unsuccessfully at
+`2026-10-10T21:42:36.993946Z`, after 1275.651 seconds. Its bounded plan repair
+still had unresolved text bindings, malformed template syntax and an orphan
+post-close conversation. No workflow was deployed, published or exported, and
+no simulation was started by this run.
 
 The separate generic semantic patch requires operation/status-scoped literal
 API witnesses on every operative nonpersistence matcher, reconciles structured
@@ -132,7 +136,8 @@ counted-failure annotations before freeze, and allows one unique protected
 closing fact without inventing a priority. Ambiguous unranked facts remain
 blocked; model proposals cannot supply protected evidence. Witness matching
 proves provenance and scope, not semantic entailment. Generic plan guidance
-also states exact transport keys and product-finalization preconditions.
+also states exact transport keys, product-finalization preconditions, declared
+template bindings and final guarded-call termination.
 
 A subsequent fresh complete build from checked merged source, independent
 approved-source review and actual publication/readback/export remains required.

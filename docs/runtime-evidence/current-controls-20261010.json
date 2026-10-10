@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-10-10T14:43:49.116542+00:00",
+  "local": {
+    "python_version": "3.11.14",
+    "platform": "darwin",
+    "checks": {
+      "python_3_11": true,
+      "version": true,
+      "signin": true,
+      "capabilities": true,
+      "features": true
+    },
+    "authentication": "chatgpt",
+    "codex_version": "0.162.0-alpha.2",
+    "status": "pass"
+  },
+  "isolation": {
+    "status": "fail",
+    "failures": [
+      "model_reports_available_tools"
+    ],
+    "canary_exposure": [],
+    "observed_item_types": [
+      "agent_message",
+      "error"
+    ],
+    "cli_warnings": [
+      "skip_host_skill_discovery_is_experimental"
+    ],
+    "unknown_cli_diagnostics": [],
+    "unknown_cli_diagnostic_count": 0,
+    "unknown_cli_diagnostics_truncated": false,
+    "omitted_skill_count": 0,
+    "model_reported_tools": [
+      "functions.apply_patch"
+    ],
+    "model_reported_tool_count": 2,
+    "unrecognized_tool_name_count": 1,
+    "response_valid": true,
+    "returncode": 0,
+    "completed_turn_count": 1,
+    "stdout_characters": 850,
+    "stderr_characters": 0,
+    "limits": [
+      "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+      "No forbidden tool call can be exercised when the model has no tools.",
+      "This does not independently verify OS file denial or audit every host loader."
+    ]
+  },
+  "status": "fail",
+  "purpose": "Fresh synthetic audit of current restricted generation controls before T02 acceptance",
+  "model": "gpt-5.5",
+  "reasoning_effort": "high",
+  "source_commit": "cd1f613c3b29bf10ebe64c0517cb9c422a863e3b",
+  "acceptance": {
+    "human_operator_or_second_computer_required": false,
+    "generation_isolation_passed": false,
+    "banking_brief_sent": false,
+    "freya_calls_in_this_audit": 0
+  },
+  "controls": {
+    "unified_exec": false,
+    "shell_tool": false,
+    "code_mode": false,
+    "code_mode_only": false,
+    "code_mode_host": false,
+    "host_skill_discovery": "skipped",
+    "tools_report_policy": "Every nonempty available tool list fails; diagnostic allowlist does not grant permission"
+  }
+}

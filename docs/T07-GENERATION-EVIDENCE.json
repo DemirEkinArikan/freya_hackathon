@@ -1,0 +1,148 @@
+{
+  "version": 1,
+  "purpose": "Actual T07 extraction evidence with independent approved-source review; incomplete acceptance",
+  "source_commit": "18024c393aed1eaad71c4758809023a29053c79a",
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "build_deadline_seconds": 1800,
+  "export_reserve_seconds": 300,
+  "generation_inputs": "Unmodified organizer briefs and their OpenAPI; no evaluator fixtures, scripts, expected records or holdouts",
+  "platform_calls": 0,
+  "simulation_lease_modified": false,
+  "raw_model_events_included": false,
+  "runs": [
+    {
+      "briefs": [
+        "A"
+      ],
+      "run_id": "20261010T213114772427Z",
+      "mode": "extract-policy-only",
+      "status": "failed",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-adaptive-generation-evidence/artifacts/t07-official-policy/A/20261010T213114772427Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "builder-source.json": "2182a9b1abdf0d6d6a0043d8eb3a9257fdd1621beb8f4dd3dfc577479361cb17",
+        "manifest.json": "91fc9ec71e5f79ad95c064be86e0fedc291331a0661762b56bc542c28770d126",
+        "policy.rejected-1.json": "c20d131140ecdf190e7295783fab4ab1504f845b2efc10ba3f288351e280adbf",
+        "policy.rejected-2.json": "e0d942dae3f34250c45ad2148a36233cc609e18fcac96d491bc92ce27d9af3ee",
+        "policy.rejected-3.json": "255c62df29419415bd9b5792a00662c223a53a1ec13e3e2687ee032889a1fe78"
+      },
+      "builder_source_sha256": "d8af0ccbef8b748c32c8e9dcfa2807ce846a2180714d92363a4478cb68762f1c",
+      "builder_source_record_sha256": "1061f94b0786b9125579300a71ee66e87bf59c3ae3bde2a1b9330f6bfee29c5e",
+      "isolation": {
+        "status": "pass",
+        "model_reported_tool_count": 0,
+        "model_reported_tools": [],
+        "canary_exposure": [],
+        "unknown_cli_diagnostic_count": 0,
+        "completed_turn_count": 1,
+        "limits": [
+          "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+          "No forbidden tool call can be exercised when the model has no tools.",
+          "This does not independently verify OS file denial or audit every host loader."
+        ],
+        "model_catalog": {
+          "source": "installed_cli_bundled",
+          "model": "gpt-6.1-sol",
+          "source_model_sha256": "6fe173e55799b3f1239f2e65ed8638772f2dbc2d304da566d06b5b62860aaef8",
+          "generation_catalog_sha256": "813559533e3c40818ef275ca57d137b5154e9235729340ce8c4af05c194bc289",
+          "restricted_capabilities": {
+            "shell_type": "disabled",
+            "apply_patch_tool_type": null,
+            "experimental_supported_tools": [],
+            "node_repl_disabled": true,
+            "tool_mode": "direct",
+            "supports_search_tool": false
+          }
+        }
+      },
+      "workflow_created": false,
+      "hosted_behavior_verified": false,
+      "semantic_acceptance_verified": false,
+      "error": "Policy extraction failed after bounded repairs: close_precedence requires supported semantic outcomes or explicit wire bindings",
+      "rejected_candidate_count": 3,
+      "review_findings": [
+        "Latest candidate includes identity outcomes in postaccount close_precedence; final candidate rejected.",
+        "Latest candidate describes definite negative200 retries, but executable nonpersistent_failures classifies only500.",
+        "Singleton account-order/all-product metadata is unnecessary; it has no interproduct effect."
+      ]
+    },
+    {
+      "briefs": [
+        "A",
+        "B"
+      ],
+      "run_id": "20261010T213113900620Z",
+      "mode": "extract-policy-only",
+      "status": "policy_extracted",
+      "original_artifact_directory": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t07-adaptive-generation-evidence/artifacts/t07-official-policy/AB/20261010T213113900620Z",
+      "original_artifacts_edited": false,
+      "artifact_sha256": {
+        "build-provenance.json": "9021d87688df5233bed330dac5b41bf79699b41529ab16bbfeb1f47c70ccb092",
+        "builder-source.json": "c9d935e96b3a5501be02347881f80fd56a1bf7cc18743db895bc25b05f14c7e9",
+        "execution-requirements.json": "c85ee93ade9250c06e18b0a0ff1b6481f62e46b0a7ab6997d56fd99831c94718",
+        "manifest.json": "aa10ac7990431be7bac6df59d948c263e39df006af2f2803d195409d59847569",
+        "policy.contract.json": "4cd3759f8bfb997167f0f90df6ae9661a9a0f4e00ca8c3acc0e37c7b734357de",
+        "policy.json": "8ff6e6d10cfcf11902623243f05280b3f636347191c06b228a0aea50db0e994c",
+        "policy.rejected-1.json": "209ab9d0ec8518cc51c5bae1b3813ecf5f33c10d8809f6ab7651900857d2507d"
+      },
+      "builder_source_sha256": "d8af0ccbef8b748c32c8e9dcfa2807ce846a2180714d92363a4478cb68762f1c",
+      "builder_source_record_sha256": "fe519342ed415ed8f870b3af388c6bf265057178a6999f77003e01c9085c6819",
+      "isolation": {
+        "status": "pass",
+        "model_reported_tool_count": 0,
+        "model_reported_tools": [],
+        "canary_exposure": [],
+        "unknown_cli_diagnostic_count": 0,
+        "completed_turn_count": 1,
+        "limits": [
+          "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+          "No forbidden tool call can be exercised when the model has no tools.",
+          "This does not independently verify OS file denial or audit every host loader."
+        ],
+        "model_catalog": {
+          "source": "installed_cli_bundled",
+          "model": "gpt-6.1-sol",
+          "source_model_sha256": "6fe173e55799b3f1239f2e65ed8638772f2dbc2d304da566d06b5b62860aaef8",
+          "generation_catalog_sha256": "813559533e3c40818ef275ca57d137b5154e9235729340ce8c4af05c194bc289",
+          "restricted_capabilities": {
+            "shell_type": "disabled",
+            "apply_patch_tool_type": null,
+            "experimental_supported_tools": [],
+            "node_repl_disabled": true,
+            "tool_mode": "direct",
+            "supports_search_tool": false
+          }
+        }
+      },
+      "workflow_created": false,
+      "hosted_behavior_verified": false,
+      "semantic_acceptance_verified": false,
+      "elapsed_seconds": 509.407,
+      "repairs": 1,
+      "policy_contract_sha256": "6b40e5d4c894c377f4b3b490a9b6382e66109f3f2f06ab5710f25f563d0e4591",
+      "execution_requirements_sha256": "932248799cce0db63edf6c8527680761bc6916c08f49955a7a4c078652c22169",
+      "review_findings": [
+        "88 literal source quotes and both brief hashes match; structural source/API/action coverage compiled.",
+        "Explicit B-over-A amendments select multiple products, returned account order, batch confirmation and bank notes.",
+        "Narrative requires definite negative200 retries and twice-failed service_error disposition, but operative nonpersistent_failures covers only500 and promise_failure_disposition is absent.",
+        "No generated routes, dialogue or code were created; interface inspection is not semantic or conversation acceptance."
+      ]
+    }
+  ],
+  "changed_schema_trials": {
+    "profiles": [
+      "train-1",
+      "train-2"
+    ],
+    "input_exporter": "benchmarks.export_inputs",
+    "status": "controlled_stop_with_original_failed_manifests",
+    "reason": "Approved development APIs define trusted get_account response schema only; other six operation response schemas are absent. No invented API contracts were substituted.",
+    "accepted_policy_or_workflow": false
+  },
+  "remaining": [
+    "Fresh audited generation after coordinated generic semantic/controller guidance repair",
+    "Actual routes/extraction/dialogue/code compilation for different complete approved policy/schema inputs",
+    "T05 dependency acceptance and shared-lease server reconciliation before hosted use"
+  ]
+}

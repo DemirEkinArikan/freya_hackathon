@@ -54,7 +54,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
 _SHAPE_GUIDANCE = {
-    "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source',
+    "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
     "identity_wrong_limit": "a positive integer; booleans are not integers",
     "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
@@ -83,7 +83,7 @@ _SHAPE_GUIDANCE = {
     "nonpersistent_failures": "an object mapping operation names to arrays of unique objects containing only http_status (integer 100..599) and optional error (nonempty string)",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
-    "close_precedence": "a nonempty array of unique nonempty outcome strings",
+    "close_precedence": "a nonempty array of unique postaccount protected outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority or outcome",
     "identity_close": "an object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string)",
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback")',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean)",

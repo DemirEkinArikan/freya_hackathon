@@ -27,6 +27,16 @@ dimensions. Any independently supplied dimensions remain frozen and validated.
 Every account consumer retains the requirements, including when its selected
 action set omits account lookup; the existing explicit singleton waiver applies.
 
+Account disclosure metadata likewise does not select account lookup. A plan
+without a `get_account` action retains the exact sourced disclosure rule in its
+frozen policy and execution profile, including strict shape and hash checks.
+Its detached runtime profile approves no account narration and does not bind
+unused field schemas or product-type selectors. Merely permitting lookup in the
+API does not make it a selected consumer. With lookup selected, every supplied
+disclosure field, type code and identifier exclusion still passes the exact
+schema checks; missing applicable facts fail safely. Common and type-specific
+lists may share a field: their union retains the same approved scalar once.
+
 Closing priority is optional when the source supplies no ranking. The frozen
 policy remains unchanged; the detached runtime profile represents absence as
 an empty ranking. The existing kernel accepts a fixed identity disposition or

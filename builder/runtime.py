@@ -4,6 +4,7 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -202,6 +203,53 @@ class CodexGenerator:
         self.reasoning_effort = reasoning_effort
         self._checked = False
         self._isolation_checked = False
+        self._catalog = None
+
+    def generation_catalog(self) -> tuple[str, dict]:
+        """Narrow the installed CLI's bundled metadata, never its auth/config.
+
+        Feature flags alone do not remove model-owned tools (for example
+        apply_patch or Code Mode). Preserve instructions and model identity;
+        apply only capability reductions through the supported catalog setting.
+        Cache the exact bytes used by the audit and all generation stages.
+        """
+        if self._catalog is None:
+            if not isinstance(self.model, str) or not self.model:
+                raise GenerationError("Generation requires an explicit bundled model")
+            try:
+                result = self.run([self.executable, "debug", "models", "--bundled"],
+                                  capture_output=True, text=True, check=True,
+                                  timeout=self.deadline.timeout(20, reserve=300), env=generation_environment())
+                if result.returncode:
+                    raise ValueError("catalog command failed")
+                catalog = _strict_json(self._text(result.stdout))
+                models = catalog["models"]
+                if not isinstance(models, list) or not all(isinstance(m, dict) for m in models):
+                    raise ValueError("invalid bundled catalog")
+                matches = [m for m in models if m.get("slug") == self.model]
+                if len(matches) != 1:
+                    raise ValueError("model absent or ambiguous")
+                selected = matches[0]
+                source = json.dumps(selected, sort_keys=True, ensure_ascii=False)
+                restrictions = {"shell_type": "disabled", "apply_patch_tool_type": None,
+                                "experimental_supported_tools": [], "node_repl_disabled": True,
+                                "tool_mode": "direct", "supports_search_tool": False}
+                selected.update(restrictions)
+                document = json.dumps({"models": [selected]}, sort_keys=True, ensure_ascii=False)
+            except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError):
+                # Never include raw catalog, CLI diagnostics or user configuration.
+                raise GenerationError("Cannot prepare a restricted bundled model catalog; no generation prompt was sent") from None
+            evidence = {"source": "installed_cli_bundled", "model": self.model,
+                        "source_model_sha256": hashlib.sha256(source.encode()).hexdigest(),
+                        "generation_catalog_sha256": hashlib.sha256(document.encode()).hexdigest(),
+                        "restricted_capabilities": restrictions}
+            self._catalog = (document, evidence)
+        return self._catalog
+
+    def prepare_catalog(self, directory: Path) -> dict:
+        document, evidence = self.generation_catalog()
+        (directory / "generation.model-catalog.json").write_text(document, encoding="utf-8")
+        return evidence
 
     @staticmethod
     def _text(value: Any) -> str:
@@ -300,6 +348,7 @@ class CodexGenerator:
                     "skills.max_context_tokens=1", "default_permissions=\"freya_generation\"",
                     "permissions.freya_generation.filesystem=" + filesystem,
                     "permissions.freya_generation.network.enabled=false", "features.skip_host_skill_discovery=true",
+                    "model_catalog_json=" + json.dumps(str((directory / "generation.model-catalog.json").resolve())),
                     "history.persistence=\"none\"", "model_reasoning_effort=" + json.dumps(self.reasoning_effort)]
         for setting in settings:
             args.extend(["-c", setting])
@@ -315,6 +364,7 @@ class CodexGenerator:
         # Inspect the same CLI surface using synthetic inputs before sending a
         # banking brief. Detection happens before any substantive model call.
         from .preflight import isolation_probe
+        _, catalog_evidence = self.generation_catalog()
         allocated = self.deadline.timeout(120, reserve=300)
         started = time.monotonic()
         self.trace.emit("model_call", model=self.model or "codex-default", reasoning_effort=self.reasoning_effort,
@@ -328,6 +378,8 @@ class CodexGenerator:
                         remaining_seconds=round(self.deadline.remaining(), 2))
         if report.get("status") != "pass":
             raise GenerationError("Codex generation isolation audit failed; no banking brief was sent; see sanitized trace")
+        if report.get("model_catalog") != catalog_evidence:
+            raise GenerationError("Codex model catalog changed during isolation audit; no banking brief was sent")
         self._isolation_checked = True
 
     def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *, max_seconds: float = 900) -> dict:
@@ -356,6 +408,8 @@ class CodexGenerator:
             directory = Path(dirname)
             schema = directory / "response.schema.json"
             schema.write_text(json.dumps(schema_value), encoding="utf-8")
+            catalog_evidence = self.prepare_catalog(directory)
+            self.trace.emit("generation_model_catalog", **catalog_evidence)
             try:
                 result = self.run(self.argv(directory, schema), input=prompt, text=True, capture_output=True,
                                   timeout=allocated, env=generation_environment(), cwd=directory, on_progress=self._progress)

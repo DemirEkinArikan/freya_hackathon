@@ -29,6 +29,9 @@ class RuntimeTests(unittest.TestCase):
         self.isolation = patch.object(CodexGenerator, "check_isolation")
         self.isolation.start()
         self.addCleanup(self.isolation.stop)
+        catalog = patch.object(CodexGenerator, "generation_catalog", return_value=("{}", {"fixture": "catalog"}))
+        catalog.start()
+        self.addCleanup(catalog.stop)
 
     def tearDown(self):
         self.tmp.cleanup()

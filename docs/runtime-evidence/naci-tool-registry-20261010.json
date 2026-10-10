@@ -1,0 +1,134 @@
+{
+  "created_at": "2026-10-10T16:34:28.486001+00:00",
+  "status": "pass",
+  "failures": [],
+  "codex_version": "codex-cli 0.162.1",
+  "provider": "loopback_stub_no_upstream",
+  "codex_home": "empty_temporary_directory",
+  "cases": [
+    {
+      "case": "baseline",
+      "catalog_mode": "baseline",
+      "returncode": 0,
+      "requests": [
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 1,
+          "request_tool_names": [
+            "functions.exec",
+            "functions.wait",
+            "functions.request_user_input_async"
+          ],
+          "request_tool_count": 3
+        }
+      ],
+      "injected_tool_calls": [],
+      "tool_outputs": [],
+      "sentinel_exposed": false,
+      "patch_file_created": false
+    },
+    {
+      "case": "restricted",
+      "catalog_mode": "restricted",
+      "returncode": 0,
+      "requests": [
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 0,
+          "request_tool_names": [],
+          "request_tool_count": 0
+        }
+      ],
+      "injected_tool_calls": [],
+      "tool_outputs": [],
+      "sentinel_exposed": false,
+      "patch_file_created": false,
+      "generation_catalog_sha256": "ac8c8839e69655785da7dab4098b677ba838766a1c8530fa7b66d9377b1b31dd"
+    },
+    {
+      "case": "forced_patch",
+      "catalog_mode": "restricted",
+      "returncode": 0,
+      "requests": [
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 0,
+          "request_tool_names": [],
+          "request_tool_count": 0
+        },
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 0,
+          "request_tool_names": [],
+          "request_tool_count": 0
+        }
+      ],
+      "injected_tool_calls": [
+        "apply_patch"
+      ],
+      "tool_outputs": [
+        {
+          "call_id": "call_audit",
+          "type": "custom_tool_call_output",
+          "rejected_as_unsupported": true,
+          "sentinel_exposed": false,
+          "diagnostic": "unsupported custom tool call: apply_patch"
+        }
+      ],
+      "sentinel_exposed": false,
+      "patch_file_created": false,
+      "generation_catalog_sha256": "ac8c8839e69655785da7dab4098b677ba838766a1c8530fa7b66d9377b1b31dd"
+    },
+    {
+      "case": "forced_shell",
+      "catalog_mode": "restricted",
+      "returncode": 0,
+      "requests": [
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 0,
+          "request_tool_names": [],
+          "request_tool_count": 0
+        },
+        {
+          "path": "/v1/responses",
+          "model": "gpt-6.1-sol",
+          "tools_field_present": false,
+          "additional_tools_items": 0,
+          "request_tool_names": [],
+          "request_tool_count": 0
+        }
+      ],
+      "injected_tool_calls": [
+        "exec_command"
+      ],
+      "tool_outputs": [
+        {
+          "call_id": "call_audit",
+          "type": "function_call_output",
+          "rejected_as_unsupported": true,
+          "sentinel_exposed": false,
+          "diagnostic": "unsupported call: exec_command"
+        }
+      ],
+      "sentinel_exposed": false,
+      "patch_file_created": false,
+      "generation_catalog_sha256": "ac8c8839e69655785da7dab4098b677ba838766a1c8530fa7b66d9377b1b31dd"
+    }
+  ],
+  "limits": [
+    "Uses production model catalog and generation argv; provider and CODEX_HOME differ from the live ChatGPT invocation.",
+    "Inspects actual outgoing tool definitions and forced apply_patch/exec_command calls; no real model response is used.",
+    "Does not independently prove OS path denial or exhaustively audit all possible tool names."
+  ]
+}

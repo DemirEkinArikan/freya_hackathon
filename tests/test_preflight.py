@@ -12,10 +12,16 @@ from builder.runtime import CodexGenerator, Deadline, GenerationError, Trace
 def response(**changes):
     value = {"available_tools": [], "loaded_markers": [], "forbidden_content": "UNAVAILABLE", "environment_content": "UNAVAILABLE"}
     value.update(changes)
-    return json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(value)}}) + '\n' + json.dumps({"type": "turn.completed"})
+    return json.dumps({"type": "thread.started", "thread_id": "synthetic-thread"}) + "\n" + json.dumps({"type": "turn.started"}) + "\n" + json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(value)}}) + '\n' + json.dumps({"type": "turn.completed"})
 
 
 class PreflightTests(unittest.TestCase):
+    def setUp(self):
+        # Catalog construction has dedicated tests; these focus on the probe.
+        catalog = patch.object(CodexGenerator, "generation_catalog", return_value=("{}", {"fixture": "catalog"}))
+        catalog.start()
+        self.addCleanup(catalog.stop)
+
     def test_probe_catches_unknown_canary_in_reasoning_and_discards_text(self):
         marker = "random-never-in-prompt"
         text = json.dumps({"type": "item.completed", "item": {"type": "reasoning", "text": marker}}) + "\n" + response()
@@ -33,9 +39,36 @@ class PreflightTests(unittest.TestCase):
                 self.assertNotIn("sensitive command", json.dumps(report))
 
     def test_incomplete_turn_cannot_pass_with_valid_json(self):
-        text = response().splitlines()[0]
+        text = "\n".join(response().splitlines()[:-1])
         report = inspect_probe(subprocess.CompletedProcess([], 0, text, ""), {})
         self.assertIn("incomplete_or_repeated_turn", report["failures"])
+
+    def test_probe_requires_one_started_and_completed_turn_and_final_message(self):
+        lines = response().splitlines()
+        invalid = [lines[1:], lines[:1] + lines[2:], lines + lines,
+                   lines + [json.dumps({"type": "item.completed", "item": {"type": "reasoning"}})],
+                   [lines[1], lines[0], *lines[2:]],
+                   [*lines[:2], lines[2].replace('"item.completed"', '"item.updated"'), lines[3]]]
+        for events in invalid:
+            with self.subTest(events=events):
+                report = inspect_probe(subprocess.CompletedProcess([], 0, "\n".join(events), ""), {})
+                self.assertEqual(report["status"], "fail")
+
+    def test_malformed_probe_events_fail_without_crashing_or_hiding_tool_use(self):
+        bad_events = ['{"type":[]}', '{"type":"item.completed","item":{"type":[]}}',
+                      '{"type":"item.completed","item":{"type":"file_change","type":"reasoning"}}',
+                      '{"type":"item.completed","item":{"type":"reasoning","text":NaN}}']
+        for event in bad_events:
+            with self.subTest(event=event):
+                report = inspect_probe(subprocess.CompletedProcess([], 0, event + "\n" + response(), ""), {})
+                self.assertEqual(report["status"], "fail")
+
+    def test_duplicate_final_response_fields_cannot_hide_tool_report(self):
+        value = '{"available_tools":["apply_patch"],"available_tools":[],"loaded_markers":[],"forbidden_content":"UNAVAILABLE","environment_content":"UNAVAILABLE"}'
+        events = [json.loads(line) for line in response().splitlines()]
+        events[2]["item"]["text"] = value
+        report = inspect_probe(subprocess.CompletedProcess([], 0, "\n".join(json.dumps(e) for e in events), ""), {})
+        self.assertIn("missing_structured_response", report["failures"])
 
     def test_reported_loader_or_tool_presence_fails_without_raw_context(self):
         report = inspect_probe(subprocess.CompletedProcess([], 0, response(loaded_markers=["private source text"], available_tools=["functions.exec", "private source text"]), ""), {})

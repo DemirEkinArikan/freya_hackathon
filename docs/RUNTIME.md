@@ -66,7 +66,103 @@ depends on both documented settings and observed behavior; flags listed by
 [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
 and [security documentation](https://learn.chatgpt.com/docs/security).
 
-## Evidence on 10 October 2026
+## Accepted active runtime — 10 October 2026, 19:16 Istanbul
+
+Python 3.11.15, Codex 0.162.1 and the existing ChatGPT sign-in now pass the
+synthetic audit with `gpt-6.1-sol` / high reasoning. The baseline on the same
+machine failed with three reported Code Mode tools and a host-disabled
+diagnostic. After the scoped catalog restriction, the model reports **zero
+tools**, no canaries, no omitted skills and no unknown diagnostics. Synthetic
+policy and plan wire-format calls also pass through the real generator, with
+its mandatory audit enabled. Reviewed before/after metadata and code hashes:
+[acceptance evidence](runtime-evidence/naci-restricted-catalog-20261010.json).
+The 589 local tests, 16-file kit pin and source package check pass.
+
+Feature switches do not by themselves remove model-owned tool defaults.
+The controller now reads `codex debug models --bundled` from the installed CLI,
+selects the exact model (no guessed fallback), and creates an ephemeral
+`model_catalog_json` for each generation process. It preserves model identity,
+instructions, approval policy metadata and all non-tool settings. Only these
+capabilities are narrowed:
+
+| Catalog setting | Generation value |
+|---|---|
+| `shell_type` | `disabled` |
+| `apply_patch_tool_type` | `null` |
+| `experimental_supported_tools` | `[]` |
+| `node_repl_disabled` | `true` |
+| `tool_mode` | `direct` |
+| `supports_search_tool` | `false` |
+
+The official [catalog configuration documentation](https://learn.chatgpt.com/docs/enterprise/roll-out-a-gateway#use-a-model-catalog-for-custom-names)
+describes per-process catalogs and model tool capabilities. The exact fields
+come from the installed version's [model metadata types](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/protocol/src/openai_models.rs).
+This uses the same model and provider; no gateway or new API credential is
+introduced. Installed catalogs, user configuration and the developer's normal
+Codex tools are unchanged. Temporary catalogs are removed with each workspace.
+
+The independent audit and generation must have identical catalog fingerprints.
+Unknown/missing models, malformed catalogs, catalog drift, observed tool events,
+reported tools, loader evidence and unknown diagnostics still stop before the
+banking prompt. Probe JSON also rejects duplicate keys, malformed item types,
+missing/repeated turns and unfinished final messages. No acceptance failure was
+whitelisted to obtain this result. Each new builder instance audits again;
+a previous report is not a bypass or acceptance of every CLI version/model.
+
+This satisfies the active-environment T02 runtime checks. It does not prove
+kernel file denial, a complete banking build or hosted behavior. The next step
+is a fresh guarded public-brief build; Freya deployment/simulation retains its
+separate authorization and evidence requirements. Direct API/provider spending
+is no longer a prerequisite for this tested Codex path.
+
+## Independent tool-registration check before merge
+
+`model_reported_tool_count` is the length of the model's own `available_tools`
+answer, not a direct registry measurement. The live canary/event checks remain
+useful, but that number alone does not prove disabled tools.
+
+A separate local CLI experiment removes the model from this question:
+
+```sh
+python3.11 tools/verify_generation_tools.py --output artifacts/t02-tool-registry.json
+```
+
+This launches the installed Codex with the production generation arguments and
+catalog, but an empty temporary `CODEX_HOME` and a loopback-only stub provider.
+It does not forward requests upstream or use account credentials. It records
+only tool names/counts, known rejection diagnostics and synthetic side effects.
+The model response is scripted, so the measured tool counts cannot originate
+from an LLM's claim. It inspects both ordinary request `tools` and the
+`input[].additional_tools` representation used by this installed model.
+
+| Measured case | Codex 0.162.1 result |
+|---|---|
+| Same feature controls with original bundled catalog | 3 request tool definitions: `functions.exec`, `functions.wait`, `functions.request_user_input_async` |
+| Restricted generation catalog | 0 request tool definitions |
+| Stub forces a custom `apply_patch` call | `unsupported custom tool call: apply_patch`; no file created |
+| Stub forces an `exec_command` read of a synthetic sibling sentinel | `unsupported call: exec_command`; no sentinel exposed |
+
+`request_tool_count` measures outgoing definitions; `model_reported_tool_count`
+is the separate live self-report. The positive control is mandatory: if the
+unrestricted catalog also reports zero outgoing tools, the local test fails
+instead of granting acceptance. Forced calls must produce actual unsupported-
+tool responses. Changing a generated answer to say "no tools" cannot pass these
+checks. [Reviewed local transport evidence](runtime-evidence/naci-tool-registry-20261010.json)
+records the same restricted catalog fingerprint as the live audit and smoke.
+
+These observations establish more than model self-report, but remain scoped:
+the local provider/auth home differs from the real ChatGPT invocation, only two
+forced tool names are exercised, and this is not an independent OS filesystem-
+denial test or an exhaustive audit of Codex. The separate live ChatGPT audit and
+both generation stages also passed. Each new builder instance audits again.
+
+The latest T02 checkpoint's Python/auth/isolation requirements are satisfied in
+this tested active environment. Direct API provider/account/spending-cap setup
+was not performed; it is unnecessary for the verified existing-Codex path.
+Commit, push, same-repository PR merge and completion evidence are still pending
+user direction. No banking build or Freya trial is claimed by T02 acceptance.
+
+## Historical evidence on 10 October 2026
 
 The local host passed Python 3.11.14, Codex CLI 0.162.0-alpha.2, ChatGPT sign-in
 and required capability checks. The initial live probe exposed no random

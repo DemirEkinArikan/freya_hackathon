@@ -1,0 +1,154 @@
+{
+  "purpose": "T02 restricted generation catalog acceptance on the active builder environment",
+  "starting_commit": "9811bf73d25c4e2485f3f4c839bcbf88141d585f",
+  "branch": "task/t02-isolation",
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "baseline": {
+    "schema_version": 1,
+    "created_at": "2026-10-10T16:04:51.824442+00:00",
+    "local": {
+      "python_version": "3.11.15",
+      "platform": "darwin",
+      "checks": {
+        "python_3_11": true,
+        "version": true,
+        "signin": true,
+        "capabilities": true,
+        "features": true
+      },
+      "authentication": "chatgpt",
+      "codex_version": "0.162.1",
+      "status": "pass"
+    },
+    "isolation": {
+      "status": "fail",
+      "failures": [
+        "model_reports_available_tools",
+        "unknown_cli_diagnostic"
+      ],
+      "canary_exposure": [],
+      "observed_item_types": [
+        "agent_message",
+        "error"
+      ],
+      "cli_warnings": [
+        "skip_host_skill_discovery_is_experimental"
+      ],
+      "unknown_cli_diagnostics": [
+        "Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`."
+      ],
+      "unknown_cli_diagnostic_count": 1,
+      "unknown_cli_diagnostics_truncated": false,
+      "omitted_skill_count": 0,
+      "model_reported_tools": [
+        "functions.exec",
+        "functions.request_user_input_async",
+        "functions.wait"
+      ],
+      "model_reported_tool_count": 3,
+      "unrecognized_tool_name_count": 0,
+      "response_valid": true,
+      "returncode": 0,
+      "completed_turn_count": 1,
+      "stdout_characters": 1264,
+      "stderr_characters": 94,
+      "limits": [
+        "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+        "No forbidden tool call can be exercised when the model has no tools.",
+        "This does not independently verify OS file denial or audit every host loader."
+      ]
+    },
+    "status": "fail"
+  },
+  "restricted_catalog_audit": {
+    "schema_version": 1,
+    "created_at": "2026-10-10T16:15:01.442393+00:00",
+    "local": {
+      "python_version": "3.11.15",
+      "platform": "darwin",
+      "checks": {
+        "python_3_11": true,
+        "version": true,
+        "signin": true,
+        "capabilities": true,
+        "features": true
+      },
+      "authentication": "chatgpt",
+      "codex_version": "0.162.1",
+      "status": "pass"
+    },
+    "isolation": {
+      "status": "pass",
+      "failures": [],
+      "canary_exposure": [],
+      "observed_item_types": [
+        "agent_message",
+        "error"
+      ],
+      "cli_warnings": [
+        "skip_host_skill_discovery_is_experimental"
+      ],
+      "unknown_cli_diagnostics": [],
+      "unknown_cli_diagnostic_count": 0,
+      "unknown_cli_diagnostics_truncated": false,
+      "omitted_skill_count": 0,
+      "model_reported_tools": [],
+      "model_reported_tool_count": 0,
+      "unrecognized_tool_name_count": 0,
+      "response_valid": true,
+      "returncode": 0,
+      "completed_turn_count": 1,
+      "stdout_characters": 787,
+      "stderr_characters": 0,
+      "limits": [
+        "Tool/context lists are model self-reports; observed events and unknown canaries are checked independently.",
+        "No forbidden tool call can be exercised when the model has no tools.",
+        "This does not independently verify OS file denial or audit every host loader."
+      ],
+      "model_catalog": {
+        "source": "installed_cli_bundled",
+        "model": "gpt-6.1-sol",
+        "source_model_sha256": "b1421ad068252f673a8ee29c7aa5b400078d899b7c39a8b396555d8e349a15a0",
+        "generation_catalog_sha256": "ac8c8839e69655785da7dab4098b677ba838766a1c8530fa7b66d9377b1b31dd",
+        "restricted_capabilities": {
+          "shell_type": "disabled",
+          "apply_patch_tool_type": null,
+          "experimental_supported_tools": [],
+          "node_repl_disabled": true,
+          "tool_mode": "direct",
+          "supports_search_tool": false
+        }
+      }
+    },
+    "status": "pass"
+  },
+  "generation_smoke": {
+    "created_at": "2026-10-10T16:16:21.457868+00:00",
+    "status": "pass",
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "policy_wire_passed": true,
+    "plan_wire_passed": true,
+    "isolation_status": "pass",
+    "model_reported_tool_count": 0,
+    "canary_exposure": [],
+    "generation_catalog_sha256": "ac8c8839e69655785da7dab4098b677ba838766a1c8530fa7b66d9377b1b31dd",
+    "banking_inputs_sent": false,
+    "freya_calls": 0,
+    "limits": [
+      "Synthetic wire-format smoke only; no banking policy compilation, hosted simulation or OS path-denial proof."
+    ]
+  },
+  "implementation_sha256": {
+    "builder/runtime.py": "4fef9e149d4e3088288ea7963574c309186fdec2df9a30d3900fe90ae2708d3f",
+    "builder/preflight.py": "da7059e1a104319adaf08b05564d29430d82095ef817bef0162310f8dfc40e65"
+  },
+  "validation": {
+    "unit_tests_passed": 589,
+    "kit_v3_files_verified": 16,
+    "source_package_check": "pass",
+    "diff_check": "pass"
+  },
+  "conclusion": "The active Codex 0.162.1 environment passes the unchanged zero-tools/no-canary gate with a per-process restricted catalog. Both synthetic policy and plan wire calls pass. No banking brief or Freya request was sent. This is not an independent OS path-denial proof or evidence of a complete banking builder run."
+}

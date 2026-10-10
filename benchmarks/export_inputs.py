@@ -4,18 +4,20 @@ import json
 from pathlib import Path
 import re
 
-from .freeze import verify_freeze
+from .freeze import verify_holdout_manifest
 from .generate import ROOT
 
 
 def export_profile(manifest_path, profile_id, output_dir, workspace_root=None):
-    manifest = json.loads(Path(manifest_path).read_text())
+    from builder.safety import read_json
+    manifest = read_json(Path(manifest_path))
     if manifest.get("kind") != "offline": raise ValueError("only synthetic offline bank inputs may be exported")
     bank = next((p for p in manifest["profiles"] if p["profile_id"] == profile_id), None)
     if bank is None: raise ValueError("profile is absent or still reserved until candidate freeze")
-    if profile_id.startswith("holdout"):
-        if not manifest.get("freeze"): raise ValueError("holdout requires a verified freeze")
-        verify_freeze(manifest["freeze"]["record"])
+    held_out_profile = any(row.get("split") == "holdout" and row.get("profile_id") == profile_id
+                           for row in manifest.get("cases", []))
+    if held_out_profile or profile_id.startswith("holdout"):
+        verify_holdout_manifest(manifest)
     from .paths import output_path, PROJECT
     output = output_path(output_dir, workspace_root or PROJECT)
     if output == ROOT or ROOT in output.parents:

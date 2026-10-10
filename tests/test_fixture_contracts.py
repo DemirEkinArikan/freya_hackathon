@@ -23,9 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # The contract/provenance payload alone is excluded from the case projection.
 ORIGINAL_FACTS_SHA = "94e1f576b98b60446671148a327029566ebef8804567d27727c3b2ef83d158ab"
 ORIGINAL_RESERVATIONS_SHA = "b4716eea3b6f285757e9e0f7068d32ce05e303659cb93133a24d38e5b2408607"
-ORIGINAL_CONFIGURATION_SHA = "86adfebfa3554accafd6d86d51a7c219789f7b2e1ac9f15342b4ae79272e908e"
+# Deliberately authored development-v2 API revision; case/oracle and reservation
+# fingerprints above remain the independent pre-migration capture.
+DEVELOPMENT_V2_CONFIGURATION_SHA = "c7c49727fe9bd1eacb5cf2a176793ffcdb8276f189fb5bb1a62840075353c134"
 CONFIGURATION_KEYS = ("profile_id", "label", "now", "identity", "representation", "wire_codes",
-                      "product_floor_aliases", "semantic_values", "product_values", "openapi", "request_field_mapping")
+                      "product_floor_aliases", "semantic_values", "product_values", "openapi", "request_field_mapping", "result_field_mapping")
 
 
 class FixtureContractTests(unittest.TestCase):
@@ -38,7 +40,7 @@ class FixtureContractTests(unittest.TestCase):
         self.assertEqual((len(facts), len(reserved)), (60, 60))
         self.assertEqual(digest(facts), ORIGINAL_FACTS_SHA)
         self.assertEqual(digest(reserved), ORIGINAL_RESERVATIONS_SHA)
-        self.assertEqual(digest(configurations), ORIGINAL_CONFIGURATION_SHA)
+        self.assertEqual(digest(configurations), DEVELOPMENT_V2_CONFIGURATION_SHA)
         self.assertEqual(manifest["split_counts"], {"train": 36, "validation": 24, "holdout": 60})
         self.assertNotIn("freeze", manifest)
         self.assertTrue(all("expected" not in c and "identity" not in c and "products" not in c for c in reserved))

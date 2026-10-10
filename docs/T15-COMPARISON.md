@@ -31,12 +31,39 @@ Each input is a version 1 bundle with these recorded fields:
 | `version` | Integer `1` |
 | `brief` | `A` or `B`; compare each brief separately |
 | `source_sha256` | `digest({"brief_sha256": [source["sha256"] for source in build_manifest["sources"]], "tool_api_sha256": build_manifest["tool_api_sha256"]})`; ordered brief hashes preserve amendment order |
-| `builder_source_sha256` | Recorded snapshot hash of the builder code/configuration used for this selected run; retained separately for each method and never forced equal |
+| `builder_source_sha256` | Original invocation snapshot hash of builder code/configuration used for this selected run; retained separately for each method and never forced equal |
+| `build_provenance` | Original `build-provenance.json` from `builder.source_provenance.bind_run_provenance`, containing the source snapshot and its hashes, original manifest hash and trace hash |
 | `conditions` | Exact configuration described below, captured for the evaluated trials |
 | `build` | Selected run's timezone-aware ISO `started_at` and `ended_at`; at most 1,800 seconds |
 | `build_manifest` | Original live/exported builder manifest with model, reasoning effort, ordered sources, API hash, export hash and verified deployment IDs/version |
 | `workflow_export` | Actual submitted platform export; its full digest must match the manifest, and its graph must match each report's pinned graph |
 | `trials.train`, `trials.validation` | Each has the original `evaluate` `report`, `case_manifest_sha256`, timezone-aware ISO `started_at` and `ended_at` |
+
+`build_provenance.source_snapshot` must retain integer `version: 1`, nonempty
+safe relative `files` mapped to SHA-256 fingerprints, `resolved_config`,
+timezone-aware invocation `captured_at`, and `builder_source_sha256`. Comparison
+recomputes the snapshot digest over `version`, `files` and `resolved_config`,
+then binds it to the bundle, manifest, provenance record and source snapshot.
+It checks the full snapshot digest against both recorded source-record hashes
+and the full manifest digest against `build_manifest_sha256`.
+
+Capture must fall within the recorded build interval. The original configuration
+must declare `mode: live`, the compared generation model/reasoning settings,
+`controller_dependency_injection: false`, a finite numeric `deadline_seconds`
+at most 1800, and `export_reserve_seconds` at least 300 and no greater than that
+deadline. Original manifest `elapsed_seconds` and the outer recorded interval
+must each fit that deadline; ranking conservatively uses the larger duration.
+This build deadline is distinct from each evaluation's `budget_seconds`.
+The two candidates' original `deadline_seconds` and `export_reserve_seconds`
+must match as recorded; differing build budgets reject controlled comparison.
+Missing legacy invocation records produce an incomparable result. Do not
+retrofit the current builder snapshot onto a historical run.
+
+The comparator currently checks the original `trace_sha256` field's hash shape;
+it does not receive or hash the original trace contents or verify its audit/event
+order. The internal recording/bundle lane must validate original trace/audit,
+actual bank calendar and declared fixture inventory before live acceptance.
+These pending gates are not established by a passing synthetic comparison.
 
 Here `digest` is `builder.safety.digest` over canonical JSON. Preserve the
 original reports and manifests. Record conditions and timestamps when running

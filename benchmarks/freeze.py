@@ -27,11 +27,33 @@ def _hash_json(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
+def _regular_path(value, label):
+    """Reject linked ancestors before resolving or reading a caller path."""
+    path = Path(value).absolute()
+    if ".." in path.parts:
+        raise ValueError(f"{label} cannot traverse parent directories")
+    probe = Path(path.anchor)
+    for part in path.parts[1:]:
+        probe = probe / part
+        if probe.is_symlink():
+            # Standard macOS aliases above a workspace are not user links.
+            if (str(probe), str(probe.resolve())) in (("/tmp", "/private/tmp"), ("/var", "/private/var")):
+                continue
+            raise ValueError(f"{label} cannot be a symlink or traverse symlinks")
+    return path.resolve()
+
+
+def _outside_candidate(path, root, label):
+    path = _regular_path(path, label)
+    root = _regular_path(root, "candidate source root")
+    if path == root or root in path.parents:
+        raise ValueError(f"{label} must be outside candidate inputs")
+    return path
+
+
 def read_config(config_file):
     from builder.safety import read_json, assert_no_secrets
-    path = Path(config_file)
-    if path.is_symlink():
-        raise ValueError("resolved runtime configuration cannot be a symlink")
+    path = _regular_path(config_file, "resolved runtime configuration")
     value = read_json(path)
     if not isinstance(value, dict): raise ValueError("resolved config must be a nonsecret JSON object")
     assert_no_secrets(value)
@@ -39,10 +61,7 @@ def read_config(config_file):
 
 
 def _snapshot(root, resolved_config=None):
-    supplied = Path(root)
-    if supplied.is_symlink():
-        raise ValueError("candidate source root cannot be a symlink")
-    root = supplied.resolve()
+    root = _regular_path(root, "candidate source root")
     if not root.is_dir():
         raise ValueError("candidate source root must be an existing directory")
     files = {}
@@ -93,9 +112,7 @@ def _timestamp(value):
 
 def _read_record(record):
     from builder.safety import read_json, canonical_json
-    path = Path(record)
-    if path.is_symlink():
-        raise ValueError("freeze record cannot be a symlink")
+    path = _regular_path(record, "freeze record")
     value = read_json(path)
     required = {"version", "candidate_root", "candidate_sha256", "files", "status", "created_at", "limitation"}
     optional = {"config_file", "resolved_config", "consumed_at", "consumed_reason"}
@@ -147,7 +164,7 @@ def _read_record(record):
 
 
 def freeze_candidate(candidate_root, record, config_file=None):
-    record = Path(record)
+    record = _outside_candidate(record, candidate_root, "freeze record")
     if record.exists() or record.is_symlink():
         raise ValueError("freeze already exists; use a new record for a new candidate")
     resolved_config = read_config(config_file) if config_file else None
@@ -177,6 +194,22 @@ def verify_freeze(record):
     return value
 
 
+def verify_holdout_manifest(manifest):
+    """Require actual unchanged candidate evidence before using a holdout."""
+    evidence = manifest.get("freeze") if isinstance(manifest, dict) else None
+    if (not isinstance(evidence, dict) or not isinstance(evidence.get("record"), str)
+            or not evidence["record"].strip() or not isinstance(evidence.get("candidate_sha256"), str)
+            or not _SHA256.fullmatch(evidence["candidate_sha256"])):
+        raise ValueError("holdout manifest requires verified freeze evidence")
+    try:
+        value = verify_freeze(evidence["record"])
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError("holdout manifest freeze verification failed") from exc
+    if value["candidate_sha256"] != evidence["candidate_sha256"]:
+        raise ValueError("holdout manifest candidate hash differs from verified freeze")
+    return value
+
+
 def consume(record, reason):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("consumption requires a repair/disclosure reason")
@@ -187,15 +220,146 @@ def consume(record, reason):
     Path(record).write_text(json.dumps(value, indent=2) + "\n")
 
 
+def _manifest_inventory(manifest, name):
+    if (not isinstance(manifest, dict) or type(manifest.get("version")) is not int
+            or manifest["version"] != 1 or manifest.get("kind") != name
+            or not isinstance(manifest.get("cases"), list)):
+        raise ValueError(f"{name} fixture manifest schema is invalid")
+    rows = manifest["cases"]
+    if type(manifest.get("count")) is not int or manifest["count"] != len(rows):
+        raise ValueError(f"{name} fixture count does not match inspected rows")
+    counts = {key: 0 for key in ("train", "validation", "holdout")}
+    reserved = materialized = 0
+    identities = set()
+    for row in rows:
+        if (not isinstance(row, dict) or not isinstance(row.get("split"), str) or row["split"] not in counts
+                or not isinstance(row.get("fixture_id"), str) or not row["fixture_id"].strip()
+                or row["fixture_id"] in identities):
+            raise ValueError(f"{name} fixture row identity or split is invalid")
+        identities.add(row["fixture_id"])
+        counts[row["split"]] += 1
+        status = row.get("status")
+        if status == "reserved_until_candidate_freeze":
+            if row["split"] != "holdout" or any(key in row for key in ("case", "expected", "script", "customer_turns")):
+                raise ValueError(f"{name} holdout reservation contains materialized content")
+            reserved += 1
+        elif status in ("materialized", "materialized_after_freeze"):
+            if name == "offline":
+                complete = isinstance(row.get("script"), str) and isinstance(row.get("expected"), dict)
+            else:
+                complete = isinstance(row.get("case"), dict) and isinstance(row["case"].get("script"), str)
+            if not complete:
+                raise ValueError(f"{name} materialized fixture content is missing")
+            if row["split"] == "holdout": materialized += 1
+        else:
+            raise ValueError(f"{name} fixture status is invalid")
+    declared = manifest.get("split_counts")
+    if (not isinstance(declared, dict) or set(declared) != set(counts)
+            or any(type(value) is not int or value < 0 for value in declared.values()) or declared != counts):
+        raise ValueError(f"{name} fixture split counts do not match inspected rows")
+    return {"inspected_rows": len(rows), "actual_split_counts": counts,
+            "reserved_holdout_rows": reserved, "materialized_holdout_rows": materialized}
+
+
+def _read_manifests(directory):
+    from builder.safety import read_json
+    directory = _regular_path(directory, "fixture directory")
+    if not directory.is_dir():
+        raise ValueError("fixture directory must be an existing directory")
+    manifests, inventories = {}, {}
+    for name in ("offline", "hosted"):
+        path = _regular_path(directory / (name + ".json"), "fixture manifest")
+        if not path.is_file():
+            raise ValueError("fixture manifest must be a regular file")
+        manifest = read_json(path)
+        inventory = _manifest_inventory(manifest, name)
+        inventory["manifest_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifests[name], inventories[name] = manifest, inventory
+    return manifests, inventories
+
+
+def readiness_inventory(candidate_root, directory=ROOT / "fixtures", config_file=None, runtime_root=None):
+    """Inspect prepared source/config/reservations without freezing or authoring."""
+    resolved_config = read_config(config_file) if config_file else None
+    sha, files = _snapshot(candidate_root, resolved_config)
+    _, inventories = _read_manifests(directory)
+    result = {"status": "readiness_only", "acceptance": False,
+              "candidate_root": str(_regular_path(candidate_root, "candidate source root")),
+              "candidate_sha256": sha, "files": files,
+              "source_file_count": len(files) - (CONFIG_ENTRY in files),
+              "config_supplied": resolved_config is not None,
+              "config_sha256": files.get(CONFIG_ENTRY), "manifests": inventories,
+              "limitation": "Prepared inventory only; no T15 acceptance, freeze, independent authoring or evaluation. Generic snapshot includes visible source/config extensions recursively; choose candidate inputs explicitly. Reservations are not executed cases. Generated variants cannot establish independently authored fresh acceptance."}
+    if config_file:
+        result["config_file"] = str(_regular_path(config_file, "resolved runtime configuration"))
+    if runtime_root is not None:
+        from builder.source_provenance import capture_source_provenance
+        root = _regular_path(runtime_root, "runtime source root")
+        result["runtime_inventory"] = capture_source_provenance(root, resolved_config or {})
+        result["runtime_inventory"]["config_supplied"] = resolved_config is not None
+        result["runtime_inventory"]["claim"] = "Readiness inspection, not an invocation or frozen candidate; evaluator fixtures excluded."
+    return result
+
+
+def _generation_preflight(manifests, inventories, seeds):
+    by_archetype = {row["archetype_id"]: row for row in archetypes() if row["split"] == "holdout"}
+    styles = {"plain", "pieces", "corrects", "talkative", "asks_back", "in_words", "compound"}
+    profiles = manifests["offline"].get("profiles")
+    if (not isinstance(profiles, list) or any(not isinstance(row, dict) for row in profiles)
+            or any(row.get("profile_id") in ("holdout-1", "holdout-2") for row in profiles)):
+        raise ValueError("offline fixture profiles are invalid or contain holdout inputs")
+    for name, manifest in manifests.items():
+        if "freeze" in manifest or inventories[name]["materialized_holdout_rows"]:
+            raise ValueError("held-out fixtures already generated; do not silently replace or re-blind them")
+        if not inventories[name]["reserved_holdout_rows"]:
+            raise ValueError(f"{name} requires unmaterialized holdout reservations")
+        for row in manifest["cases"]:
+            if row["split"] != "holdout": continue
+            if row.get("status") != "reserved_until_candidate_freeze":
+                raise ValueError(f"{name} holdout reservation status is invalid")
+            if name == "offline":
+                archetype_id = row.get("archetype_id")
+                archetype = by_archetype.get(archetype_id) if isinstance(archetype_id, str) else None
+                profile_id = row.get("profile_id")
+                if (archetype is None or profile_id not in ("holdout-1", "holdout-2")
+                        or row["fixture_id"] != profile_id + "-" + row["archetype_id"]
+                        or set(row) != set(archetype) | {"fixture_id", "profile_id", "status", "official_policy"}
+                        or row.get("official_policy") is not False
+                        or any(row.get(key) != value for key, value in archetype.items())):
+                    raise ValueError("offline holdout reservation is invalid")
+            else:
+                reservation = row.get("reservation")
+                if not isinstance(reservation, dict) or set(reservation) != {"seed", "style", "compound_index"}:
+                    raise ValueError("hosted holdout reservation schema is invalid")
+                seed_id = row.get("bank_case_id")
+                seed = seeds.get(seed_id) if isinstance(seed_id, str) else None
+                style, index = row.get("style"), reservation["compound_index"]
+                if (seed is None or reservation["seed"] != row["bank_case_id"]
+                        or reservation["style"] != style or not isinstance(style, str) or style not in styles
+                        or row.get("brief") != seed["brief"]
+                        or (style == "compound" and (type(index) is not int or not 0 <= index < len(COMPOUNDS)))
+                        or (style != "compound" and index is not None)):
+                    raise ValueError("hosted holdout reservation is invalid")
+    return by_archetype
+
+
 def generate_holdout(record, directory=ROOT / "fixtures"):
     frozen = verify_freeze(record)
-    directory = Path(directory)
-    manifests = {name: json.loads((directory / (name + ".json")).read_text()) for name in ("offline", "hosted")}
-    if any(manifest.get("freeze") for manifest in manifests.values()):
-        raise ValueError("held-out fixtures already generated; do not silently replace or re-blind them")
+    _outside_candidate(record, frozen["candidate_root"], "freeze record")
+    directory = _outside_candidate(directory, frozen["candidate_root"], "fixture directory")
+    if "config_file" in frozen:
+        configuration = _regular_path(frozen["config_file"], "resolved runtime configuration")
+        if configuration == directory or directory in configuration.parents:
+            raise ValueError("fixture directory must be outside resolved configuration inputs")
+    manifests, inventories = _read_manifests(directory)
+    from builder.safety import read_json
+    seeds = {c["id"]: c for c in read_json(KIT / "public-test-set.json")}
+    by_archetype = _generation_preflight(manifests, inventories, seeds)
     rng = random.Random(secrets.randbits(256))
     profiles = []
-    for i in (1, 2):
+    reserved = [row for row in manifests["offline"]["cases"] if row["split"] == "holdout"]
+    for profile_id in sorted({row["profile_id"] for row in reserved}):
+        i = int(profile_id.rsplit("-", 1)[1])
         start = date(2027, 4, 5) + timedelta(days=rng.randrange(0, 120))
         while start.weekday() > 4: start += timedelta(days=1)
         holiday = start + timedelta(days=rng.randrange(2, 5))
@@ -206,13 +370,13 @@ def generate_holdout(record, directory=ROOT / "fixtures"):
         amounts = []
         for balance in balances:
             amounts += [balance / 100, rng.randrange(balance // 5, balance // 2) / 100]
-        profiles.append(profile(f"holdout-{i}", start.isoformat() + "T11:00", holidays,
+        profiles.append(profile(profile_id, start.isoformat() + "T11:00", holidays,
                                 rng.randrange(8, 15), rng.randrange(3, 7), rng.randrange(5, 11),
                                 identity, rng.randrange(2, 5), raw=i == 2, product_values=amounts))
     offline = manifests["offline"]
+    by_profile = {row["profile_id"]: row for row in profiles}
     offline["profiles"] += profiles
-    offline["cases"] = [c for c in offline["cases"] if c["split"] != "holdout"] + [fixture(a, p) for p in profiles for a in archetypes() if a["split"] == "holdout"]
-    seeds = {c["id"]: c for c in json.loads((KIT / "public-test-set.json").read_text())}
+    offline["cases"] = [c for c in offline["cases"] if c["split"] != "holdout"] + [fixture(by_archetype[row["archetype_id"]], by_profile[row["profile_id"]]) for row in reserved]
     for row in manifests["hosted"]["cases"]:
         if row["split"] != "holdout": continue
         case = json.loads(json.dumps(seeds[row["bank_case_id"]]))
@@ -224,11 +388,18 @@ def generate_holdout(record, directory=ROOT / "fixtures"):
         row.update(case=case, status="materialized_after_freeze")
         if row.get("style") == "compound":
             row["outcome_constraints"] = seed_outcome_constraints(seeds[row["bank_case_id"]])
+    actual = {name: _manifest_inventory(manifest, name)["materialized_holdout_rows"] for name, manifest in manifests.items()}
+    # Complete serialization and schema checks precede the first filesystem write.
+    serialized = {}
     for name, manifest in manifests.items():
         manifest["freeze"] = {"candidate_sha256": frozen["candidate_sha256"], "record": str(Path(record).resolve()),
-                              "generated_at": datetime.now(timezone.utc).isoformat(), "status": "unevaluated"}
-        (directory / (name + ".json")).write_text(json.dumps(manifest, indent=2) + "\n")
-    return {"offline": 60, "hosted": 60, "candidate_sha256": frozen["candidate_sha256"]}
+                              "generated_at": datetime.now(timezone.utc).isoformat(), "status": "unevaluated",
+                              "claim": "Generated variants, not independent fresh authoring or acceptance."}
+        serialized[name] = json.dumps(manifest, indent=2, allow_nan=False) + "\n"
+    for name, contents in serialized.items():
+        (directory / (name + ".json")).write_text(contents)
+    return {**actual, "candidate_sha256": frozen["candidate_sha256"], "acceptance": False,
+            "claim": "Materialized generated variants only; no evaluation or independently authored acceptance."}
 
 
 def main():
@@ -238,6 +409,13 @@ def main():
     create.add_argument("--candidate-root", required=True)
     create.add_argument("--record", required=True)
     create.add_argument("--config-file", help="Nonsecret resolved model/reasoning/runtime JSON; included in digest")
+    ready = sub.add_parser("readiness", help="Inspect prepared inventory without freezing or authoring")
+    ready.add_argument("--candidate-root", required=True)
+    ready.add_argument("--fixtures-dir", default=str(ROOT / "fixtures"))
+    ready.add_argument("--config-file")
+    ready.add_argument("--runtime-root", help="Optional repository runtime source inventory; excludes fixtures")
+    checked = sub.add_parser("verify", help="Verify an existing freeze without mutation")
+    checked.add_argument("--record", required=True)
     held = sub.add_parser("generate-holdout")
     held.add_argument("--record", required=True)
     held.add_argument("--fixtures-dir", default=str(ROOT / "fixtures"))
@@ -246,12 +424,18 @@ def main():
     consumed.add_argument("--reason", required=True)
     args = ap.parse_args()
     from .paths import output_path
-    args.record = str(output_path(args.record))
-    if args.command == "create":
+    if args.command == "readiness":
+        print(json.dumps(readiness_inventory(args.candidate_root, args.fixtures_dir, args.config_file, args.runtime_root)))
+    elif args.command == "verify":
+        result = verify_freeze(args.record)
+        print(json.dumps({"status": result["status"], "candidate_sha256": result["candidate_sha256"]}))
+    elif args.command == "create":
+        args.record = str(output_path(args.record))
         result = freeze_candidate(args.candidate_root, args.record, args.config_file)
         print(json.dumps({"status": result["status"], "candidate_sha256": result["candidate_sha256"]}))
     elif args.command == "generate-holdout": print(json.dumps(generate_holdout(args.record, output_path(args.fixtures_dir))))
     else:
+        args.record = str(output_path(args.record))
         consume(args.record, args.reason)
         print("Holdout marked consumed; do not present later repairs as blind evaluation.")
 

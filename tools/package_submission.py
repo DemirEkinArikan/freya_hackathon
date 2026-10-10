@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Allowlisted source packaging; deployment readiness is a separate evidence gate."""
+"""Allowlisted source packaging; deployment readiness is a separate evidence gate.
+
+Final manifests require team, repo, full HEAD commit, run_command, and mappings
+named workflows, traces, runs and inputs, each keyed by hidden-1 and hidden-2.
+runs points to each controller manifest.json; inputs contains brief paths under
+briefs and the matching OpenAPI path under tool_api. Selected attempt snapshots
+are resolved next to the controller manifest, never guessed from an older run.
+"""
 from __future__ import annotations
 
 import argparse
@@ -7,6 +14,8 @@ import datetime as dt
 import hashlib
 import json
 import os
+import math
+import re
 import subprocess
 import sys
 import zipfile
@@ -21,7 +30,7 @@ ROOT_FILES = {"README.md", "AGENTS.md", "pyproject.toml", ".python-version", ".e
 SOURCE_DIRS = {"builder", "benchmarks", "tests", "tools", "docs", "build-the-builder"}
 SKIP_PARTS = {"__pycache__", ".git", ".venv", "generated", "holdout", "results", "traces", "out", "artifacts"}
 SKIP_NAMES = {".env", "env.sh", ".DS_Store", ".freya-agents.json", ".personas.json", "kickoff_email.txt", "meeting.md", "meeting_summary.md"}
-EXTENSIONS = {".py", ".json", ".jsonl", ".md", ".toml", ".txt"}
+EXTENSIONS = {".py", ".sh", ".json", ".jsonl", ".md", ".toml", ".txt"}
 
 
 def _nonempty(value):
@@ -172,6 +181,8 @@ def _validate_trace_tests(result, deployment, workflow):
 
 
 def safe_path(path):
+    if not isinstance(path, (str, Path)) or not str(path):
+        raise ValueError('Submission evidence requires a file path')
     path = Path(path)
     if not path.is_absolute():
         path = ROOT / path
@@ -192,7 +203,8 @@ def source_files():
     result = []
     for path in sorted(ROOT.rglob("*")):
         rel = path.relative_to(ROOT)
-        if any(p in SKIP_PARTS for p in rel.parts) or path.name in SKIP_NAMES:
+        if (any(p in SKIP_PARTS for p in rel.parts) or path.name in SKIP_NAMES
+                or path.name.startswith('.env.') and path.name != '.env.example'):
             continue
         included = (len(rel.parts) == 1 and path.name in ROOT_FILES) or (
             rel.parts[0] in SOURCE_DIRS and (path.suffix in EXTENSIONS or path.name in {"VERSION", "env.example"}))
@@ -201,37 +213,138 @@ def source_files():
     return result
 
 
-def check_content(path):
+def check_content(path, *, evidence=False):
     raw = path.read_bytes()
     text = raw.decode("utf-8")
-    credentials = {**read_local_environment(ROOT / ".env"), **os.environ}
-    known = tuple(v for k, v in credentials.items() if any(s in k for s in ("API_KEY", "TEAM_KEY", "TOKEN", "SECRET", "TOOL_AUTH")) and len(v) >= 12)
+    # An overridden local key is still private, and short opaque credentials
+    # must not bypass exact-value exclusion.
+    credentials = [*read_local_environment(ROOT / '.env').items(), *os.environ.items()]
+    known = tuple(v for k, v in credentials if v and any(s in k.upper()
+                  for s in ('API_KEY', 'TEAM_KEY', 'TOKEN', 'SECRET', 'TOOL_AUTH', 'PASSWORD')))
     # Test source intentionally contains synthetic token examples. Known live
     # values are always forbidden; production source/evidence also gets patterns.
-    if path.relative_to(ROOT).parts[0] == "tests":
+    if not evidence and path.relative_to(ROOT).parts[0] == "tests":
         if any(value in text for value in known):
             raise ValueError("Credential detected in test source")
     else:
         try:
             assert_no_secrets(text, forbidden_values=known)
+            if path.suffix == '.json':
+                assert_no_secrets(read_json(path), forbidden_values=known)
+            elif path.suffix == '.jsonl':
+                for line in text.splitlines():
+                    if line.strip():
+                        assert_no_secrets(json.loads(line), forbidden_values=known)
         except ValueError as exc:
             raise ValueError(f"{path.relative_to(ROOT)}: credential-like material requires review") from exc
     return hashlib.sha256(raw).hexdigest()
 
 
+def read_evidence(path):
+    path = safe_path(path)
+    check_content(path, evidence=True)
+    value = read_json(path)
+    if not isinstance(value, dict):
+        raise ValueError('Evidence JSON must be an object')
+    return path, value
+
+
+def validate_run(path, run, workflow, events, inputs):
+    """Bind retained controller evidence; this does not authenticate live calls."""
+    if run.get('mode') != 'live' or run.get('status') != 'exported':
+        raise ValueError('Selected build manifest must describe a successful live export')
+    if not isinstance(run.get('deployment'), dict):
+        raise ValueError('Selected build manifest requires its deployment record')
+    if (type(run['deployment'].get('version_number')) is not int
+            or run['deployment'].get('published') is not True
+            or not isinstance(run.get('policy_contract_sha256'), str)
+            or not re.fullmatch(r'[0-9a-f]{64}', run['policy_contract_sha256'])):
+        raise ValueError('Selected build requires published version and policy contract fingerprint')
+    number = run.get('selected_attempt')
+    directory = f'attempts/plan-{number:03d}' if type(number) is int and 1 <= number <= 3 else None
+    if directory is None or run.get('selected_attempt_directory') != directory:
+        raise ValueError('Selected attempt requires its canonical bounded attempt directory')
+    attempt_dir = path.parent / directory
+    retained = []
+    for filename in ('attempt.json', 'export.json', 'deployment.json'):
+        evidence_path, value = read_evidence(attempt_dir / filename)
+        retained.append(evidence_path)
+        if filename == 'attempt.json':
+            if (type(value.get('number')) is not int or value.get('number') != number or value.get('directory') != directory
+                    or value.get('status') != 'exported' or value.get('phase') != 'complete'
+                    or value.get('export_sha256') != digest(workflow)
+                    or any(value.get(key) != run.get(key) for key in ('tool_api_sha256', 'policy_contract_sha256'))):
+                raise ValueError('Selected attempt record differs from the successful build manifest/export')
+        elif filename == 'export.json' and digest(value) != digest(workflow):
+            raise ValueError('Selected attempt export differs from the submitted export')
+        elif filename == 'deployment.json':
+            if type(value.get('version_number')) is not int or value.get('published') is not True:
+                raise ValueError('Selected attempt requires a published deployment version')
+            if any(value.get(key) != run.get('deployment', {}).get(key)
+                   for key in ('workflow_id', 'agent_id', 'version_id', 'version_number', 'published')):
+                raise ValueError('Selected attempt deployment differs from the build manifest')
+            if digest(value.get('workflow')) != digest(workflow.get('workflow')):
+                raise ValueError('Selected attempt published graph differs from the export')
+    deployments = [event for event in events if _event_name(event) == 'deployment']
+    selected = deployments[-1]
+    if (type(selected.get('attempt')) is not int or selected.get('attempt') != number or run.get('export_sha256') != digest(workflow)
+            or any(selected.get(key) != run.get('deployment', {}).get(key)
+                   for key in ('workflow_id', 'agent_id', 'version_id', 'version_number', 'published'))):
+        raise ValueError('Selected attempt/build manifest differs from the final trace deployment/export')
+    test_events = [event for event in events[events.index(selected) + 1:] if _event_name(event) == 'tests']
+    if test_events:
+        for event in test_events:
+            if type(event.get('attempt')) is not int or event.get('attempt') != number or event.get('attempt_directory') != directory:
+                raise ValueError('Selected trace tests refer to another attempt')
+        test_path, tests = read_evidence(attempt_dir / 'tests.json')
+        retained.append(test_path)
+        if digest(tests) != digest(run.get('tests')) or digest(tests) != digest(test_events[-1].get('result')):
+            raise ValueError('Selected attempt tests differ from the manifest/trace')
+    elif run.get('tests') is not None:
+        raise ValueError('Build manifest tests are absent from the selected trace')
+    if run.get('hosted_behavior_verified') is not bool(test_events):
+        raise ValueError('Build manifest hosted evidence claim differs from its trace tests')
+    elapsed = run.get('elapsed_seconds')
+    remaining = events[-1].get('remaining_seconds')
+    if any(type(value) not in (int, float) or not math.isfinite(value) or value < 0
+           for value in (elapsed, remaining)) or elapsed > 1800 or remaining > 1800:
+        raise ValueError('Successful build requires finite in-budget deadline evidence')
+    trace_duration = (dt.datetime.fromisoformat(events[-1]['time']) - dt.datetime.fromisoformat(events[0]['time'])).total_seconds()
+    # elapsed is rounded before writing the manifest; the end event follows it.
+    if elapsed + 1 < trace_duration or elapsed + remaining > 1800.01:
+        raise ValueError('Build manifest and trace deadline evidence disagree')
+    if not isinstance(inputs, dict) or not isinstance(inputs.get('briefs'), list) or not inputs['briefs']:
+        raise ValueError('Selected build requires brief and tool API input paths')
+    sources = []
+    for index, entry in enumerate(inputs['briefs'], 1):
+        brief = safe_path(entry); check_content(brief, evidence=True)
+        retained.append(brief)
+        sources.append({'id': f'brief-{index}', 'file': brief.name, 'sha256': digest(brief.read_text(encoding='utf-8'))})
+    api_path, api = read_evidence(inputs.get('tool_api', ''))
+    retained.append(api_path)
+    input_events = [event for event in events if _event_name(event) == 'inputs']
+    if (len(input_events) != 1 or run.get('sources') != sources or input_events[0].get('sources') != sources
+            or run.get('tool_api_sha256') != digest(api) or input_events[0].get('tool_api_sha256') != digest(api)):
+        raise ValueError('Input fingerprints differ from the selected build manifest/trace')
+    return retained
+
+
 def check_manifest(value):
-    for key in ("team", "repo", "commit", "run_command", "workflows", "traces"):
+    if not isinstance(value, dict):
+        raise ValueError('Submission manifest must be an object')
+    for key in ("team", "repo", "commit", "run_command", "workflows", "traces", "runs", "inputs"):
         if not value.get(key):
             raise ValueError(f"Submission manifest missing {key}")
-    if set(value["workflows"]) != {"hidden-1", "hidden-2"} or set(value["traces"]) != {"hidden-1", "hidden-2"}:
-        raise ValueError("Require exactly two workflows and their selected run traces")
+    for key in ('workflows', 'traces', 'runs', 'inputs'):
+        if not isinstance(value[key], dict) or set(value[key]) != {'hidden-1', 'hidden-2'}:
+            raise ValueError('Require exactly two workflows, traces, build manifests and input sets')
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
-    if not head.startswith(value["commit"]):
+    if value['commit'] != head:
         raise ValueError("Manifest commit does not match the source checkout")
     result, exported = [], {}
     for kind in ("workflows", "traces"):
         for name, entry in value[kind].items():
-            path = safe_path(entry); check_content(path)
+            path = safe_path(entry); check_content(path, evidence=True)
             if kind == "workflows":
                 workflow = read_json(path)
                 if not workflow.get("workflow_id") or not workflow.get("agent_id") or not workflow.get("workflow"):
@@ -241,6 +354,17 @@ def check_manifest(value):
                 events = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
                 validate_trace(events, exported[name])
             result.append((path, f"{kind}/{name}{''.join(path.suffixes)}"))
+    for name, entry in value['runs'].items():
+        path, run = read_evidence(entry)
+        events = [json.loads(line) for line in safe_path(value['traces'][name]).read_text().splitlines() if line.strip()]
+        retained = validate_run(path, run, exported[name], events, value['inputs'][name])
+        result.append((path, f'runs/{name}/manifest.json'))
+        for retained_path in retained:
+            if retained_path.is_relative_to(path.parent):
+                arcname = f'runs/{name}/{retained_path.relative_to(path.parent).as_posix()}'
+            else:
+                arcname = retained_path.relative_to(ROOT).as_posix()
+            result.append((retained_path, arcname))
     return result
 
 
@@ -267,7 +391,7 @@ def main(argv=None):
     files = source_files(); hashes = {str(p.relative_to(ROOT)): check_content(p) for p in files}
     evidence, manifest = [], None
     if args.manifest:
-        manifest_path = safe_path(args.manifest); check_content(manifest_path)
+        manifest_path = safe_path(args.manifest); check_content(manifest_path, evidence=True)
         manifest = read_json(manifest_path); evidence = check_manifest(manifest)
         verify_committed(files + [path for path, _ in evidence])
     if args.check:
@@ -276,18 +400,34 @@ def main(argv=None):
     output = args.output.resolve()
     if not output.is_relative_to(ROOT):
         raise ValueError("Package output must remain inside the repository")
+    if output in files + [path for path, _ in evidence] or args.manifest and output == manifest_path:
+        raise ValueError('Package output must not overwrite source or evidence')
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as out:
         for path in files:
             out.write(path, path.relative_to(ROOT).as_posix())
+        archived = {path.relative_to(ROOT).as_posix(): path for path in files}
         for path, arcname in evidence:
+            if arcname in archived:
+                if archived[arcname] != path:
+                    raise ValueError('Package evidence paths collide')
+                continue
             out.write(path, arcname)
+            archived[arcname] = path
         packaged_manifest = None if manifest is None else json.loads(json.dumps(manifest))
         if packaged_manifest is not None:
             for kind in ("workflows", "traces"):
                 packaged_manifest[kind] = {name: f"{kind}/{name}{''.join(safe_path(entry).suffixes)}"
                                            for name, entry in manifest[kind].items()}
-        out.writestr("package-index.json", json.dumps({"source_files": hashes, "source_only": manifest is None, "submission": packaged_manifest}, indent=2))
+            packaged_manifest['runs'] = {name: f'runs/{name}/manifest.json' for name in manifest['runs']}
+            archive_paths = {path: arcname for path, arcname in evidence}
+            packaged_manifest['inputs'] = {
+                name: {'briefs': [archive_paths[safe_path(entry)] for entry in inputs['briefs']],
+                       'tool_api': archive_paths[safe_path(inputs['tool_api'])]}
+                for name, inputs in manifest['inputs'].items()}
+        out.writestr("package-index.json", json.dumps({"source_files": hashes,
+            "evidence_files": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in archived.items() if name not in hashes},
+            "source_only": manifest is None, "submission": packaged_manifest}, indent=2))
     print(json.dumps({"package": str(output), "source_only": manifest is None, "files": len(files)}))
     return 0
 

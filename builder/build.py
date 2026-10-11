@@ -30,7 +30,7 @@ from .safety import assert_no_secrets, canonical_json, digest, read_json, saniti
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
 from .action_bindings import compile_action_bindings
-from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
+from .policy import compile_execution_policy, PolicyError, MissingExecutionRules, normalise_policy
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 from .stored_workflow import assert_equivalent_stored_workflow
 from .execution_requirements import compile_execution_requirements, validate_plan_execution
@@ -301,6 +301,11 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
+            # Recorded trivial rewrites (quote edges/marks/whitespace, unread descriptive
+            # rule fields) spare a whole repair; the strict checks below are unchanged.
+            policy, changes = normalise_policy(policy, {source["id"]: source["text"] for source in sources})
+            if changes:
+                trace.emit("policy_normalisation", attempt=attempt + 1, changes=changes)
             compiled = compile_policy_contract(policy, sources, openapi)
             # Execution-shape errors belong to bounded extraction repairs,
             # before the policy is frozen; plans cannot repair bank rules.

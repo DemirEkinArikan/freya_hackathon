@@ -56,11 +56,16 @@ class GatewayRetryTests(unittest.TestCase):
                          [{"method": "GET", "path": "/api/v2/simulations/sim", "status": 504, "attempt": 1}])
         self.assertEqual(self.sleeps, [10, 10])
 
+    def test_status_poll_internal_server_error_is_retried_and_recorded(self):
+        client = self.client([500, "completed"])
+        self.assertEqual(client.run_simulation("agent", "practice", {"persona": {}})["status"], "completed")
+        self.assertEqual([(row["status"], row["attempt"]) for row in self.log], [(500, 1)])
+
     def test_writes_and_other_statuses_are_not_retried(self):
-        client = self.client([500], post_status=504)
-        with self.assertRaisesRegex(PlatformError, "HTTP 504"):
-            client.request("POST", "/api/v2/simulations", {"agentId": "agent"})
+        client = self.client([501], post_status=500)
         with self.assertRaisesRegex(PlatformError, "HTTP 500"):
+            client.request("POST", "/api/v2/simulations", {"agentId": "agent"})
+        with self.assertRaisesRegex(PlatformError, "HTTP 501"):
             client.request("GET", "/api/v2/simulations/sim")
         self.assertEqual(self.log, [])
         self.assertEqual(len(self.calls), 2)

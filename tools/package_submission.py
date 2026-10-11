@@ -314,9 +314,16 @@ def validate_provenance(path, run, events):
             raise ValueError()
     except (KeyError, TypeError, ValueError):
         raise ValueError('Original source capture timestamp must precede its trace snapshot inside the run') from None
-    for call in calls:
-        if call.get('model') != config['model'] or call.get('reasoning_effort') != config['reasoning_effort']:
-            raise ValueError('Trace model calls differ from the invocation generation configuration')
+    retry_effort = None  # A recorded policy retry names the effort of the next model call only.
+    for event in events:
+        if _event_name(event) == 'policy_generation_retry':
+            retry_effort = event.get('reasoning_effort')
+        elif _event_name(event) == 'model_call':
+            if event.get('model') != config['model'] or (
+                    event.get('reasoning_effort') != config['reasoning_effort']
+                    and (retry_effort is None or event.get('reasoning_effort') != retry_effort)):
+                raise ValueError('Trace model calls differ from the invocation generation configuration')
+            retry_effort = None
     audits = [event for event in events if _event_name(event) == 'generation_isolation_audit']
     substantive = [event for event in calls if type(event.get('prompt_characters')) is int and event['prompt_characters'] > 0]
     if (len(audits) != 1 or events.index(audits[0]) >= events.index(substantive[0])

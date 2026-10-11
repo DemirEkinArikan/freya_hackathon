@@ -198,6 +198,10 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
             target = node.get("max_turn_transition", target)
         target = target or node.get("passthrough_default_transition")
         if target is None:
+            # Kit routing rule 4 keeps a conversation in place when a caller
+            # turn matches no route. Missing future input remains incomplete.
+            if node["node_type"] == "conversation" and frame is not None:
+                continue
             status = "missing_conversation_frame" if node["node_type"] == "conversation" and frame is None else "routing_deadlock"
             break
         if target != current:

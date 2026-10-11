@@ -27,8 +27,14 @@ class CompiledTerminationTests(unittest.TestCase):
             return (condition.get("operator") == "equals"
                     and self.harness.variables.get(condition["variable"]) == condition["operand"])
         node = self.harness.workflow["nodes"][name]
-        return next((item["target_node"] for item in node["transitions"]
-                     if matches(item["condition"])), node.get("passthrough_default_transition"))
+        target = next((item["target_node"] for item in node["transitions"]
+                       if matches(item["condition"])), node.get("passthrough_default_transition"))
+        # Execute the authenticated controller gate before asserting the same
+        # public recovery destination; an exhausted gate is not bypassed.
+        if target and target.startswith("bg_gate_"):
+            self.harness.code(target)
+            return self.target(target)
+        return target
 
     def assert_terminal(self, name, terminal):
         self.assertEqual(self.target(name), terminal)
@@ -61,7 +67,9 @@ class CompiledTerminationTests(unittest.TestCase):
         self.assertEqual(validate_guarded_workflow(self.harness.workflow, **self.harness.context), [])
         self.assertEqual(validate_workflow(self.harness.workflow, self.harness.context["openapi"]), [])
         self.harness.account()
-        close = self.harness.workflow["nodes"]["talk"]["max_turn_transition"]
+        gate = self.harness.workflow["nodes"]["talk"]["max_turn_transition"]
+        self.harness.code(gate)
+        close = self.target(gate)
         self.assertEqual(close, "close")
         self.harness.code(close)
         self.assertFalse(self.state["quarantined"])

@@ -79,7 +79,9 @@ class RecordedCallbackCloseTests(unittest.TestCase):
     def test_compiled_hook_derives_absent_extraction_and_seals_single_close_attempt(self):
         self.record_callback()
         before = copy.deepcopy(self.state)
-        variables = {"bg_state": json.dumps(self.state)}
+        variables = {"customer_id": self.state["customer_id"], "now": self.state["now"]}
+        exec(_code("init", "", {}, self.profile, self.catalog, self.maps, {}), {"vars": variables})
+        variables["bg_state"] = json.dumps(self.state)
         code = _code("prepare", "close_call", {"outcome": "proposal_outcome", "reason": "proposal_reason"},
                      self.profile, self.catalog, self.maps, {})
         exec(code, {"vars": variables})

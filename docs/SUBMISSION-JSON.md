@@ -19,7 +19,7 @@ Everything else comes from tonight's run: `--run-command` (with `{case_folder}` 
 git add -f submission/final.workflow.json traces/final.log   # both folders are git-ignored
 git commit -m "Final submission: exported workflow and trace" && git push
 python3 tools/make_submission.py --team "TEAM" --member "Name <name@example.com>" \
-  --run-command "python3 builder/build.py {case_folder} {mock_url}" \
+  --run-command "python3 planb/build.py {case_folder} {mock_url}" \
   --workflow submission/final.workflow.json --trace traces/final.log --mock-url https://OUR-MOCK.workers.dev
 ```
 

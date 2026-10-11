@@ -19,12 +19,12 @@ def score_ledger(case, led):
     got_outcome = (led.get("outcome"), led.get("reason"))
     if got_outcome != (exp["outcome"], exp.get("reason")): bad.append(f"outcome {got_outcome}, expected {(exp['outcome'], exp.get('reason'))}")
     key = lambda p: (p["product_id"], round(float(p["amount"]), 2), p["date"])
-    if sorted(map(key, led["promises"])) != sorted(map(key, exp["promises"])): bad.append(f"promises {sorted(map(key, led['promises']))}, expected {sorted(map(key, exp['promises']))}")
+    if sorted(map(key, led.get("promises", []))) != sorted(map(key, exp.get("promises", []))): bad.append(f"promises {sorted(map(key, led.get('promises', [])))}, expected {sorted(map(key, exp.get('promises', [])))}")
     nk = lambda n: (n.get("product_id"), n["reason"])
-    if sorted(map(nk, led["notes"])) != sorted(map(nk, exp["notes"])): bad.append(f"notes {sorted(map(nk, led['notes']))}, expected {sorted(map(nk, exp['notes']))}")
+    if sorted(map(nk, led.get("notes", []))) != sorted(map(nk, exp.get("notes", []))): bad.append(f"notes {sorted(map(nk, led.get('notes', [])))}, expected {sorted(map(nk, exp.get('notes', [])))}")
     ck = lambda c: (c["date"], c["time"])
-    if sorted(map(ck, led["callbacks"])) != sorted(map(ck, exp["callbacks"])): bad.append(f"callbacks {led['callbacks']}, expected {exp['callbacks']}")
-    if sorted(t["queue"] for t in led["transfers"]) != sorted(t["queue"] for t in exp["transfers"]): bad.append(f"transfers {led['transfers']}, expected {exp['transfers']}")
+    if sorted(map(ck, led.get("callbacks", []))) != sorted(map(ck, exp.get("callbacks", []))): bad.append(f"callbacks {led.get('callbacks', [])}, expected {exp.get('callbacks', [])}")
+    if sorted(t["queue"] for t in led.get("transfers", [])) != sorted(t["queue"] for t in exp.get("transfers", [])): bad.append(f"transfers {led.get('transfers', [])}, expected {exp.get('transfers', [])}")
     calls = led["calls"]
     if not calls or calls[-1]["tool"] != "close_call": bad.append("the call was not closed with close_call")
     # policy from the ledger: tools the brief forbids before identity is verified

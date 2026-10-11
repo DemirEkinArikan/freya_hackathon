@@ -72,7 +72,8 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "prod
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
                          "promise_readback", "account_disclosure_fields", "identity_close_choices", "goal_close", "call_variables", "call_input_formats",
                          "attempt_scopes", "definite_failure_resume",
-                         "confirmation_question", "confirmation_question_actions"}
+                         "confirmation_question", "confirmation_question_actions",
+                         "identity_factor_state", "identity_counter_movement", "identity_failure_classes"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -118,7 +119,10 @@ _SHAPE_GUIDANCE = {
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
     "identity_close": "an optional object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
-    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
+    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"/"uncertain_verification"/"definite_verification_failure"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. uncertain_verification and definite_verification_failure rows stand for protected verify_identity evidence, at most one of each across scopes: once the controller records that evidence (see identity_counter_movement and identity_failure_classes) the call closes only through that row, whatever is proposed, and the row is never eligible otherwise; without the row that evidence quarantines without a close. Exhausted identity keeps identity_close.failed. A condition resting only on what is said in the conversation (contact, wrong party, refusal, clarification, silence or reply limits) has no protected evidence: list it as a requires "none" row, have the workflow establish it and propose the matching pair; protected identity evidence takes precedence over such rows, and this is not an unsupported constraint. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
+    "identity_factor_state": 'optional, exactly "latest_check" when the source makes the latest completed check of each identity factor control its passed flag. While identity is incomplete a correction of an already passed factor may be checked again: the controller withdraws that pass before sending it, only verified=true restores it, and the next factor is the first in identity_fields order without a pass. Wrong-answer counting is unchanged and no answer is replayed automatically. Absence keeps passes permanent and checks only the next factor',
+    "identity_counter_movement": 'optional, exactly "exact" when the source requires the returned wrong_answers_left to start at the API\'s declared maximum (otherwise identity_wrong_limit), never increase, fall by exactly one on a processed mismatch and stay unchanged on a match. Any other movement, including a match reaching zero, is uncertain verification: it is checked before exhaustion and success, no further check is sent, and the call closes only through the identity_close_choices row requiring uncertain_verification. Absence keeps the cumulative counter update',
+    "identity_failure_classes": 'optional nonempty object with only repeat_once, fault and/or sealed keys, each a nonempty array of unique {http_status: integer 100..599, error?: nonempty string} verify_identity matchers. Each matcher appears in one class only and equals the http_status/error of an operative verify_identity nonpersistent_failures entry with its api_source (a definite no-processing receipt). repeat_once: the controller sends that exact request once more, immediately and without a new answer; a further definite failure of that repeat is a definite verification failure. fault: a definite verification failure. Either ends verification, which then closes only through the identity_close_choices row requiring definite_verification_failure. sealed: the bank session is already closed; the controller makes no further bank call, including close_call, and records no disposition. A witnessed matcher without a class leaves identity unchanged for a new complete answer. With this rule any other verify_identity failure is uncertain verification, and nothing is retried after uncertain processing',
     "goal_close": 'an optional object with only verified and/or account_loaded keys, for goals that select no promise, note or transfer role. verified applies once identity is verified and no account is loaded; account_loaded after positive account evidence. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons, each outcome/reason pair once per phase; collections meanings (promise, paid, transferred, no_promise) are never permitted. With schedule_callback every close code must be a bound wire_codes meaning, and after a recorded callback only recorded_callback rows are eligible. One eligible row is fixed; several rows require a matching closing proposal. Other evidence conditions are unsupported constraints',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
@@ -228,7 +232,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, dict) and bool(value) and not set(value) - {"min", "max"}
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
-    elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products", "call_input_formats"}:
+    elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products", "call_input_formats",
+                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -369,9 +374,22 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         if valid:
             valid = all(isinstance(choice, dict) and set(choice) <= {"outcome", "reason", "requires"}
                         and text(choice.get("outcome"))
-                        and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                        and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback",
+                                                       "uncertain_verification", "definite_verification_failure")
                         and ("reason" not in choice or text(choice["reason"]))
                         for choices in value.values() for choice in choices)
+    elif kind == "identity_factor_state":
+        valid = value == "latest_check"
+    elif kind == "identity_counter_movement":
+        valid = value == "exact"
+    elif kind == "identity_failure_classes":
+        matchers = [canonical_json(case) for cases in value.values() for case in cases] if (
+            isinstance(value, dict) and value and set(value) <= {"repeat_once", "fault", "sealed"}
+            and all(isinstance(cases, list) and cases for cases in value.values())) else []
+        valid = bool(matchers) and len(set(matchers)) == len(matchers) and all(
+            isinstance(case, dict) and set(case) - {"error"} == {"http_status"}
+            and type(case["http_status"]) is int and 100 <= case["http_status"] <= 599
+            and ("error" not in case or text(case["error"])) for cases in value.values() for case in cases)
     elif kind == "goal_close":
         valid = (isinstance(value, dict) and bool(value) and set(value) <= {"verified", "account_loaded"}
                  and all(isinstance(rows, list) and bool(rows) and all(

@@ -6,7 +6,113 @@ Source availability, mock tests and a source archive cannot replace those gates.
 The organizer kit v3 [final/rules](../build-the-builder/README.md) and later
 organizer instructions govern execution. Customer cases remain hidden.
 
-## Gates to finish before release
+**Plan B is primary tonight** (coordinator, 18:10 Istanbul). [`planb/`](../planb/README.md) holds the
+kit's agentic builder with its improved `build-phone-agent` skill, running Claude Opus 5.5. It builds the
+agent, self-tests it and exports it. `tools/planb_attempts.py` runs its parallel attempts. The big builder
+(`builder/build.py` via `tools/final_attempts.py`) is the fallback, used only for a brief that Plan B left
+without an export. Everything from [Fallback: big-builder gates](#fallback-big-builder-gates) on describes
+that fallback.
+
+## Official rules
+
+Read at 18:30 Istanbul from freyavoice.ai/hackathon#submit:
+
+- **The case.** The final is one case: a zip holding a folder of bank documents in Markdown, Word, PDF and
+  Excel. `BRIEF.md` is the starting point and `README.md` explains each document.
+- **The mock.** We write the bank mock on Cloudflare Workers from the case's service contract and test
+  customers. We deploy it before the builder runs and keep it up until the results are out. The agent calls
+  only our mock.
+- **The platform.**
+  - One Freya key and one workspace per team, so only `FREYA_API_KEY`.
+  - No probing or load-testing the platform: at most 10 calls per simulation, and no probe workflows.
+  - A workspace holds at most 200 workflows, so update workflows in place.
+- **The submission.**
+  - One `submission.json` (team, members, repo, commit, run_command, workflow, trace, mock_url), e-mailed
+    before 23:00 Istanbul.
+  - One phone agent from one run, with that run's trace. No manual edits.
+  - Nothing from the final case is written into the builder.
+
+Workflow freya-final-ready is preparing four more pieces; use each once it is merged:
+- converting the case folder;
+- generating and deploying the mock;
+- the `{case_folder} {mock_url}` builder interface with the official trace format;
+- the `submission.json` tooling.
+
+## Plan B: primary path
+
+### Before 20:00
+
+- **Checkout.** A checkout of the frozen commit, which contains `planb/` and `tools/planb_attempts.py`.
+- **Environment.** `.venv-planb` with `claude-agent-sdk==0.2.165`, as in [planb/README.md](../planb/README.md).
+- **Keys.** Check that they are present without printing them: `~/.freya-anthropic-key`, plus
+  `FREYA_API_KEY` and `FREYA_BANK_TEAM_KEY` in the main checkout's `.env`.
+- **Simulation slot.** The attempts need the workspace's one simulation slot for their self-tests. From 19:55
+  no other lane holds its lease (`artifacts/.simulation.lock` in the main checkout).
+
+### Commands
+
+```sh
+mkdir -p out
+nohup .venv-planb/bin/python tools/planb_attempts.py --brief <inputs>/BRIEF.md <inputs>/<tool-api>.json \
+  > out/planb-attempts.log 2>&1 &
+tail -f out/planb-attempts.log     # one line per start and per finish, then the summary JSON
+```
+
+- **Inputs.** Give one `--brief` per brief: its Markdown file(s) and its tool API `.json`, or a folder.
+- **Defaults.** `--attempts 2 --stagger 60 --timeout 1800`.
+- **Working copies.** Each attempt runs in its own copy of `planb/` under `$TMPDIR/planb-attempts/<run>/`.
+  Its `builder.log` and Claude trace stay there.
+- **Shared slot.** All attempts self-test in the one workspace. Their simulations take turns through the lease
+  (`FREYA_LEASE`), with at most 10 calls at once.
+- **Workflows.** Attempt k of a brief updates the same workflow on every run.
+
+### Time boxes
+
+| Istanbul | UTC | Action |
+|---|---|---|
+| 20:00–20:15 | 17:00–17:15 | Save the case zip as exact bytes under the ignored `artifacts/hidden-inputs/` and record its SHA-256. Convert the folder. Deploy the mock and check that it answers |
+| by 20:20 | by 17:20 | Start `tools/planb_attempts.py`: 2 attempts per brief, 60 s apart |
+| 20:20–20:52 | 17:20–17:52 | Attempts run. Each one stops itself at 1,740 s and is killed at 1,800 s. Inside, the skill's time box: saved by minute 8, last test started by minute 19, exported by minute 28 |
+| 20:52–21:00 | 17:52–18:00 | Read `out/planb-summary.json`. The selected attempt's workflow and trace are in `out/` |
+| 21:00–21:30 | 18:00–18:30 | Only for a brief without an export: one more Plan B run, or the [big-builder fallback](#fallback-big-builder-window) |
+| by 22:00 | by 19:00 | Last builder start of any kind |
+| by 22:40 | by 19:40 | Everything exported; `submission.json` filled in and committed |
+| 22:40–23:00 | 19:40–20:00 | Buffer: e-mail `submission.json` before 23:00 and keep the receipt |
+
+### Selection and fallback
+
+- **Selection.** `planb_attempts` selects one attempt per brief: the one that saved a workflow and has the
+  highest final self-test pass rate (the last test that attempt ran), then the shortest elapsed time.
+- **Export.** It exports that attempt's workflow and exits 0. If a brief has no export, it exits 3: its
+  `selected` is `null`, or its record has an `export_error`.
+- **Fallback.** Only then does that brief get a fallback.
+  - If the attempts failed on infrastructure (a lease wait, platform errors in `builder.log`), re-run
+    `planb_attempts` for that brief.
+  - Otherwise start the big builder ([attempt matrix](#attempt-matrix), round 1).
+- **Later runs.** A later run replaces the selection only if its self-test pass rate is higher. Every attempt
+  stays on disk.
+
+### Submission package
+
+Per brief:
+- **Workflow.** `out/<brief>.workflow.json` is the selected attempt's workflow as `freya.export_workflow`
+  wrote it. This file is what gets scored.
+- **Trace.** `out/<brief>.trace.jsonl` is that run's trace: every builder message, with every key redacted
+  (`trace_redactions` counts them). `out/<brief>.trace.txt` holds the builder's own notes: start and end, the
+  model, the workflow and agent ids it created, every test and the export.
+- **Builder and skill.** These are the files at the submitted commit:
+  - `planb/agent_builder.py`;
+  - `planb/.claude/skills/build-phone-agent/SKILL.md`;
+  - the kit files in `planb/`;
+  - `tools/planb_attempts.py`.
+
+  `run_command` is the exact `planb_attempts` command that was run.
+- **Evidence.** `out/planb-summary.json` lists every attempt, so the one submitted run can be traced.
+
+`submission.json` names the workflow and the trace as repository paths at the submitted commit, and `out/` is
+git-ignored. Commit those files where the submission tooling expects them.
+
+## Fallback: big-builder gates
 
 - Finish broad evaluation and Python 3.11 regressions before **Sunday 11 October
   2026, 17:00 UTC / 20:00 Istanbul**. Run the full suite, kit verification,
@@ -47,28 +153,26 @@ organizer instructions govern execution. Customer cases remain hidden.
   Preserve active/paused/ambiguous creation evidence; reconcile it before another
   simulation. All worktrees use this one lease, never separate local locks.
 
-## Window and latest starts
+## Fallback: big-builder window
+
+Use this window only for a brief that Plan B left without an export.
 
 Release is **17:00 UTC / 20:00 Istanbul**. Deadline is **20:00 UTC / 23:00 Istanbul**.
-The submission buffer is **19:45–20:00 UTC / 22:45–23:00 Istanbul**. Treat 19:45 UTC
-as the operational cutoff for completed builds, reviewed committed evidence,
-verified ZIP and organizer-ready attachments. Do not consume that buffer on tests.
+The submission buffer is **19:40–20:00 UTC / 22:40–23:00 Istanbul**. Treat 19:40 UTC
+as the operational cutoff for completed builds, exports, the committed evidence and a
+filled-in `submission.json`. Do not spend that buffer on tests.
 
 | UTC | Istanbul | Action |
 |---|---|---|
-| Before 17:00 | Before 20:00 | Finish broad tests, T17 acceptance/freeze and preparation gates; frozen checkout, guard and preflight |
-| 17:00–17:02 | 20:00–20:02 | Save both briefs/APIs as exact bytes with ordered amendments, write `spec.json` and pins; read submission instructions |
-| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: strict high + strict medium per brief, 4 builders, starts interleaved 60 s apart |
-| 17:02–17:35 | 20:02–20:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
-| 17:20–17:40 | 20:20–20:40 | As soon as `select` shows a brief's round 1 finished with no selected attempt: `launch --round 2 --labels hidden-N` |
-| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (relaxed high + relaxed medium) |
-| 17:35–18:40 | 20:35–21:40 | Once both briefs have a selection: `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
-| 18:15–19:15 | 21:15–22:15 | One more round only for a brief still without an eligible attempt: it starts by 21:45 and ends by 22:15 |
-| 19:15–19:45 | 22:15–22:45 | Select, package and verify retry results; prepare attachments |
-| 19:45–20:00 | 22:45–23:00 | Buffer: submit via the supplied authorized channel, inspect upload/receipt and keep the acknowledgment |
+| Before 17:00 | Before 20:00 | Frozen checkout, guard and preflight, so the fallback can start at once |
+| 18:00–18:05 | 21:00–21:05 | `out/planb-summary.json` shows a brief without an export: `tools/final_attempts.py launch --round 1 --labels hidden-N`, strict high + strict medium, starts 60 s apart |
+| 18:05–18:35 | 21:05–21:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `select` |
+| 18:35–19:00 | 21:35–22:00 | Only if round 1 left that brief without a selected attempt: `launch --round 2 --labels hidden-N` by 22:00 |
+| 19:00–19:40 | 22:00–22:40 | Round 2 runs, ending by 22:30; select and export by 22:40 |
+| 19:40–20:00 | 22:40–23:00 | Buffer: send `submission.json` (Plan B section) |
 
-The latest retry launch is **18:45 UTC / 21:45 Istanbul**. Its attempts end by
-22:15, which leaves 30 minutes to select, package and verify before 22:45. The
+The latest launch of any builder is **19:00 UTC / 22:00 Istanbul**. Its attempts end
+by 22:30, which leaves 10 minutes to select and export before 22:40. The
 launcher refuses a round that cannot improve a brief's selection
 ([attempt matrix](#attempt-matrix)). Never launch one for a faster build: build
 time breaks ties only after score. A late or invalid
@@ -83,7 +187,7 @@ tonight they run none.
 
 | Round | Briefs | Attempts per brief |
 |---|---|---|
-| 1 | both, at 20:02 | strict high, strict medium |
+| 1 | a brief that Plan B left without an export, from 21:00 | strict high, strict medium |
 | 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | relaxed high, relaxed medium |
 
 - **Strict** is the builder's default declaration handling. **Relaxed** is the
@@ -178,7 +282,7 @@ exits 2 while any attempt still runs and 3 when no attempt is eligible. It never
 changes an attempt directory. The output is deterministic, so running `select`
 again on the same attempts reproduces each record byte for byte.
 
-## Receive inputs and invoke the frozen builder
+## Fallback: receive inputs and invoke the frozen builder
 
 Store the organizer-provided bytes only under dedicated ignored
 `artifacts/hidden-inputs/hidden-1/` and `artifacts/hidden-inputs/hidden-2/` directories.
@@ -272,7 +376,10 @@ source/config fingerprint and rerun affected builds; do not edit generated polic
 plan or workflow by hand. If both selected builds do not match one exact submitted
 source inventory, do not manufacture a common provenance record.
 
-## Inspect, package and submit
+## Fallback: inspect, package and submit
+
+This section covers fallback runs only. The official submission is the one `submission.json`
+described in [Official rules](#official-rules).
 
 For each selected run require successful live `manifest.json`, one bounded
 append-only `trace.jsonl`, canonical `submission.workflow.json`, original
@@ -300,7 +407,7 @@ runnable. Organizer-provided import-safe authentication must be reconciled with
 credential exclusion before packaging. Stop that artifact's submission if this is
 unresolved; retain the original protected export and document the precise gate.
 
-During 19:45–20:00 UTC use only the supplied authorized submission channel. Send
+During 19:40–20:00 UTC use only the supplied authorized submission channel. Send
 the verified package/export/trace attachments and required metadata, inspect the
 actual destination and uploaded filenames, and retain receipt/acknowledgment with
 UTC/Istanbul time, package SHA-256 and evidence commit. A prepared draft or ZIP is

@@ -2,15 +2,15 @@
   "lane": "S04",
   "issue": 8,
   "kind": "independent_input_peer_review",
-  "author": "Codex S04 (rapid/s04-20261011 worktree, untracked development/account-information-s04, last write 09:00:03 Istanbul)",
+  "author": "Codex S04 (original author; rapid/s04-20261011 worktree, untracked development/account-information-s04, last write 09:00:03 Istanbul); round-2 B1-B3 resolution edits by the Claude S04 lane agent",
   "reviewer": "Claude S04 lane agent",
   "reviewed_against_builder": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
   "input_sha256": {
-    "bank.openapi.json": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1",
-    "base-policy.md": "df0f1ea1aa4588207f50625ea96309e4eee2bcfdd56c660069c6fa87cb19361c",
-    "current-policy.md": "e4fce4a0106283c1f903275f29c23da288c37571a9fd15ce4a4eed231f960ca4",
+    "base-policy.md": "5012790f93279d3e0f3bda209f212d82e0dd057aac2532dde1dbd90fba6df15e",
     "operations-email.txt": "9d0a57e86e5070d1fa8d93175b4d2c8f8bb4dd811fc2f0ba310c30b025e4b796",
-    "privacy-memo.txt": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9"
+    "privacy-memo.txt": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9",
+    "current-policy.md": "236c0b776b76cd45f77f668c2f29f5c59580848cf3fdad214af223b4cc5774df",
+    "bank.openapi.json": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1"
   },
   "raw_build_order": [
     "base-policy.md",
@@ -19,7 +19,7 @@
   ],
   "raw_build_tool_api": "bank.openapi.json",
   "clean_source_not_given_to_raw_build": "current-policy.md",
-  "verdict": "APPROVED_FOR_ONE_UNSUPPORTED_CAPABILITY_PROBE_ONLY; NOT_APPROVED_AS_FULL_WORKFLOW_ACCEPTANCE_INPUT until B1-B3 are fixed and a generic information-outcome capability exists",
+  "verdict": "APPROVED_FOR_NEW_DEVELOPMENT_GENERATION as a reviewed, fingerprinted input: B1-B3 and fresh-review F1-F2 resolved in the source text. A faithful full workflow still needs a generic information-outcome/post-account close capability; until it exists the correct builder result is an explicit unsupported-constraint failure (probe expectation below)",
   "pass": [
     "actions: only verify_identity, get_account, close_call; OpenAPI has exactly three paths; no promise/note/callback/transfer operation",
     "clean_raw_equivalence: current-policy.md differs from base-policy.md only by the authority paragraph, O-17 limit 3->2 and P-29 typed disclosure with deposit balance withheld (sentence diff)",
@@ -47,11 +47,67 @@
   "generic_capability_gap": {
     "outcome_semantics": "builder/action_bindings.py:21 at 4ef4e62 allows only promise, paid, transferred, no_promise, not_verified, not_reached; no semantic exists for C81 informed, C84 information_incomplete or C85 service_failure",
     "post_account_close": "builder/guards.py guard_close raises 'closing lacks protected evidence' for verified identity plus loaded account without collections evidence (reproduced by the Codex S04 no-model probe; S03 records the identity-side analogue)",
-    "consequence": "A faithful full workflow is not expected on 4ef4e62. Per the sources the correct builder result is an explicit unsupported-constraint failure, never C81/C84/C85 rebound to a collections semantic. A full workflow needs a narrowly scoped, checked generic source PR first."
+    "consequence": "A faithful full workflow is not expected on 4ef4e62. Per the sources the correct builder result is an explicit unsupported-constraint failure, never C81/C84/C85 rebound to a collections semantic. A full workflow needs a narrowly scoped, checked generic source PR first.",
+    "rechecked_on_main": "3f2399d: builder/action_bindings.py:20 CANONICAL outcomes are still promise, paid, transferred, no_promise, not_verified, not_reached; builder/guards.py:947 still raises 'closing lacks protected evidence'."
   },
   "preregistered_probe_expectation_evaluator_only": {
     "pass_iff": "no accepted/exported workflow; the run ends with an explicit unsupported or compile rejection of the information outcomes or the post-account close; no Freya client; no request to the .invalid host",
     "fail_if": "a workflow compiles that binds any of C81/C84/C85 to a collections semantic, drops C84/C85 paths, discloses a deposit balance or keeps limit 3",
     "if_faithful_workflow_compiles": "freeze it, then run evaluator-only readback/privacy/alias/clean-raw-equivalence/denied-identity tests before any claim"
+  },
+  "codex_original_input_sha256": {
+    "bank.openapi.json": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1",
+    "base-policy.md": "df0f1ea1aa4588207f50625ea96309e4eee2bcfdd56c660069c6fa87cb19361c",
+    "current-policy.md": "e4fce4a0106283c1f903275f29c23da288c37571a9fd15ce4a4eed231f960ca4",
+    "operations-email.txt": "9d0a57e86e5070d1fa8d93175b4d2c8f8bb4dd811fc2f0ba310c30b025e4b796",
+    "privacy-memo.txt": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9"
+  },
+  "approval_record": "docs/development-inputs/s04-account-information-approval/approved-provenance.json",
+  "round2_resolution": {
+    "edited_files": [
+      "base-policy.md",
+      "current-policy.md (identical edits; clean-raw equivalence re-verified)"
+    ],
+    "unchanged_files": [
+      "operations-email.txt",
+      "privacy-memo.txt",
+      "bank.openapi.json"
+    ],
+    "B1": {
+      "decision": "Refusal of a factor or withdrawal before verification gets C82/R15, required; every other incomplete identity gets C82/R17. Withdrawal means the caller says they want to stop; silence, an unclear answer, a wrong-number statement or a disconnection is not withdrawal.",
+      "cites": "base-policy.md 68-70 and 145-152 (current-policy.md 68-70, 147-154)",
+      "source_basis": "Kept the original explicit sentence 'Caller refusal/withdrawal before verification gets C82/R15'; the close-table sentence changed from 'explicit refusal permits the additional C82/R15 choice' to 'explicit refusal or withdrawal requires' it; 'incomplete/unclear identity gets C82/R17' narrowed to 'any other incomplete identity'. A disconnection stays the original interrupted-call rule (no close)."
+    },
+    "B2": {
+      "decision": "An explicit wrong-number statement before any submitted factor gets C83/R16, required (unreached unclear/no answer stays C83/R17). After a submitted factor and before verification it is incomplete identity, C82/R17 (not withdrawal, so not R15). After verification it is a stop before completion, C84/R18.",
+      "cites": "base-policy.md 71-74 and 146-155 (current-policy.md 71-74, 148-157)",
+      "source_basis": "The original scope 'before any submitted factor' is kept for unreached; the original fixed table incomplete=C82/R17 and the original 'After verification, a caller who stops before that completion gets C84/R18' supply the other two pairs. No new outcome/reason pair is introduced."
+    },
+    "B3": {
+      "decision": "Every listed defect inside an accepted=true account result (missing required disclosure, duplicate identifier, unrecognized type/currency, invalid count or scalar type, negative amount, contradictory result) is malformed, contradictory or unrecognized evidence: quarantine, no bank close, never C85/R19. C85/R19 stays only for a definite, well-formed accepted=false receipt. Folded N3: a field belonging to a different type is not by itself a defect and is never disclosed.",
+      "cites": "base-policy.md 101-109 (current-policy.md 103-111)",
+      "source_basis": "Original end-state rule 'A missing, malformed, contradictory, unrecognized, or transport-unknown account result has uncertain evidence: end safely in quarantine' and its identity analogue; original 'need not contain' and 'Do not reveal ... a field belonging to a different type'; OpenAPI Holding: conditional fields optional in the flat schema."
+    }
+  },
+  "fresh_review_round2": {
+    "method": "Full end-to-end re-read of the edited base, email, memo, clean policy and OpenAPI by the same Claude S04 lane agent (no separate reviewer context was available); every end condition checked for exactly one outcome.",
+    "F1_resolved": {
+      "finding": "Overlapping end conditions had no precedence: a definite accepted=false account receipt followed by a caller stop (C85/R19 vs C84/R18); exhaustion or a technical identity failure followed by a refusal/withdrawal (C82/R14 or C82/R17 vs C82/R15).",
+      "decision": "The first end condition reached decides the close pair; later caller statements do not change it; uncertain evidence still ends in quarantine.",
+      "cites": "base-policy.md 155-159 (current-policy.md 157-161)"
+    },
+    "F2_resolved": {
+      "finding": "A stricter remaining value returned with matched=true fits both 'take the stricter observed count' and the contradictory-evidence quarantine rule.",
+      "decision": "The specific counter rule governs: a stricter returned value is not contradictory evidence.",
+      "cites": "base-policy.md 63-64 (current-policy.md 63-64)"
+    },
+    "non_blocking_added": {
+      "N7": "OpenAPI get_account says 'CALL exactly once after all permitted identity factors have passed'; the policy says 'at most once'. Evaluators should not score whether get_account is called after a verified caller has already stopped; under F1 that stop decides C84/R18 unless the account result is uncertain evidence.",
+      "N8": "A field of another type that violates its schema type or pattern still makes the result malformed (invalid scalar type); presence alone is not a defect.",
+      "N9": "The number of re-asks before unclear/no answer becomes terminal is not specified; any bounded re-ask count followed by the sourced pair is acceptable."
+    },
+    "non_blocking_status": "N1, N2, N4, N5 and N6 unchanged; N3 resolved within B3.",
+    "confirmed": "No other contradiction found: every identity, account and close condition maps to exactly one pair or to quarantine/no close.",
+    "independence_recheck": "origin/main 3f2399d: the only S04 token hit is the generic field name completion_tag (6x) in tests/test_policy_bindings.py; no S04 token in docs/development-inputs/s03-identity-only or in the reserved callback input directory; the edits add no new code or field. Holdouts were not re-read (round-1 check retained)."
   }
 }

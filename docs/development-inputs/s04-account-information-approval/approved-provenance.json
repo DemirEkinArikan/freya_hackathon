@@ -1,0 +1,86 @@
+{
+  "status": "approved_for_new_development_generation",
+  "authored_utc": "2026-10-11T06:00:03+00:00",
+  "goal": "account_information",
+  "independently_authored_normative_policy": true,
+  "existing_120_fixture_membership": false,
+  "held_out_content_used": false,
+  "old_expected_records_or_customer_scripts_used": false,
+  "original_author": "Codex S04 (rapid/s04-20261011, untracked development/account-information-s04)",
+  "input_dir": "docs/development-inputs/s04-account-information",
+  "raw_build": {
+    "brief_order": [
+      "base-policy.md",
+      "operations-email.txt",
+      "privacy-memo.txt"
+    ],
+    "tool_api": "bank.openapi.json"
+  },
+  "clean_build": {
+    "brief_order": [
+      "current-policy.md"
+    ],
+    "tool_api": "bank.openapi.json",
+    "note": "Clean consolidated equivalent of the raw order; never supplied together with the raw sources."
+  },
+  "api_inherited_byte_for_byte": true,
+  "api_raw_sha256": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1",
+  "api_canonical_sha256": "37610dcc239441f99107e402a216d2982c475bd9a7df69bc2fe378c9868d0241",
+  "briefs": {
+    "base-policy.md": {
+      "raw_sha256": "5012790f93279d3e0f3bda209f212d82e0dd057aac2532dde1dbd90fba6df15e",
+      "canonical_text_sha256": "b7ac232f89d54556f96f123e71926a957a80bd28721217be23b80e01dd5e184e"
+    },
+    "operations-email.txt": {
+      "raw_sha256": "9d0a57e86e5070d1fa8d93175b4d2c8f8bb4dd811fc2f0ba310c30b025e4b796",
+      "canonical_text_sha256": "9a7dffcd8304832709a1ea071024d100b48d0f7a2b710338ffe8785b0159c749"
+    },
+    "privacy-memo.txt": {
+      "raw_sha256": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9",
+      "canonical_text_sha256": "52c5c4ff728a70b051bf15cb71a1f43030da3910a2dc71046fb126ba40703b4b"
+    },
+    "current-policy.md": {
+      "raw_sha256": "236c0b776b76cd45f77f668c2f29f5c59580848cf3fdad214af223b4cc5774df",
+      "canonical_text_sha256": "7e97dd2e97db4b2c0665a48c12ddceeca48eb01ff05e0d048061a3dab47619c5"
+    }
+  },
+  "permitted_operation_ids": [
+    "verify_identity",
+    "get_account",
+    "close_call"
+  ],
+  "required_call_variables": [
+    "customer_id",
+    "first_name",
+    "last_name",
+    "title",
+    "now"
+  ],
+  "model_calls": 0,
+  "network_calls": 0,
+  "source_checks": [
+    "full_source_content_read_end_to_end",
+    "clean_raw_equivalence_diff_limited_to_authority_O17_limit_and_P29_disclosure",
+    "openapi_three_paths_and_alias_enums_match_source_tables",
+    "byte_identical_email_memo_api_copies",
+    "no_s04_token_in_s03_inputs_reserved_callback_inputs_or_main_except_generic_completion_tag"
+  ],
+  "known_current_compiler_questions": [
+    "builder/action_bindings.py:20 has no information-outcome meanings for C81/C84/C85 and builder/guards.py:947 refuses a post-account close without collections evidence (main 3f2399d); a faithful workflow needs a generic, separately checked source PR.",
+    "guards.py identity_close scope treats a C83 proposal as unreached whenever no factor has passed; the source requires C82/R17 for a wrong-number statement after any submitted factor, so evaluators must check the sourced pair."
+  ],
+  "approval": {
+    "by": "Claude S04 lane agent within the authorized development-input scope (independent reviewer of the Codex original; editor of the B1-B3/F1-F2 text)",
+    "at": "2026-10-11T07:04:00Z",
+    "review": "docs/development-inputs/s04-account-information-review.json: full source content read; B1-B3 and F1-F2 resolved by explicit source text; N1, N2, N4-N9 non-blocking; email, memo and API bytes unchanged."
+  },
+  "previous_input_sha256": {
+    "bank.openapi.json": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1",
+    "base-policy.md": "df0f1ea1aa4588207f50625ea96309e4eee2bcfdd56c660069c6fa87cb19361c",
+    "current-policy.md": "e4fce4a0106283c1f903275f29c23da288c37571a9fd15ce4a4eed231f960ca4",
+    "operations-email.txt": "9d0a57e86e5070d1fa8d93175b4d2c8f8bb4dd811fc2f0ba310c30b025e4b796",
+    "privacy-memo.txt": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9"
+  },
+  "normative_requirements_changed": true,
+  "change": "base-policy.md and current-policy.md only: B1 refusal/withdrawal requires C82/R15 (withdrawal defined); B2 wrong number before any submitted factor requires C83/R16, after a submitted factor C82/R17, after verification C84/R18; B3 defects inside accepted=true account results quarantine without close; F1 first end condition reached decides the close pair; F2 a stricter returned remaining is not contradictory evidence."
+}

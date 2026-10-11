@@ -60,13 +60,18 @@ is a technical failure and does not count as an unsuccessful answer. Successful 
 ordinary clarification turns consume none. There are no exempt hint codes
 (identity_hint_exemptions is the empty list). The returned remaining value is
 the cumulative number of wrong answers left under the current effective limit;
-take the stricter observed count and never replenish it. Stop identity requests
-as soon as the effective wrong limit is reached. At most the effective wrong
+take the stricter observed count and never replenish it (a stricter returned
+value is not contradictory evidence). Stop identity requests as soon as the
+effective wrong limit is reached. At most the effective wrong
 limit plus two answer submissions can occur; no automatic API retry is allowed.
 
 A refused factor or caller withdrawal before verification is incomplete
-identity. Wrong-number statements before any submitted factor are unreached
-identity. Unclear identity/no answer before any submission is also unreached.
+identity. Withdrawal means the caller says they want to stop; silence, an
+unclear answer, a wrong-number statement, or a disconnection is not withdrawal.
+Wrong-number statements before any submitted factor are unreached identity;
+after a submitted factor and before verification they are incomplete identity.
+Unclear identity/no answer before any submission is also unreached; after a
+submitted factor it is incomplete identity.
 Never call get_account on a denied, incomplete, unreached, failed, or uncertain
 identity. A definite, well-formed accepted=false identity receipt is a technical failure,
 not proof of verification; use the incomplete/unclear outcome below. Missing,
@@ -93,11 +98,15 @@ calculate interest or infer amounts. Read the label and applicable facts for
 every returned product, identify the type in plain language, and invite the
 caller to repeat or correct what they heard. Repetition makes no new API call.
 
-Conditional fields must be present and match their declared scalar type only on
-their matching product type. A loan need not contain tail_digits and a card need
-not contain installment_minor or yield_bps. Missing required disclosures,
-duplicate identifiers, unrecognized types/currencies, invalid counts or scalar
-types, negative amounts, or contradictory API results are technical failures.
+Each conditional field must be present, with its declared scalar type, on every
+product of its matching type. A loan need not contain tail_digits and a card need
+not contain installment_minor or yield_bps; presence of a field belonging to a
+different type is not by itself a defect, and that field is never disclosed.
+Missing required disclosures, duplicate identifiers, unrecognized
+types/currencies, invalid counts or scalar types, negative amounts, or
+contradictory API results make even an accepted=true account result malformed,
+contradictory, or unrecognized evidence: it ends in quarantine with no bank
+close (End states below), never a C85/R19 close.
 Never replace a missing value with zero, another product's value, a default, or
 an internal identifier. Do not reveal age_days, arrears_amount, holding_ref,
 subject_ref, response fault/advice, or a field belonging to a different type.
@@ -134,13 +143,20 @@ safely in quarantine without another bank request or bank close. Do not claim un
 was read or that a close was recorded before positive API evidence.
 
 Exhausted identity gets C82/R14. Caller refusal/withdrawal before verification
-gets C82/R15. A technical identity failure or incomplete/unclear identity gets
-C82/R17. The fixed identity close table is failed=C82/R14,
+gets C82/R15. A technical identity failure or any other incomplete identity,
+including an unclear/no answer or a wrong-number statement after a submitted
+factor, gets C82/R17. The fixed identity close table is failed=C82/R14,
 incomplete=C82/R17, unreached=C83/R17. For incomplete identity the caller's
-explicit refusal permits the additional C82/R15 choice without a callback;
-for unreached identity an explicit wrong number permits C83/R16 without a
-callback. No recorded_callback choice is permitted. Unreached unclear identity
-gets C83/R17. Required reasons are exactly those pairs above.
+explicit refusal or withdrawal requires the additional C82/R15 choice without
+a callback; for unreached identity an explicit wrong number requires the
+additional C83/R16 choice without a callback. No recorded_callback choice is
+permitted. Unreached unclear identity/no answer gets C83/R17. After
+verification, a wrong-number statement is a stop before completion and gets
+C84/R18. Required reasons are exactly those pairs above. When more than one
+end condition occurs, the first one reached decides the close pair and later
+caller statements do not change it: exhaustion stays C82/R14, and a definite
+accepted=false account receipt stays C85/R19 even if the caller then stops.
+Uncertain evidence still ends in quarantine.
 
 Make exactly one close_call attempt on each authorized close path, after any
 required ending speech. Never retry close_call, even after a definite failure.

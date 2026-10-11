@@ -54,6 +54,15 @@ example, the sealed readback names each product only by the promise_readback
 fields present in that product's trusted account result, so a field the API
 returns for some product types is read back for those products alone, and
 confirmation is refused unless every loaded product gets a unique label.
+Source silence is not a requirement: when the sources supply no value for a case,
+such as a product outside every band_ranges interval, or an identity close they
+neither assign nor explicitly require, encode only the supplied values instead of
+declaring the gap; the sealed controller refuses the dependent promise or close
+rather than invent a value. Retries happen only through attempt_scopes: the
+controller never replays close_call or an unscoped write and never reports a
+failed write as recorded. Keep a declaration whenever a plausible source reading
+restricts writes, disclosures or closes more tightly than the typed interface
+can enforce.
 
 When supplied sources declare variables available at call start, retain their
 exact names in a source-backed call_variables array, including the declaration

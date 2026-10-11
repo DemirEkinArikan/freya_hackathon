@@ -19,12 +19,9 @@ silently drop a base brief, amendment, raw policy document or code list.
 Each rule has id, kind,
 value and source {id, quote}, where quote occurs verbatim in that supplied source.
 Keep unsupported requirements in unsupported_constraints instead of guessing.
-unsupported_constraints is an array, empty when there is no unresolved bank
-requirement. Each string entry rejects the build; name in it the rule_shapes kinds
-and sealed actions it was checked against. Only when a quoted source sentence
-itself prescribes transferring that situation to a named active transfer_reasons
-queue, use {constraint, trigger, fallback_queue, source:{id, quote}} instead: an
-explicit degraded requirement that selected guarded transfer roles must handle.
+unsupported_constraints is an array of strings, empty when there is no unresolved
+bank requirement. Each entry rejects the build; name in it the rule_shapes kinds
+and sealed actions it was checked against.
 Preserve each rule's scope, precondition and temporal phase.
 Preserve the full consequence of every exhausted counter, rejected proposal and
 terminal branch in its typed value: required disposition, reason, deferred action

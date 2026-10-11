@@ -577,24 +577,13 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
         except (PolicyError, TypeError, ValueError):
             errors.append(f"policy rules for {kind} are conflicting or malformed")
     unsupported = policy.get("unsupported_constraints", [])
-    if not isinstance(unsupported, list) or any(not isinstance(x, str) and not degraded_constraint_shape(x) for x in unsupported):
-        errors.append("policy.unsupported_constraints must contain strings or degraded "
-                      "{constraint, trigger, fallback_queue, source: {id, quote}} objects")
+    if not isinstance(unsupported, list) or any(not isinstance(x, str) for x in unsupported):
+        errors.append("policy.unsupported_constraints must be a string list")
     try:
         canonical_json(policy)
     except (TypeError, ValueError):
         errors.append("policy must contain finite JSON values")
     return errors
-
-
-def degraded_constraint_shape(item: Any) -> bool:
-    """A declared gap with a named sourced transfer fallback; its prose is never parsed."""
-    def text(value: Any) -> bool:
-        return isinstance(value, str) and bool(value.strip())
-    return (isinstance(item, dict) and set(item) == {"constraint", "trigger", "fallback_queue", "source"}
-            and all(text(item[key]) for key in ("constraint", "trigger", "fallback_queue"))
-            and isinstance(item["source"], dict) and set(item["source"]) == {"id", "quote"}
-            and all(text(value) for value in item["source"].values()))
 
 
 def _active_rules(policy: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:

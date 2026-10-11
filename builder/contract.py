@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Mapping
 
-from .policy import _active_rules, _profile_errors, _scoped_value_errors, degraded_constraint_shape, validate_policy
+from .policy import _active_rules, _profile_errors, _scoped_value_errors, validate_policy
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
 from .policy_conflicts import ConditionalConflictError, compile_conditional_conflicts
@@ -174,27 +174,6 @@ def _operation_catalogue(openapi: Any, allowed_actions: list[str]) -> list[dict[
         raise PolicyContractError(["OpenAPI cannot be compiled into the supported operation/schema catalogue"]) from None
 
 
-def _degraded_errors(policy: Mapping[str, Any], documents: dict[str, str]) -> list[str]:
-    """A genuine gap may degrade only to a quoted transfer that the controller guards."""
-    declared = policy.get("unsupported_constraints")
-    degraded = [item for item in declared if degraded_constraint_shape(item)] if isinstance(declared, list) else []
-    if not degraded:
-        return []
-    active = _active_rules(policy)
-    queues, actions = ((active.get(kind) or [{}])[0].get("value") for kind in ("transfer_reasons", "execution_actions"))
-    errors = []
-    for item in degraded:
-        if item["source"]["quote"] not in documents.get(item["source"]["id"], ""):
-            errors.append("degraded constraint fallback quote is not present in the supplied source")
-        elif item["fallback_queue"] not in item["source"]["quote"]:
-            errors.append("degraded constraint fallback quote must name its fallback_queue")
-        if not isinstance(queues, dict) or item["fallback_queue"] not in queues:
-            errors.append("degraded constraint fallback_queue must be an active sourced transfer_reasons queue")
-        if not isinstance(actions, list) or not {"stage_transfer", "commit_transfer"} <= set(actions):
-            errors.append("degraded constraint fallback requires selected stage_transfer and commit_transfer roles")
-    return errors
-
-
 def _superseded_ids(rules: list[dict[str, Any]], by_id: dict[str, dict[str, Any]]) -> list[str]:
     """Collect historical ancestors after the override graph has been validated."""
     pending = [ident for rule in rules for ident in rule.get("overrides", [])]
@@ -224,10 +203,8 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
     errors.extend(validate_policy(policy, documents, strict=True))
     if isinstance(policy, dict):
         errors.extend(_source_binding_errors(policy, manifest))
-        declared = policy.get("unsupported_constraints")
-        if isinstance(declared, list) and any(isinstance(item, str) for item in declared):
+        if policy.get("unsupported_constraints"):
             errors.append("policy contains unsupported constraints")
-        errors.extend(_degraded_errors(policy, documents))
     if errors:
         raise PolicyContractError(errors)
     catalogue = _operation_catalogue(openapi, policy["allowed_actions"])
@@ -263,10 +240,6 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
                 "permitted_operations": catalogue, "sources": copy.deepcopy(manifest),
                 "provenance_is_operative": False,
                 "semantic_correctness_verified": False}
-    degraded = [item for item in policy.get("unsupported_constraints", []) if isinstance(item, dict)]
-    if degraded:
-        # Explicit diagnostic: the requirement stays unenforced and visible.
-        contract["degraded_constraints"] = copy.deepcopy(degraded)
     try:
         conditional = compile_conditional_conflicts(active, manifest)
     except ConditionalConflictError as exc:

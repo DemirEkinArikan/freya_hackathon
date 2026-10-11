@@ -1,4 +1,4 @@
-"""Declared unsupported constraints: specific repair feedback, guarded degradation, unchanged guards.
+"""Declared unsupported constraints: specific repair feedback, stated controller semantics, unchanged guards.
 
 Invented policies and products only; no model, network or evaluator input. The optional replay
 classes read retained failed-build artifacts named by environment variables and never write them.
@@ -10,34 +10,20 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from builder.build import _extract_policy, declaration_feedback, make_policy_prompt, make_workflow_prompt
+from builder.build import _extract_policy, declaration_feedback, make_policy_prompt
 from builder.contract import PolicyContractError, compile_policy_contract
 from builder.execution_requirements import compile_execution_requirements
 from builder.guards import _KERNEL, run_guard_step
-from builder.action_bindings import compile_action_bindings
-from builder.policy import compile_execution_policy, execution_rule_guidance
+from builder.policy import execution_rule_guidance
 from builder.runtime import Deadline, Trace
 from builder.safety import digest
 from test_execution_capability_metadata import invented_context
 from test_execution_requirements import packet, rule
 
-FALLBACK = "Any situation this invented policy cannot resolve goes to the helpdesk queue."
-UNNAMED = "Unresolvable invented situations are escalated."
 ROOT = Path(__file__).resolve().parents[1]
 # os.pathsep-separated RUN_DIR=INPUT_DIR[,INPUT_DIR...] entries; inputs are matched by trace digests.
 REPLAY = [entry.split("=", 1) for entry in os.environ.get("FREYA_DECLARATION_REPLAY", "").split(os.pathsep) if entry]
 PUBLIC_A_RUN = os.environ.get("FREYA_PUBLIC_A_REJECTED_RUN", "")
-
-
-def degraded_packet():
-    policy, sources, api = packet()
-    sources[0]["text"] += " " + UNNAMED + " " + FALLBACK
-    sources[0]["sha256"] = policy["sources"][0]["sha256"] = digest(sources[0]["text"])
-    item = {"constraint": "An invented requirement that no typed kind enforces.",
-            "trigger": "The caller raises the invented situation.", "fallback_queue": "helpdesk",
-            "source": {"id": "synthetic", "quote": FALLBACK}}
-    policy["unsupported_constraints"] = [item]
-    return policy, sources, api, item
 
 
 class Generator:
@@ -61,8 +47,17 @@ class DeclarationFeedbackTests(unittest.TestCase):
         self.assertTrue(feedback[0].startswith("policy.unsupported_constraints[0] rejects the build"))
         self.assertIn("it cites close_call, promise_readback", feedback[0])
         self.assertIn("unsupported_constraints[1] rejects the build; it cites no typed kind", feedback[1])
-        self.assertFalse(any("Invented" in line for line in feedback))
+        self.assertTrue(all(line.endswith("; otherwise keep it unchanged") for line in feedback))
+        self.assertFalse(any("Invented" in line or "transfer" in line for line in feedback))
         self.assertEqual(declaration_feedback({"unsupported_constraints": []}), [])
+
+    def test_no_declaration_shape_relaxes_the_rejection(self):
+        policy, sources, api = packet()
+        policy["unsupported_constraints"] = [{"constraint": "Invented gap.", "trigger": "Invented trigger.",
+                                              "fallback_queue": "helpdesk", "source": {"id": "synthetic", "quote": "x"}}]
+        with self.assertRaisesRegex(PolicyContractError, "must be a string list"):
+            compile_policy_contract(policy, sources, api)
+        self.assertEqual(declaration_feedback(policy), [])
 
     def test_repair_turn_receives_feedback_and_rejected_artifact_records_it(self):
         policy, sources, api = packet()
@@ -91,48 +86,13 @@ class DeclarationFeedbackTests(unittest.TestCase):
         self.assertIn("adds no competing closing fact", shapes["close_precedence"])
         self.assertIn("without one the controller refuses the ambiguous close", shapes["close_precedence"])
         self.assertIn("each action's\ncontroller_state_effects", header)
-        self.assertIn("Each string entry rejects the build", header)
-
-
-class DegradedDeclarationTests(unittest.TestCase):
-    def test_sourced_guarded_transfer_fallback_compiles_as_explicit_diagnostic(self):
-        policy, sources, api, item = degraded_packet()
-        contract = compile_policy_contract(policy, sources, api)
-        self.assertEqual(contract["degraded_constraints"], [item])
-        degraded = compile_execution_requirements(policy, sources, api)
-        payload = json.loads(make_workflow_prompt(contract, api).split("\n\nAUTHORIZED INPUTS:\n", 1)[1])
-        self.assertEqual(payload["degraded_constraints"], [item])
-        policy["unsupported_constraints"] = []
-        self.assertNotIn("degraded_constraints", compile_policy_contract(policy, sources, api))
-        plain = compile_execution_requirements(policy, sources, api)
-        # The diagnostic never relaxes the sealed controller: same actions, bindings and guard profile.
-        for key in ("actions", "operation_bindings", "required_kinds"):
-            self.assertEqual(degraded[key], plain[key], key)
-        self.assertNotEqual(degraded["contract_sha256"], plain["contract_sha256"])
-        profiles = [compile_execution_policy(version, compile_action_bindings(version, api),
-                                             required_kinds=plain["required_kinds"])["profile"]
-                    for version in (dict(policy, unsupported_constraints=[item]), policy)]
-        self.assertEqual(profiles[0], profiles[1])
-
-    def test_degradation_without_verified_source_queue_or_roles_keeps_the_rejection(self):
-        cases = {
-            "unknown queue": (lambda p, i: i.update(fallback_queue="invented_queue"), "active sourced transfer_reasons queue"),
-            "paraphrased quote": (lambda p, i: i["source"].update(quote="Unsupported cases go to a desk."), "quote is not present"),
-            "quote without queue": (lambda p, i: i["source"].update(quote=UNNAMED), "quote must name its fallback_queue"),
-            "unknown source": (lambda p, i: i["source"].update(id="elsewhere"), "quote is not present"),
-            "no transfer roles": (lambda p, i: rule(p, "execution_actions").update(
-                value=[a for a in rule(p, "execution_actions")["value"] if a not in {"stage_transfer", "commit_transfer"}]),
-                "selected stage_transfer and commit_transfer"),
-            "missing trigger": (lambda p, i: i.pop("trigger"), "must contain strings or degraded"),
-            "extra field": (lambda p, i: i.update(priority="first"), "must contain strings or degraded"),
-            "plain string beside it": (lambda p, i: p["unsupported_constraints"].append("Invented gap."),
-                                       "contains unsupported constraints"),
-        }
-        for name, (mutate, expected) in cases.items():
-            policy, sources, api, item = degraded_packet()
-            mutate(policy, item)
-            with self.subTest(name), self.assertRaisesRegex(PolicyContractError, expected):
-                compile_policy_contract(policy, sources, api)
+        self.assertIn("Each entry rejects the build", header)
+        # Silence stays absent (sealed refusal) unless explicitly required; a tighter plausible reading stays declared.
+        self.assertIn("Source silence is not a requirement", header)
+        self.assertIn("identity close they\nneither assign nor explicitly require", header)
+        self.assertIn("never replays close_call or an unscoped write", header)
+        self.assertIn("Keep a declaration whenever a plausible source reading\nrestricts", header)
+        self.assertNotIn("degraded", header)
 
 
 class GuardsUnchangedTests(unittest.TestCase):
@@ -180,6 +140,13 @@ class GuardsUnchangedTests(unittest.TestCase):
         self.state, self.profile["close_precedence"] = recorded, []
         with self.assertRaisesRegex(ValueError, "ambiguous unranked protected facts"):
             self.step("prepare", "close_call")
+
+    def test_promise_for_product_outside_every_band_is_refused(self):
+        self.state["products"][0]["days_late"] = 90  # invented bands cover 1-80 only
+        before = copy.deepcopy(self.state)
+        with self.assertRaisesRegex(ValueError, "no unique policy band"):
+            self.step("prepare", "stage_promise", {"product_id": "invented-item", "amount": 20, "date": "2031-05-06"})
+        self.assertEqual(self.state, before)
 
     def test_readback_omits_absent_fields_and_refuses_unidentifiable_products(self):
         self.profile.update(require_confirmation=True, policy_applicability={"products": "multiple"},

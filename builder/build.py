@@ -165,8 +165,6 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
                "active_rules": {kind: copy.deepcopy(rule["value"]) for kind, rule in contract["active_rules"].items()},
                "permitted_operations": contract["permitted_operations"], "sources": contract["sources"],
                "runtime_reference": reference}
-    if "degraded_constraints" in contract:
-        payload["degraded_constraints"] = copy.deepcopy(contract["degraded_constraints"])
     if execution_requirements is not None:
         payload["execution_requirements"] = copy.deepcopy(execution_requirements)
     if repair:
@@ -193,10 +191,7 @@ def declaration_feedback(policy: Any) -> list[str]:
         else:
             check = ("it cites no typed kind or sealed action: delete it only after encoding its requirement "
                      "through a typed kind or controller_state_effect that enforces it")
-        feedback.append(f"policy.unsupported_constraints[{index}] rejects the build; {check}. If no typed "
-                        "interface enforces it and the source itself prescribes transferring that situation to an "
-                        "active transfer_reasons queue, replace it with a degraded {constraint, trigger, "
-                        "fallback_queue, source} object; otherwise keep it unchanged")
+        feedback.append(f"policy.unsupported_constraints[{index}] rejects the build; {check}; otherwise keep it unchanged")
     return feedback
 
 
@@ -244,8 +239,7 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                 repair["declaration_feedback"] = feedback
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
-                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
-                   degraded_constraints=len(compiled.get("degraded_constraints", [])))
+                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"])
         return copy.deepcopy(policy), compiled, requirements, attempt
     raise AssertionError("unreachable policy extraction state")
 

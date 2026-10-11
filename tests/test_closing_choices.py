@@ -122,8 +122,8 @@ class ClosingChoiceTests(unittest.TestCase):
 
     def test_callback_success_requires_and_uses_actual_recorded_callback(self):
         self.setup_context()
-        with self.assertRaisesRegex(ValueError, "callback evidence"):
-            self.close("not_reached", "callback")
+        # Without a recorded callback the evidence decides the claim: its no_recorded_callback row.
+        self.assertEqual(self.close("not_reached", "callback")[2]["reason"], "no_callback")
         self.book_callback()
         _, route, body, _ = self.close("not_reached", "callback")
         self.assertEqual(route, "allow")
@@ -300,8 +300,7 @@ class ClosingChoiceTests(unittest.TestCase):
         for reason in ("no_callback", "wrong_number", "deceased", "unclear"):
             body = self.close(self.outcomes["not_reached"], self.reasons[reason])[2]
             self.assertEqual((body["outcome"], body["reason"]), (self.outcomes["not_reached"], self.reasons[reason]))
-        with self.assertRaises(ValueError):
-            self.close(self.outcomes["not_reached"], self.reasons["callback"])
+        self.assertEqual(self.close(self.outcomes["not_reached"], self.reasons["callback"])[2]["reason"], self.reasons["no_callback"])
         self.book_callback()
         self.assertEqual(self.close(self.outcomes["not_reached"], self.reasons["callback"])[2]["reason"], self.reasons["callback"])
 
@@ -319,10 +318,10 @@ class ClosingChoiceTests(unittest.TestCase):
                 for reason in ("no_callback", "wrong_number", "deceased", "unclear"):
                     self.assertEqual(self.close(outcome, reasons[reason])[2], {"customer_id": "invented-session",
                                      "outcome": outcome, "reason": reasons[reason]})
-                for inputs in ({"outcome": outcome}, {"outcome": outcome, "reason": reasons["callback"]},
-                               {"outcome": outcome, "reason": reasons["declined"]}):
+                for inputs in ({"outcome": outcome}, {"outcome": outcome, "reason": reasons["declined"]}):
                     with self.assertRaisesRegex(ValueError, "declared eligible choice|callback evidence"):
                         self.step("prepare", self.state, "close_call", inputs)
+                self.assertEqual(self.close(outcome, reasons["callback"])[2]["reason"], reasons["no_callback"])
                 self.assertEqual(self.close(self.outcomes["not_verified"], reasons["unclear"])[2]["reason"], reasons["declined"])
                 self.book_callback()
                 self.assertEqual(self.close(outcome, reasons["no_callback"])[2]["reason"], reasons["callback"])

@@ -80,7 +80,9 @@ schedule_callback: date,time
 close_call: none; optional outcome,reason for language-derived identity disposition
 
 A guarded close_call is required; authored end_call nodes are forbidden.
-Its controller-owned terminal is silent. Source-required farewell, app advice or
+Its controller-owned terminal is silent. A close the controller refuses sets the
+quarantine flag and ends the call at the quarantine stop, never back in dialogue.
+Source-required farewell, app advice or
 other concluding explanation needs an authored speaking conversation on each
 applicable path before close_call. The compiler does not add that dialogue. Do not
 claim a final close was recorded before its API result or speak after termination.

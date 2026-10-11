@@ -166,9 +166,11 @@ class ScopedResolutionTests(unittest.TestCase):
         self.assertEqual(call.variables["bg_route"], "blocked")
         self.assertFalse(call.state["pending_promises"])
         call.promise()
+        before = call.variables["bg_state"]
         call.code("close")
         self.assertEqual(call.variables["bg_route"], "blocked")
         self.assertFalse(call.state["close_attempted"])
+        call.variables["bg_state"] = before  # a refused close ends its call; resume the state before it
         call.promise("asset-two", "82.10")
         call.code("close")
         self.assertEqual(json.loads(call.variables["bg_body"])["outcome"], "promise")

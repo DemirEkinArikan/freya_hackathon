@@ -2042,8 +2042,20 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
-    # A silent quarantine terminal never fabricates a successful bank close.
+    # A quarantine terminal never fabricates a successful bank close. It is
+    # silent unless the source requires an explanation; that line is speech
+    # only, so it stays out of the profile every sealed code node embeds.
     nodes["bg_quarantine"] = {**_terminal(), "name": "bg_quarantine"}
+    explanation = profile.pop("uncertain_stop_explanation", None)
+    if explanation is not None:
+        quotes = [source.get("quote") for source in contract["active_rules"]["uncertain_stop_explanation"]["provenance"]]
+        if explanation is not True and any(not isinstance(quote, str) or explanation not in quote for quote in quotes):
+            raise GuardCompileError(["uncertain_stop_explanation wording must occur literally in its own sourced quotation"])
+        words = "the result of this request could not be confirmed" if explanation is True else explanation
+        nodes["bg_quarantine"]["terminal"]["function"]["parameters"]["properties"] = {
+            "message_mode": {"type": "string", "default": "llm"},
+            "llm_prompt": {"type": "string", "default": 'Say only this, once, in the language the conversation is using: "'
+                           + words + '". Ask nothing, and add no claim that anything succeeded, failed, was cancelled or will be retried.'}}
     nodes["bg_init"] = _code_node("bg_init", _code("init", "", {}, profile, catalog, maps, {}),
         [_transition(plan["initial_node"], "done"), _transition("bg_quarantine")])
     quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",

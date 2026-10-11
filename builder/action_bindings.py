@@ -71,7 +71,8 @@ def _unbound_permitted(policy: Mapping[str, Any]) -> bool:
             and set(actions) <= {"verify_identity", "get_account", "close_call"})
 
 
-def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
+def _maps(policy: Mapping[str, Any], *, canonical_only: bool,
+          relaxed: bool = False) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
     vocab = _vocab(policy)
     declared = rule_value(policy, "wire_codes", {})
     if not isinstance(declared, dict):
@@ -103,7 +104,7 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str,
         loose = {mapping.get(value, value) for value in values} - set(mapping.values())
         if loose and (canonical_only or category not in ("outcomes", "reasons")
                       or loose & set().union(*CANONICAL.values()) or {_name(v) for v in loose} & guarded
-                      or not _unbound_permitted(policy)):
+                      or not (relaxed or _unbound_permitted(policy))):
             raise ActionBindingError(
                 "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
                 + " API value nor one of its declared meanings; only a close_call outcome or reason code whose source"
@@ -159,15 +160,27 @@ def _api_field(operation: dict, semantic: str, policy: Mapping[str, Any], action
     return field, enum, True
 
 
-def _finish(policy: Mapping[str, Any], categories: dict, api_hash: str, mode: str) -> dict:
+def _finish(policy: Mapping[str, Any], categories: dict, api_hash: str, mode: str, relaxed: bool = False) -> dict:
     binding = {"version": 1, "policy_sha256": digest(policy), "openapi_sha256": api_hash,
                "binding_mode": mode, "categories": categories}
+    if relaxed:
+        binding["declaration_mode"] = "relaxed"
     binding["sha256"] = digest(binding)
     return binding
 
 
-def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
-    """Compile plain JSON bindings; no service calls, credentials or closures."""
+def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declarations: str = "strict") -> dict:
+    """Compile plain JSON bindings; no service calls, credentials or closures.
+
+    Relaxed declarations (last-resort attempts) also leave close outcome and reason
+    codes unbound in goals with other roles: codes the API accepts (members of its enum
+    when it has one) that are no builder meaning and not spelled like a guarded one, as
+    identity-only goals already may. The kernel sends them only through a sourced close
+    row or transfer reason, so guarded meanings keep their protection.
+    """
+    if declarations not in ("strict", "relaxed"):
+        raise ActionBindingError("declaration mode must be strict or relaxed")
+    unguarded = declarations == "relaxed" and not _unbound_permitted(policy)
     catalogue = {operation["name"]: operation for operation in operations(openapi)}
     aliases = rule_value(policy, "tool_aliases", {})
     if not isinstance(aliases, dict):
@@ -177,7 +190,7 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
         raise ActionBindingError("allowed_actions must be operation names")
     categories = {}
     local_notes = _local_dispositions(policy)
-    maps, unbound = _maps(policy, canonical_only=False)
+    maps, unbound = _maps(policy, canonical_only=False, relaxed=unguarded)
     for category, mapping in maps.items():
         if category == "notes" and local_notes:
             categories[category] = {"binding_kind": "local_disposition", "semantic_to_wire": deepcopy(mapping),
@@ -196,7 +209,7 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
                                 "field": field, "api_enum": deepcopy(enum), "api_enum_constrained": constrained}
         if category in unbound:
             categories[category]["unbound_codes"] = unbound[category]
-    return _finish(policy, categories, digest(openapi), "api_validated")
+    return _finish(policy, categories, digest(openapi), "api_validated", relaxed=unguarded and bool(unbound))
 
 
 def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = None) -> dict:
@@ -210,7 +223,7 @@ def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = No
         raise ActionBindingError("explicit action bindings must come from supplied API compilation")
     if binding.get("policy_sha256") != digest(policy) or binding.get("sha256") != digest({k: v for k, v in binding.items() if k != "sha256"}):
         raise ActionBindingError("action bindings changed or belong to another policy")
-    wanted, unbound = _maps(policy, canonical_only=False)
+    wanted, unbound = _maps(policy, canonical_only=False, relaxed=binding.get("declaration_mode") == "relaxed")
     local_notes = _local_dispositions(policy)
     if not isinstance(binding.get("categories"), dict) or set(binding["categories"]) != set(wanted):
         raise ActionBindingError("action bindings do not cover the policy vocabularies")

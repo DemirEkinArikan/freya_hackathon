@@ -1,0 +1,1625 @@
+{
+  "schema_version": 1,
+  "review_id": "S01-T07-closing-review-claude-20261011",
+  "review_kind": "source_only_semantic_review",
+  "base_commit": "0efaee486747744fff96cbf172a604144dac179e",
+  "input_boundaries": "Callback a1: the approved callback brief and OpenAPI, the pinned kit docs and the run's original manifest, policy, execution-policy and workflow. Public-B r4: kit briefs A and B, the kit OpenAPI and the run's original manifest, execution-policy and workflow, on top of the merged S01 pre-review record. No ledger, evaluator script or fixture, expected record, customer script, transcript, raw model event or holdout was read as an interpretation input. Acceptance results were used only to identify the candidates.",
+  "checker": "python3.11 tools/review_evidence_check.py docs/S01-T07-CLOSING-REVIEW-20261011.json",
+  "repoint": {
+    "placeholders": {
+      "op": "schedule_callback",
+      "close": "close_call"
+    },
+    "placeholder_rule": "node names are plan-derived: {name} is X in the single api_request node bg_X_api whose pre_actions/0/function/name is the placeholder operation",
+    "run_dir": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z",
+    "resolved": {
+      "op": "booking_guard",
+      "close": "close_guard"
+    },
+    "api_request_operations": [
+      "close_call",
+      "schedule_callback"
+    ]
+  },
+  "candidate": {
+    "run": "20261011T124855843267Z",
+    "source_commit": "2162f64c05f041216cd79b76bbdd749da75872c5",
+    "status": "generated_validated in 487.4 s with 0 repairs (plan-001); unchanged acceptance driver 20/20 on the frozen ledger (Gate 1 checkpoint 6109311937); the coordinator named a1 the T07 callback candidate (6109327617)",
+    "manifest": {
+      "artifact": "manifest.json",
+      "expect": "record",
+      "locate": {
+        "pointer": "/selected_attempt_directory"
+      },
+      "r3": {
+        "pointer": "/selected_attempt_directory",
+        "value": "attempts/plan-002"
+      },
+      "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+      "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+      "pointer": "/selected_attempt_directory",
+      "value": "attempts/plan-001",
+      "repoint_status": "CHANGED"
+    },
+    "built_from_approved_input": [
+      {
+        "artifact": "manifest.json",
+        "expect": "same",
+        "locate": {
+          "pointer": "/sources/0/sha256"
+        },
+        "r3": {
+          "pointer": "/sources/0/sha256",
+          "value": "9fa17d8086f92e8102d35d95c08fb690aaee1ee6988032b56f50d314977350a4"
+        },
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/sources/0/sha256",
+        "value": "9fa17d8086f92e8102d35d95c08fb690aaee1ee6988032b56f50d314977350a4",
+        "repoint_status": "SAME"
+      },
+      {
+        "artifact": "manifest.json",
+        "expect": "same",
+        "locate": {
+          "pointer": "/tool_api_sha256"
+        },
+        "r3": {
+          "pointer": "/tool_api_sha256",
+          "value": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761"
+        },
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/tool_api_sha256",
+        "value": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761",
+        "repoint_status": "SAME"
+      }
+    ],
+    "built_from_note": "builder.safety.digest of the approved brief text and parsed OpenAPI (raw 6a646d16...4df2 and 3223a518...d436) is 9fa17d80... and eb561508...",
+    "evidence": [
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/status",
+        "value": "generated_validated"
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/repairs",
+        "value": 0
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/elapsed_seconds",
+        "value": 487.425
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+        "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+        "pointer": "/builder_source_sha256",
+        "value": "995ee19dcef2dde265e385da440541348ac9da71b96bc02bcdc49265b22101fe"
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+        "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+        "pointer": "/unsupported_constraints",
+        "value": []
+      }
+    ],
+    "multi_attempt_disclosure": "Attempt a2 (run 20261011T124855842997Z, 19/19, one workflow repair) belongs to the same multi-attempt run and is disclosed, not reviewed here (6109311937, 6109327617)."
+  },
+  "scope_decisions": [
+    {
+      "id": "F-02",
+      "decision": "recorded_limitation",
+      "authority": "https://github.com/DemirEkinArikan/freya_hackathon/issues/8#issuecomment-6108651390",
+      "summary": "F-02 (language of the protected confirmation) is out of scope for T07: official calls are in English and in text; the Turkish start comes only from our own synthetic callback input. F-04 and F-05 stay recorded limitations.",
+      "scope_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/s01final/site/hackathon.html",
+          "raw_sha256": "212d5557616bca70fc1e0725a4f0ae1ae4ab5c55ee14af383f37eae7fa2bed32",
+          "line": 302,
+          "quote": "Calls are in English."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/s01final/site/hackathon.html",
+          "raw_sha256": "212d5557616bca70fc1e0725a4f0ae1ae4ab5c55ee14af383f37eae7fa2bed32",
+          "line": 272,
+          "quote": "Simulated customers talk to it in text."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/s01final/site/hackathon.html",
+          "raw_sha256": "212d5557616bca70fc1e0725a4f0ae1ae4ab5c55ee14af383f37eae7fa2bed32",
+          "line": 548,
+          "quote": "<dt>Conversations</dt><dd>Text</dd>"
+        },
+        {
+          "path": "build-the-builder/examples/base-agent.json",
+          "raw_sha256": "7eb462e9c910ab99f067c2f62dab272952c1395446247db396b4f695bde7ca68",
+          "pointer": "/nodes/identity/task_message",
+          "quote": "Speak English, one or two short sentences per turn."
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 3,
+          "quote": "APPROVED INDEPENDENT SYNTHETIC DEVELOPMENT INPUT. NOT FREYA OFFICIAL POLICY."
+        }
+      ],
+      "site_fetch": {
+        "url": "https://freyavoice.ai/hackathon",
+        "effective_url": "https://www.freyavoice.ai/hackathon",
+        "http_status": 200,
+        "bytes": 67158,
+        "fetched_utc": "2026-10-11T11:47Z",
+        "local_copy": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/s01final/site/hackathon.html"
+      }
+    },
+    {
+      "id": "F-03",
+      "decision": "satisfied_with_recorded_limitation",
+      "authority": "https://github.com/DemirEkinArikan/freya_hackathon/issues/8#issuecomment-6109327617",
+      "summary": "The fixed neutral line spoken at the uncertain stop satisfies brief line 69 for T07: it explains only that the result could not be confirmed and is builder text, not model speech. The wording difference from the source is a recorded limitation.",
+      "scope_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 69,
+          "quote": "Explain only that booking could not be confirmed; do not say it failed to persist, succeeded, or was cancelled."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/spoken_message/default",
+          "value": "the result of this request could not be confirmed"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/39/value",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "F-04, F-05",
+      "decision": "recorded_limitation",
+      "authority": "docs/S01-T07-FAST-REVIEW-20261011.md",
+      "summary": "Result-type erasure (F-04) and the turn-cap stop without a close (F-05) are recorded limitations, not blockers."
+    }
+  ],
+  "verdict": {
+    "gate_ok": true,
+    "blocking": [],
+    "resolved": [
+      "F-01"
+    ],
+    "recorded_limitations": [
+      "F-02",
+      "F-03",
+      "F-04",
+      "F-05",
+      "F-06"
+    ],
+    "missing_source_requirements": [],
+    "model_omissions": [],
+    "reason": "With rulings 6108651390 (F-02) and 6109327617 (F-03) applied, no source precondition is broken on an ordinary path. F-01 is fixed in the sealed consent line. All 45 rules extract the brief exactly, and unsupported_constraints is empty. The remaining limitations sit on undeclared-evidence or turn-cap paths, or are wording fidelity."
+  },
+  "findings": [
+    {
+      "id": "F-01",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "resolved",
+      "scope": "every path that dispatches schedule_callback",
+      "summary": "The only read-back before consent omits the source-required destination term.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 35,
+          "quote": "read back the complete final callback date, local HH:MM and the fact that the call will go to the number already held by the bank"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 35,
+          "quote": "Only a clear affirmative answer after that complete read-back is consent."
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 37,
+          "quote": "Do not send schedule_callback before that consent."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "artifact": "policy.json",
+          "expect": "same",
+          "locate": {
+            "search": "/rules/**",
+            "hint": "already held",
+            "optional": true
+          },
+          "r3": {
+            "pointer": "/rules/20/value/readback/2",
+            "value": "callback goes to number already held by bank"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/19/value/readback/2",
+          "value": "destination_is_existing_bank_held_number",
+          "repoint_status": "CHANGED",
+          "repoint_note": "pointer set by reviewer"
+        },
+        {
+          "artifact": "policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/unsupported_constraints"
+          },
+          "r3": {
+            "pointer": "/unsupported_constraints",
+            "value": []
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/unsupported_constraints",
+          "value": [],
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "policy.json",
+          "expect": "fixed",
+          "locate": {
+            "search": "/rules/*/value/clauses/*",
+            "optional": true
+          },
+          "want": "number already held by the bank",
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/18/value/clauses/0",
+          "quote": "number already held by the bank",
+          "repoint_status": "WANT",
+          "repoint_note": "search /rules/*/value/clauses/* (1 hit)"
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/on_enter/type"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/on_enter/type",
+            "value": "tts"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/type",
+          "value": "tts",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "fixed",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/on_enter/text"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/on_enter/text",
+            "value": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/text",
+          "value": "Please confirm these exact terms: {{bg_readback}}; the call will go to the number already held by the bank. Do you agree?",
+          "repoint_status": "CHANGED"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/{op}/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/schedule_callback/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "return '; '.join('Callback on ' + item['date'] + ' at ' + item['time'] for item in items)"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/booking_guard/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "return '; '.join('Callback on ' + item['date'] + ' at ' + item['time'] for item in items)",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "search": "/nodes/*/task_message",
+            "optional": true,
+            "hint": "Turkish"
+          },
+          "r3": {
+            "pointer": "/nodes/request_slot/task_message",
+            "quote": "Hangi tarih ve saat için geri aranmak istersiniz?"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/collect_slot/task_message",
+          "quote": "Initially ask in Turkish: Merhaba.",
+          "repoint_status": "CHANGED",
+          "repoint_note": "quote set by reviewer"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "pointer": "/system_prompt",
+            "optional": true
+          },
+          "r3": {
+            "pointer": "/system_prompt",
+            "quote": "reads back its complete final date, local HH:MM and destination as the number already held by the bank"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/system_prompt",
+          "quote": "The scheduling guard owns eligibility checks, complete final-date and local-time readback, the statement that the call will go to the number already held by the bank",
+          "repoint_status": "CHANGED",
+          "repoint_note": "quote set by reviewer"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "fixed",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/on_enter/text"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/on_enter/text",
+            "quote": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
+          },
+          "want": "number already held by the bank",
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/text",
+          "quote": "number already held by the bank",
+          "repoint_status": "WANT"
+        }
+      ],
+      "r3_t07_effect": "blocks_banking_acceptance",
+      "r3_conclusion": "Extraction is exact, so this is neither a missing source requirement nor a model omission. The sealed confirmation template cannot carry the sourced destination fact, and no model node states it before consent on the default path. The generated system prompt says the controller reads the destination back; that descriptive text is false and is not proof. The request is unchanged (the API has no destination field), but by the source's own definition a yes after this incomplete read-back is not consent.",
+      "conclusion": "Fixed in a1. The policy carries the sourced clause as a typed confirmation_readback (/rules/18), and the sealed consent line reads back the date, the local HH:MM and \"the call will go to the number already held by the bank\" before \"Do you agree?\". The system prompt's description of the guard is now accurate. Consent is still the fresh extracted yes bound to the frozen request (S-05). The descriptive read-back element changed wording only (/rules/19/value/readback/2).",
+      "fix_owner": "rapid/gap-confirmation-wording-20261011-claude (workflow freya-confirmation-wording)"
+    },
+    {
+      "id": "F-02",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation (out of scope)",
+      "summary": "The protected consent line is fixed English while the call begins in Turkish.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 8,
+          "quote": "Conversation begins in Turkish; switch to English if the caller requests it."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "artifact": "policy.json",
+          "expect": "record",
+          "locate": {
+            "search": "/rules/**",
+            "hint": "Turkish",
+            "optional": true
+          },
+          "r3": {
+            "pointer": "/rules/3/value/initial_language",
+            "value": "Turkish"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/2/value/initial",
+          "value": "Turkish",
+          "repoint_status": "SAME",
+          "repoint_note": "search /rules/** (1 hit)"
+        },
+        {
+          "artifact": "policy.json",
+          "expect": "record",
+          "locate": {
+            "search": "/rules/*/kind",
+            "optional": true
+          },
+          "want": "confirmation_language",
+          "repoint_status": "ABSENT",
+          "repoint_note": "search /rules/*/kind: 0 hits"
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/on_enter/type"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/on_enter/type",
+            "value": "tts"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/type",
+          "value": "tts",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/on_enter/text"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/on_enter/text",
+            "value": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/text",
+          "value": "Please confirm these exact terms: {{bg_readback}}; the call will go to the number already held by the bank. Do you agree?",
+          "repoint_status": "CHANGED"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "search": "/nodes/*/task_message",
+            "optional": true,
+            "hint": "Turkish"
+          },
+          "r3": {
+            "pointer": "/nodes/request_slot/task_message",
+            "quote": "Ask briefly in Turkish, unless English was requested"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/collect_slot/task_message",
+          "quote": "Initially ask in Turkish",
+          "repoint_status": "CHANGED",
+          "repoint_note": "quote set by reviewer"
+        }
+      ],
+      "r3_t07_effect": "blocks_banking_acceptance",
+      "r3_conclusion": "Extraction is exact. The compiler has no sourced language variant for the protected line, so the caller hears an unrequested switch to English at the consent step. This fails safe (an unclear answer books nothing), but it is not the source-required dialogue.",
+      "conclusion": "Unchanged in substance: the protected line is fixed English TTS while collection opens in Turkish. Out of scope for T07 by coordinator decision 6108651390 (official calls are in English and in text; the Turkish start exists only in this synthetic input). PR 185 removed the language mode, so no confirmation_language rule exists.",
+      "decision": "https://github.com/DemirEkinArikan/freya_hackathon/issues/8#issuecomment-6108651390",
+      "r3_scope": "every Turkish-language path that reaches consent",
+      "scope": "recorded limitation of the synthetic callback input; not a T07 blocker"
+    },
+    {
+      "id": "F-03",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "satisfied_by_ruling; recorded_limitation (wording)",
+      "scope": "every scheduling result with missing, malformed, contradictory or unavailable evidence",
+      "summary": "Uncertain scheduling evidence ends in a silent quarantine; the required explanation is never spoken.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 69,
+          "quote": "Explain only that booking could not be confirmed; do not say it failed to persist, succeeded, or was cancelled."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "artifact": "policy.json",
+          "expect": "same",
+          "locate": {
+            "search": "/rules/**",
+            "hint": "could not be confirmed",
+            "any": true
+          },
+          "r3": {
+            "pointer": "/rules/39/value/scheduling_unknown/explain",
+            "value": "booking could not be confirmed"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/38/value/explanation",
+          "value": "booking_could_not_be_confirmed",
+          "repoint_status": "CHANGED",
+          "repoint_note": "pointer set by reviewer"
+        },
+        {
+          "artifact": "policy.json",
+          "expect": "fixed",
+          "locate": {
+            "search": "/rules/*/kind",
+            "optional": true
+          },
+          "want": "uncertain_stop_explanation",
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/39/kind",
+          "value": "uncertain_stop_explanation",
+          "repoint_status": "WANT",
+          "repoint_note": "search /rules/*/kind (1 hit)"
+        },
+        {
+          "artifact": "policy.json",
+          "expect": "fixed",
+          "locate": {
+            "search": "/rules/*/value",
+            "optional": true
+          },
+          "want": "could not be confirmed",
+          "repoint_status": "ABSENT",
+          "repoint_note": "search /rules/*/value: 0 hits"
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_result/transitions/0/target_node"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_result/transitions/0/target_node",
+            "value": "bg_quarantine"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_result/transitions/0/target_node",
+          "value": "bg_quarantine",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_result/transitions/0/condition/conditions/0/variable"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_result/transitions/0/condition/conditions/0/variable",
+            "value": "bg_quarantined"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_result/transitions/0/condition/conditions/0/variable",
+          "value": "bg_quarantined",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_result/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_result/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "if not status_valid or guard_true(ok) and not success_status or contradictory_error: state['quarantined'] = True"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_result/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if not status_valid or guard_true(ok) and not success_status or contradictory_error: if action == 'verify_identity': return guard_identity_end(state, profile, 'uncertain') state['quarantined'] = True",
+          "alt": [
+            "if not status_valid or guard_true(ok) and not success_status or contradictory_error: if action == 'verify_identity': return guard_identity_end(state, profile, 'uncertain') state['quarantined'] = True"
+          ],
+          "alt_source": "builder/guards.py at b255900 lines 1647-1650 (identity lifecycle, commit 40b9e04, after round 3)",
+          "repoint_status": "ALT"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_quarantine/node_type"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_quarantine/node_type",
+            "value": "end_call"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_quarantine/node_type",
+          "value": "end_call",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_quarantine/on_enter/type"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_quarantine/on_enter/type",
+            "value": "silent"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_quarantine/on_enter/type",
+          "value": "silent",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "record",
+          "locate": {
+            "search": "/nodes/*/task_message",
+            "optional": true,
+            "hint": "could not be confirmed"
+          },
+          "r3": {
+            "pointer": "/nodes/uncertain_explanation/task_message",
+            "quote": "Briefly explain in the current language that the callback booking could not be confirmed."
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/uncertain_booking/task_message",
+          "quote": "Explain briefly that the booking could not be confirmed.",
+          "repoint_status": "CHANGED",
+          "repoint_note": "quote set by reviewer"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "fixed",
+          "locate": {
+            "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/message_mode/default"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/message_mode/default",
+            "value": "none"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/message_mode/default",
+          "value": "custom",
+          "repoint_status": "CHANGED"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "fixed",
+          "locate": {
+            "search": "/nodes/bg_quarantine/terminal/function/parameters/properties/*/default",
+            "optional": true
+          },
+          "want": "could not be confirmed",
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/spoken_message/default",
+          "quote": "could not be confirmed",
+          "repoint_status": "WANT",
+          "repoint_note": "search /nodes/bg_quarantine/terminal/function/parameters/properties/*/default (1 hit)"
+        }
+      ],
+      "r3_t07_effect": "blocks_banking_acceptance_of_uncertain_rows",
+      "r3_conclusion": "Extraction is exact. The sealed result node routes every uncertain scheduling result straight to the silent end_call, so the generated uncertain_explanation node is reachable only by a model mis-route, never after a real uncertain result. Writes stop and no close is sent, which is correct; the source-required sentence is missing. This is a generic controller gap (any brief that requires speech before an uncertain stop) and has no owner on issue 8.",
+      "conclusion": "Changed in a1. Every uncertain scheduling result still goes from the sealed result node to bg_quarantine with no write and no close, and bg_quarantine now speaks the fixed line \"the result of this request could not be confirmed\" (message_mode custom, a documented end_call mode). The policy sets uncertain_stop_explanation true instead of quoting the source words. Ruling 6109327617 accepts this for brief line 69. Residual: the same line is spoken on every quarantine path, including an input failure before any request, where line 21 asks only for an input-failure end with no bank request. The model node uncertain_booking is still reachable only by a mis-route, and the kernel decides any close after it.",
+      "fix_owner": "generic follow-up named in ruling 6109327617 (extraction guidance for \"explain/say only that X\"), scoped in 6109385063; no change to the T07 candidate",
+      "residual_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 21,
+          "quote": "If either required variable is absent or malformed, end as an input failure without any bank request."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_init/passthrough_default_transition",
+          "value": "bg_quarantine"
+        },
+        {
+          "path": "build-the-builder/docs/workflow-format.md",
+          "raw_sha256": "4ff70b5a37b647122e6a6f3ca1a523b207dbcdf6afb32058de8451a8c7d1dcfc",
+          "line": 641,
+          "quote": "`custom`: say `spoken_message`."
+        }
+      ]
+    },
+    {
+      "id": "F-04",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "malformed-type receipts only",
+      "summary": "A boolean or capitalised accepted value is treated as valid evidence; the source says malformed types are uncertain.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 54,
+          "quote": "the exact response field accepted is a string, not a boolean"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 54,
+          "quote": "malformed types, transport failures and timeouts are uncertain"
+        }
+      ],
+      "policy_evidence": [
+        {
+          "artifact": "policy.json",
+          "expect": "same",
+          "locate": {
+            "search": "/rules/**/accepted_type",
+            "any": true
+          },
+          "r3": {
+            "pointer": "/rules/29/value/accepted_type",
+            "value": "string"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/27/source/quote",
+          "value": "For both permitted operations, the exact response field accepted is a string, not a boolean: \"true\" means the operation succeeded, and \"false\" means it did not succeed. The exact error field is failure_code.",
+          "repoint_status": "CHANGED",
+          "repoint_note": "pointer set by reviewer"
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_result/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_result/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "return value is True or value in ('true', 'True')"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_result/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "return value is True or value in ('true', 'True')",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_api/response_mapping/1/path"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_api/response_mapping/1/path",
+            "value": "data.accepted"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_api/response_mapping/1/path",
+          "value": "data.accepted",
+          "repoint_status": "SAME"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/bank.openapi.json",
+          "raw_sha256": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436",
+          "pointer": "/paths/~1schedule_callback/post/responses/200/content/application~1json/schema/properties/accepted/enum",
+          "value": [
+            "true",
+            "false"
+          ]
+        }
+      ],
+      "r3_t07_effect": "recorded_limitation",
+      "r3_conclusion": "The pinned kit documents that mapped booleans arrive as strings, so response_mapping cannot distinguish JSON true from \"true\". The documented bank returns strings, so ordinary paths are unaffected. A post-process hook that records the raw value type would close this; it is not required for T07.",
+      "conclusion": "Unchanged. The sealed check still accepts true or \"True\" as success, and the platform maps booleans to strings, so the raw type is lost before the kernel. The documented bank returns strings. Recorded limitation."
+    },
+    {
+      "id": "F-05",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "a conversation node that exhausts its turn cap",
+      "summary": "The controller turn-budget stop ends the call without the ordinary no-callback close the source requires.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 66,
+          "quote": "Caller ends without an unambiguous eligible confirmed slot"
+        }
+      ],
+      "policy_evidence": [
+        {
+          "artifact": "policy.json",
+          "expect": "same",
+          "locate": {
+            "search": "/rules/*/value/ends_without_unambiguous_eligible_confirmed_slot/close/reason",
+            "optional": true,
+            "hint": "no_callback"
+          },
+          "r3": {
+            "pointer": "/rules/38/value/ends_without_unambiguous_eligible_confirmed_slot/close/reason",
+            "value": "no_callback"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/35/value/no_eligible_confirmed_slot/next",
+          "value": "one_close_attempt_with_TRAIN_2_O6_and_TRAIN_2_R11",
+          "repoint_status": "CHANGED",
+          "repoint_note": "pointer set by reviewer"
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "search": "/nodes/*/max_turn_transition",
+            "any": true
+          },
+          "r3": {
+            "pointer": "/nodes/request_slot/max_turn_transition",
+            "value": "bg_turn_budget_stop"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/entry_state/max_turn_transition",
+          "value": "bg_turn_budget_stop",
+          "repoint_status": "SAME",
+          "repoint_note": "search /nodes/*/max_turn_transition (8 hits)"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_turn_budget_stop/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_turn_budget_stop/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "raise ValueError('conversation turn budget exhausted')"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_turn_budget_stop/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('conversation turn budget exhausted')",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_turn_budget_stop/transitions/0/target_node"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_turn_budget_stop/transitions/0/target_node",
+            "value": "bg_terminal"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_turn_budget_stop/transitions/0/target_node",
+          "value": "bg_terminal",
+          "repoint_status": "SAME"
+        }
+      ],
+      "r3_t07_effect": "recorded_limitation",
+      "r3_conclusion": "The cap is a builder termination bound, not a source rule. The stop is safe (no write, no claim) but omits the R11 close. It needs ten turns in one node visit, so it is rare.",
+      "conclusion": "Unchanged. Every model dialogue node except the one-turn consent node sends max_node_turns 10 to bg_turn_budget_stop, which quarantines and ends at the silent bg_terminal with no close. It needs ten turns in one node visit, with no write and no claim. Recorded limitation."
+    },
+    {
+      "id": "F-06",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "an undeclared 2xx response other than 200 to schedule_callback",
+      "summary": "A non-200 2xx status with a true flag counts as persisted success; the source accepts only HTTP200.",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 54,
+          "quote": "HTTP200 plus accepted=\"true\", with no contradictory failure code or malformed evidence, proves a persisted write under the inherited API contract."
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 54,
+          "quote": "Missing fields, other statuses without this declared evidence, conflicting flags/codes, malformed types, transport failures and timeouts are uncertain"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/bank.openapi.json",
+          "raw_sha256": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436",
+          "pointer": "/paths/~1schedule_callback/post/responses/503/description",
+          "quote": "exact accepted=false and failure_code=temporary_unavailable guarantee no persistence."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/policy.json",
+          "raw_sha256": "83c038fdb5811949ce289936e6cee66540a799fa0d684ed27e4f32ad66497c77",
+          "pointer": "/rules/28/value/success/http_status",
+          "value": 200
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_result/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "success_status = '_http_status' not in data or status_valid and 200 <= status <= 299"
+        }
+      ],
+      "conclusion": "The policy extracts HTTP200 as the success status, and the OpenAPI declares only 200 and 503 for schedule_callback. The sealed result check (builder/guards.py, generic) accepts any 2xx with a true flag, and the profile has no field to narrow it. An undeclared 201-299 reply with accepted \"true\" would be acknowledged and closed with R10 instead of stopping as uncertain. Documented paths are unaffected. This is the same class as F-04 (evidence the documented bank never sends), so it is classified the same way.",
+      "fix_owner": "unowned generic follow-up: bind the success status from the policy when the source names one"
+    }
+  ],
+  "satisfied_runtime_controlled": [
+    {
+      "id": "S-01",
+      "item": "Only schedule_callback and close_call are compiled; the five forbidden operations have no node",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 10,
+          "quote": "The only permitted bank operations are schedule_callback and close_call."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "manifest.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/status"
+          },
+          "r3": {
+            "pointer": "/status",
+            "value": "generated_validated"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/manifest.json",
+          "raw_sha256": "e3df527fee453158f227e46ed8e0f7d46e3033e73a62e8017261f9c4dcdbac92",
+          "pointer": "/status",
+          "value": "generated_validated",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_api/pre_actions/0/function/name"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_api/pre_actions/0/function/name",
+            "value": "schedule_callback"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_api/pre_actions/0/function/name",
+          "value": "schedule_callback",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{close}_api/pre_actions/0/function/name"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_close_call_api/pre_actions/0/function/name",
+            "value": "close_call"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_close_guard_api/pre_actions/0/function/name",
+          "value": "close_call",
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-02",
+      "item": "Calendar: Monday-Friday, two closures, today exception, next business day, inclusive window, strictly later than now today",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 25,
+          "quote": "The bank closure dates for this policy are exactly 2026-12-24 and 2026-12-31"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 29,
+          "quote": "The permitted local callback window is 09:15 through 16:45 inclusive."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/callback_window"
+          },
+          "r3": {
+            "pointer": "/profile/callback_window",
+            "value": {
+              "start": "09:15",
+              "end": "16:45",
+              "allow_today": true,
+              "next_business_days": 1
+            }
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/callback_window",
+          "value": {
+            "start": "09:15",
+            "end": "16:45",
+            "allow_today": true,
+            "next_business_days": 1
+          },
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/holidays"
+          },
+          "r3": {
+            "pointer": "/profile/holidays",
+            "value": [
+              "2026-12-24",
+              "2026-12-31"
+            ]
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/holidays",
+          "value": [
+            "2026-12-24",
+            "2026-12-31"
+          ],
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/{op}/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/schedule_callback/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "if day == today and (not state['now_time'] or at <= state['now_time']):"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/booking_guard/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if day == today and (not state['now_time'] or at <= state['now_time']):",
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-03",
+      "item": "One schedule_callback dispatch per call, no retry after a definite failure, uncertain results stop all writes",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 39,
+          "quote": "Make at most one schedule_callback attempt in this call across all slots."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/callback_failure_limit"
+          },
+          "r3": {
+            "pointer": "/profile/callback_failure_limit",
+            "value": 1
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/callback_failure_limit",
+          "value": 1,
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/attempt_scopes/schedule_callback"
+          },
+          "r3": {
+            "pointer": "/profile/attempt_scopes/schedule_callback",
+            "value": "call"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/attempt_scopes/schedule_callback",
+          "value": "call",
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/definite_failure_resume"
+          },
+          "r3": {
+            "pointer": "/profile/definite_failure_resume",
+            "value": [
+              "schedule_callback"
+            ]
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/definite_failure_resume",
+          "value": [
+            "schedule_callback"
+          ],
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-04",
+      "item": "Closing: TRAIN_2_O6 with R10 only on recorded evidence, R11 never hides a callback, one close, every close result terminal",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 73,
+          "quote": "TRAIN_2_R11 must never hide a recorded callback. TRAIN_2_R10 must never be selected from caller claims or consent alone."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/wire_codes"
+          },
+          "r3": {
+            "pointer": "/profile/wire_codes",
+            "value": {
+              "outcomes": {
+                "not_reached": "TRAIN_2_O6"
+              },
+              "reasons": {
+                "callback": "TRAIN_2_R10",
+                "no_callback": "TRAIN_2_R11"
+              }
+            }
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/wire_codes",
+          "value": {
+            "outcomes": {
+              "not_reached": "TRAIN_2_O6"
+            },
+            "reasons": {
+              "callback": "TRAIN_2_R10",
+              "no_callback": "TRAIN_2_R11"
+            }
+          },
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/{close}/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/close_call/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "if proposal.get('reason') == 'no_callback' and state['callbacks']:"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/close_guard/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if proposal.get('reason') == 'no_callback' and state['callbacks']:",
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-05",
+      "item": "Consent is fresh, explicit and bound to the frozen request; silence, no or unclear books nothing",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 37,
+          "quote": "A correction, interruption changing the slot, or cancellation before the request invalidates earlier consent."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_confirm/extraction_schema/0/enum_values"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_confirm/extraction_schema/0/enum_values",
+            "value": [
+              "yes",
+              "no",
+              "unclear"
+            ]
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/extraction_schema/0/enum_values",
+          "value": [
+            "yes",
+            "no",
+            "unclear"
+          ],
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_{op}_accept/pre_actions/0/function/parameters/properties/code/default"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_schedule_callback_accept/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "if consent != 'yes':"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_accept/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if consent != 'yes':",
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-06",
+      "item": "Absent or malformed customer_id or offset-less now quarantines before any bank request",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 21,
+          "quote": "If either required variable is absent or malformed, end as an input failure without any bank request."
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/call_input_formats"
+          },
+          "r3": {
+            "pointer": "/profile/call_input_formats",
+            "value": {
+              "now": "offset_datetime"
+            }
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/call_input_formats",
+          "value": {
+            "now": "offset_datetime"
+          },
+          "repoint_status": "SAME"
+        },
+        {
+          "artifact": "workflow.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/nodes/bg_init/passthrough_default_transition"
+          },
+          "r3": {
+            "pointer": "/nodes/bg_init/passthrough_default_transition",
+            "value": "bg_quarantine"
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_init/passthrough_default_transition",
+          "value": "bg_quarantine",
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-07",
+      "item": "Request and result fields and enum codes come from the OpenAPI",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/bank.openapi.json",
+          "raw_sha256": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436",
+          "pointer": "/paths/~1schedule_callback/post/requestBody/content/application~1json/schema/required",
+          "value": [
+            "session_ref",
+            "pay_on",
+            "time"
+          ]
+        }
+      ],
+      "export_evidence": [
+        {
+          "artifact": "execution-policy.json",
+          "expect": "same",
+          "locate": {
+            "pointer": "/profile/action_fields/schedule_callback"
+          },
+          "r3": {
+            "pointer": "/profile/action_fields/schedule_callback",
+            "value": {
+              "customer_id": "session_ref",
+              "date": "pay_on",
+              "time": "time"
+            }
+          },
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/execution-policy.json",
+          "raw_sha256": "87d3f583b682e1359e522ccca0f9892a812638db5b97d50db5f48c754721bc4a",
+          "pointer": "/profile/action_fields/schedule_callback",
+          "value": {
+            "customer_id": "session_ref",
+            "date": "pay_on",
+            "time": "time"
+          },
+          "repoint_status": "SAME"
+        }
+      ]
+    },
+    {
+      "id": "S-08",
+      "item": "The consent read-back carries the destination clause before the question (F-01 fixed)",
+      "source_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/development-new-goals/callback-booking-20261010T233446Z-26063e41/callback-policy.approved.md",
+          "raw_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "line": 35,
+          "quote": "Only a clear affirmative answer after that complete read-back is consent."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-callback-final-a1-2162f64/artifacts/t07-callback-final-a1-generation/20261011T124855843267Z/workflow.json",
+          "raw_sha256": "c588332c6b5b693fa52e761ee6f8ab7ef68df842d1f65104cfc98bb2c158e07a",
+          "pointer": "/nodes/bg_booking_guard_confirm/on_enter/text",
+          "value": "Please confirm these exact terms: {{bg_readback}}; the call will go to the number already held by the bank. Do you agree?"
+        }
+      ]
+    }
+  ],
+  "prompt_only_unproven_dialogue": [
+    "Turkish start and English switch on request (collection nodes only)",
+    "brief, polite questions; no persuasion after a decline",
+    "clarifying ambiguous, ranged or incomplete proposals; translating relative dates",
+    "rejecting seconds and new offsets in speech (the controller sees only HH:MM)",
+    "different-number explanation and the existing-number question",
+    "not implying verified identity",
+    "acknowledging the exact recorded slot before the R10 close",
+    "saying the booking did not complete after a definite failure",
+    "explaining that a recorded slot cannot be changed",
+    "routing a caller who stops, declines or reports a wrong number or death to the no-booking close",
+    "routing after the kernel result: a mis-routed acknowledgment, failure or no-booking explanation would be spoken while the kernel still sends the correct close"
+  ],
+  "derived_from": {
+    "callback_template": "docs/S01-T07-FAST-REVIEW-20261011.json on origin/main b255900 (base d7e4736); source evidence items copied verbatim, candidate items re-pointed at a1 with <s01final>/repoint_review.py",
+    "template_sha256": "34d91be46603a3cfe019732716e166020d437f07ca84a4dde024a64dc98af1b4",
+    "method": "Every candidate slot was re-pointed at the a1 run from its original bytes (path, raw sha256, JSON pointer, content read there); reviewer pointers are marked \"pointer set by reviewer\". Round-3 findings and failed evidence stay as recorded in docs/S01-T07-FAST-REVIEW-20261011.* and are not downgraded here."
+  },
+  "second_goal": {
+    "candidate": {
+      "run": "20261011T120037352826Z",
+      "source_commit": "eea245ebf95f39210e144d259a8921231db86105",
+      "status": "generated_validated in 1119.6 s with 0 repairs (plan-001); acceptance driver 3/3 (6109015044); second-goal gate verified (6109086561)",
+      "evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/manifest.json",
+          "raw_sha256": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "pointer": "/status",
+          "value": "generated_validated"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/manifest.json",
+          "raw_sha256": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "pointer": "/repairs",
+          "value": 0
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/manifest.json",
+          "raw_sha256": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "pointer": "/sources/0/sha256",
+          "value": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/manifest.json",
+          "raw_sha256": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "pointer": "/sources/1/sha256",
+          "value": "7eeb6464eabd2e57aff916488f3bba1e2c1c35077c29fd6dac7b764385fce123"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/manifest.json",
+          "raw_sha256": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "pointer": "/tool_api_sha256",
+          "value": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+        }
+      ]
+    },
+    "reused_review": {
+      "record": "docs/S01-PUBLIC-B-R4-PREREVIEW-20261011.json",
+      "comment": "https://github.com/DemirEkinArikan/freya_hackathon/issues/8#issuecomment-6109325455",
+      "pr": 189,
+      "recheck": "python3.11 tools/review_evidence_check.py on this base: 185 evidence items, 0 failures, so every cited artifact byte is unchanged since the pre-review",
+      "verdict": "no blocking finding; recorded limitations B-01 to B-07"
+    },
+    "spot_checks": [
+      {
+        "id": "PB-S1",
+        "item": "One batch read-back names product (type in words plus card ending), amount and date, then asks the literal question",
+        "source": [
+          {
+            "path": "build-the-builder/briefs/brief-a.md",
+            "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+            "line": 88,
+            "quote": "Read the product, the amount and the date back and ask \"Do you confirm?\"."
+          },
+          {
+            "path": "build-the-builder/briefs/brief-b.md",
+            "raw_sha256": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+            "line": 15,
+            "quote": "Read all promises back together and ask for one confirmation."
+          }
+        ],
+        "candidate": [
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/bg_commit_confirm/on_enter/text",
+            "value": "{{bg_readback}}. Do you confirm?"
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/execution-policy.json",
+            "raw_sha256": "3b3f2a855d546af02716c8bf5fb7646fe2a8628f20147adde5e43f90a648e6ec",
+            "pointer": "/profile/promise_readback/product_fields",
+            "value": [
+              "type",
+              "card_last4"
+            ]
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/execution-policy.json",
+            "raw_sha256": "3b3f2a855d546af02716c8bf5fb7646fe2a8628f20147adde5e43f90a648e6ec",
+            "pointer": "/profile/confirmation_scope",
+            "value": "batch"
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/commit/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "return '; '.join('Payment for ' + guard_display(guard_product(state, item['product_id']), profile) + ': ' + format(item['amount'], '.2f') + ' on ' + item['date'] for item in items)"
+          }
+        ],
+        "result": "confirmed; the card ending is read as \"credit card 4821\" (no word \"ending\"), which still names the product"
+      },
+      {
+        "id": "PB-S2",
+        "item": "Notes for every unpromised product with the exact reason vocabulary; closing order",
+        "source": [
+          {
+            "path": "build-the-builder/briefs/brief-b.md",
+            "raw_sha256": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+            "line": 16,
+            "quote": "For each product without a promise call `add_note` with that `product_id` and a reason: `refused`, `hardship`, `dispute`, `paid` or `service_error`."
+          },
+          {
+            "path": "build-the-builder/briefs/brief-b.md",
+            "raw_sha256": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+            "line": 23,
+            "quote": "With several products, `promise` wins whenever at least one promise was recorded, except rule 10 above."
+          }
+        ],
+        "candidate": [
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/execution-policy.json",
+            "raw_sha256": "3b3f2a855d546af02716c8bf5fb7646fe2a8628f20147adde5e43f90a648e6ec",
+            "pointer": "/profile/record_notes",
+            "value": true
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/execution-policy.json",
+            "raw_sha256": "3b3f2a855d546af02716c8bf5fb7646fe2a8628f20147adde5e43f90a648e6ec",
+            "pointer": "/profile/note_reasons",
+            "value": [
+              "refused",
+              "hardship",
+              "dispute",
+              "paid",
+              "service_error"
+            ]
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/execution-policy.json",
+            "raw_sha256": "3b3f2a855d546af02716c8bf5fb7646fe2a8628f20147adde5e43f90a648e6ec",
+            "pointer": "/profile/close_precedence",
+            "value": [
+              "transferred",
+              "promise",
+              "no_promise",
+              "paid"
+            ]
+          }
+        ],
+        "result": "confirmed; no_promise and paid are mutually exclusive facts in the sealed close, so their order cannot change an outcome"
+      },
+      {
+        "id": "PB-S3",
+        "item": "B-01: the deadline-substitution clause is model-spoken right before the read-back",
+        "source": [
+          {
+            "path": "build-the-builder/briefs/brief-b.md",
+            "raw_sha256": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+            "line": 14,
+            "quote": "record that product on its own deadline and say so in the read-back."
+          }
+        ],
+        "candidate": [
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/commit_readiness/task_message",
+            "quote": "Before commitment, explain any customer-requested common-date substitutions"
+          }
+        ],
+        "result": "confirmed as prompt-only (T14 must hear it)"
+      },
+      {
+        "id": "PB-S4",
+        "item": "B-02: duplicate product labels refuse the read-back",
+        "candidate": [
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/commit/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "labels = [guard_display(p, profile) for p in state['products']]"
+          },
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/commit/pre_actions/0/function/parameters/properties/code/default",
+            "quote": "raise ValueError('approved product labels do not identify products uniquely')"
+          }
+        ],
+        "result": "confirmed, and wider than one batch: the check runs over every loaded product, so two loans of one type block any promise in that call. It fails closed (no write); recorded limitation, the highest-impact one for tonight"
+      },
+      {
+        "id": "PB-S5",
+        "item": "The silent quarantine is reached only on failure-injection paths (B-03 to B-05, B-07)",
+        "source": [
+          {
+            "path": "build-the-builder/briefs/brief-a.md",
+            "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+            "line": 106,
+            "quote": "Every call ends with exactly one `close_call`"
+          }
+        ],
+        "candidate": [
+          {
+            "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t15-public-b-r4-eea245e/artifacts/t15-public-b-r4-generation/20261011T120037352826Z/workflow.json",
+            "raw_sha256": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+            "pointer": "/nodes/bg_quarantine/terminal/function/parameters/properties/message_mode/default",
+            "value": "none"
+          }
+        ],
+        "result": "confirmed; brief A requires a sentence only after a second create_promise failure (rule 37), which the candidate handles without quarantine, so this is not like callback F-03"
+      }
+    ]
+  },
+  "combined_verdict": {
+    "gate_ok": true,
+    "blocking": [],
+    "candidates": [
+      "callback a1 20261011T124855843267Z",
+      "public-B r4 20261011T120037352826Z"
+    ],
+    "limits": "Source-only. Stored text is not hosted speech, and the acceptance driver is not all-path proof. The first hosted readiness check scored public-A 0/10 and public-B 0/3 (6109294988), so banking acceptance on hosted cases is a separate, open claim. The newer public-B export on 2162f64 (run 20261011T124923764823Z, 6109431936) is not covered by this review."
+  }
+}

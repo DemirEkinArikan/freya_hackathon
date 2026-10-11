@@ -644,5 +644,121 @@
       ],
       "evidence_limit": "No callback candidate existed for operative generated-policy review or behavior execution. This is approved-input and historical-integrity review only."
     }
+  },
+  "round3_candidate_acceptance": {
+    "as_of_utc": "2026-10-11T11:05:00Z",
+    "recheck_source_commit": "a03e2b9",
+    "recheck_note": "builder/, tools/generated_candidate_acceptance.py and tools/replay_guarded.py are byte-identical to the build source 6fac1dd",
+    "candidates": [
+      {
+        "goal": "callback scheduling (non-payment goal, own schema)",
+        "run_id": "20261011T104109500476Z",
+        "source_commit": "6fac1dd61dfa9622eaf8dec44182e361dc779ef2",
+        "builder_source_sha256": "f04957e47d715dee9a70339eda55abca7bf611f321de1f9fc307cdc7136d5b2b",
+        "status": "generated_validated",
+        "start_utc": "2026-10-11T10:41:09Z",
+        "end_utc": "2026-10-11T10:51:36Z",
+        "elapsed_seconds": 627.356,
+        "deadline_seconds_left": 1172.6,
+        "policy_repairs": 0,
+        "workflow_repairs": 1,
+        "selected_attempt": "attempts/plan-002",
+        "isolation_audit": {
+          "status": "pass",
+          "failures": [],
+          "model_reported_tool_count": 0,
+          "canary_exposure": []
+        },
+        "input_sha256": {
+          "brief": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+          "openapi": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436",
+          "approval": "ea0d7c497feb81be478b2d2224c07c919113940868ba717aa4baa455f16120c3",
+          "brief_canonical": "9fa17d8086f92e8102d35d95c08fb690aaee1ee6988032b56f50d314977350a4",
+          "openapi_canonical": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761"
+        },
+        "artifact_sha256": {
+          "workflow.json": "cc5377cf9c5fa02ab7408eea1a828d4347b32946ae0a875a9ff24ec3a42e2e1c",
+          "plan.json": "0c3e1f860e86eb0a09629dc822b51c9ade102f000acac0b9a52f4b2678d45dd7",
+          "attempts/plan-002/guard-context.json": "f0daa5237d82ce19ba613d4fdde87c7975209652ad7d306896b96048cc0584a6",
+          "policy.json": "7b8a61d2c9a99ee0a268a8ecab7bc8440f4416c11409eda34d9f01916acd2ad5",
+          "policy.contract.json": "c80a16a8e9d2a396a89e61c42611eab1fd7532ddb2a51cc421bdfd0c923ae10e",
+          "manifest.json": "a22ebc56566a3ca10f620fdb84921d137652af654ba3b71dc7d0db684e12a7d7",
+          "trace.jsonl": "412dff5e4ba36bc7cd401f9ea0dd9b2103bfc7a3d4b0134c2d8c8ecee4b0d422",
+          "builder-source.json": "f62dc83bc3667515eb20ff796ce22773f517ed1649dcbc06155bb96ac84149f1"
+        },
+        "manifest_canonical_workflow_sha256": "7d5c75c6d72f89bf73247c2fc93bf975c9f2313af690a4857d209d9a1eae5261",
+        "run_file_list_sha256": "a5657bd4a4958080256b6ee07588034ec08b854f633eb1e2e6e6db39ebe23311",
+        "evaluator_file_list_sha256": "b81aec0a33c79e79b850e2c43e1d61008de40600e6877e047bcbe7ae4a235033",
+        "frozen_ledger": {
+          "file": "callback-source-ledger.json",
+          "sha256": "6f028d09c590986aa6a077ceda77ae0d9fac8b539c28657d23334436f5897532",
+          "last_written_utc": "2026-10-11T09:14:47Z",
+          "cases": 14
+        },
+        "independent_recheck": {
+          "file_lists_rehashed_unchanged": true,
+          "ledger_cases_copied_verbatim": 14,
+          "variants": 6,
+          "official_driver_pass": "20/20",
+          "results_equal_lane_results_except": [
+            "replay.elapsed_seconds"
+          ],
+          "structural": "36 nodes reachable from bg_init; every node reaches an end_call; 12/12 conversation nodes have max_node_turns"
+        },
+        "policy_adaptation_executable": "pass",
+        "source_required_dialogue": "fail: the only read-back before consent omits the bank-held-number term (brief line 35) and is fixed English although the conversation begins in Turkish (brief line 8); builder/guards.py:883 and :1991",
+        "caller_wording_robustness": "not tested (ideal extraction)",
+        "hosted_or_speech": "not tested",
+        "all_path_safety_proven": false,
+        "decision": "executable behaviour accepted; banking acceptance withheld until the confirmation-wording fix merges and a fresh build passes"
+      },
+      {
+        "goal": "public-B (kit briefs A+B)",
+        "run_id": "20261011T103837801868Z",
+        "source_commit": "5b0200096ca36a35c2ddbd7047b7c4809a15334d",
+        "status": "failed",
+        "end_utc": "2026-10-11T11:03:37Z",
+        "reason": "policy passed; workflow attempts 1 and 2 rejected by validation, attempt 3 exceeded its allocation",
+        "decision": "no candidate"
+      },
+      {
+        "goal": "S04 account information",
+        "run_id": "20261011T103444643839Z",
+        "source_commit": "5b0200096ca36a35c2ddbd7047b7c4809a15334d",
+        "status": "failed",
+        "reason": "validate_workflow does not resolve local OpenAPI $ref (G-REF)",
+        "decision": "no candidate"
+      },
+      {
+        "goal": "public-B (kit briefs A+B)",
+        "run_id": "20261011T082830213253Z",
+        "source_commit": "82b1cfc",
+        "status": "generated_validated",
+        "decision": "not accepted: official driver 0/3; shape now refused by PR 158 validation"
+      },
+      {
+        "goal": "callback scheduling",
+        "run_id": "20261011T091014880740Z",
+        "source_commit": "3d9812a",
+        "status": "generated_validated",
+        "decision": "not accepted: official driver 0/14; superseded by round 3"
+      }
+    ],
+    "not_posted": "public-A, train-1 and train-2 rebuilds from freya-final-push-v2; probes on unmerged branches are not evidence",
+    "finish_condition_met": false,
+    "remaining": [
+      "Confirmation-wording fix merged, then one fresh callback build and re-acceptance against the same frozen ledger",
+      "G-REF fix merged, then one fresh S04 build and the official driver against s04-source-ledger.json",
+      "Categorised-declarations fix (plus per-goal close and silent by_value where needed) merged, then public-A/B, train-1/2 and S03 rebuilds and acceptance",
+      "Caller wording robustness and hosted behaviour, which the ideal-extraction driver cannot prove"
+    ],
+    "claims": {
+      "issue_closed": false,
+      "cowork_complete_run": false,
+      "model_jobs_launched": 0,
+      "simulation_calls": 0,
+      "holdout_inputs_used": false,
+      "generated_outputs_edited": false
+    }
   }
 }

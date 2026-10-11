@@ -185,3 +185,123 @@ operative source review, frozen-case execution, and a second supported banking
 goal/schema. T08 and T09 dependency closure remains pending T07's actual
 acceptance. No completion command or hidden-input consumption is justified by
 this preparation.
+
+## Round-3 candidate acceptance — 11 October, 11:05Z
+
+This section gathers every candidate posted on issue 8 up to 11:05Z and
+re-verifies the one that passed the acceptance driver. The re-check ran from
+origin/main `a03e2b9`. Its `builder/`, `tools/generated_candidate_acceptance.py`
+and `tools/replay_guarded.py` are byte-identical to the build source `6fac1dd`.
+No model build, simulation, hosted call, lease or holdout was used, and no
+generated output was edited. T07 stays open: only one candidate passes, and it
+has a source-required read-back gap.
+
+### Callback round 3: executable behaviour passes, banking acceptance withheld
+
+| Item | Value |
+| --- | --- |
+| Run | `20261011T104109500476Z`, generate-only, gpt-6.1-sol / high |
+| Source | origin/main `6fac1dd61dfa9622eaf8dec44182e361dc779ef2`, which includes PR 158 (routing shape), PR 164 (input formats), PR 165 and PR 166 (close-choice); `builder_source_sha256` `f04957e47d715dee9a70339eda55abca7bf611f321de1f9fc307cdc7136d5b2b` |
+| Time | 10:41:09Z to 10:51:36Z, `generated_validated` in 627.356 s with 1172.6 s of the 1800 s deadline left. Policy 220.8 s with 0 repairs; workflow 405.5 s with 1 repair; `plan-002` selected |
+| Inputs | Reserved approved callback inputs: brief `6a646d16…4df2`, OpenAPI `3223a518…d436`, approval `ea0d7c49…20c3`. Canonical `9fa17d80…50a4` / `eb561508…3761`, equal to earlier runs |
+| Audit | Fresh tool-free isolation audit `pass`, `failures: []`, no reported tools, no canary exposure |
+| Outputs | `workflow.json` `cc5377cf…2e1c` (manifest canonical `7d5c75c6…5261`), `plan.json` `0c3e1f86…5dd7`, plan-002 guard context `f0daa523…84a6`, `policy.json` `7b8a61d2…2ad5`, `policy.contract.json` `c80a16a8…e10e`, `manifest.json` `a22ebc56…a7d7`, `trace.jsonl` `412dff5e…d422` |
+| Policy | 43 active rules, `unsupported_constraints: []`, `call_input_formats {now: offset_datetime}`, `identity_close_choices` with no_callback requiring `no_recorded_callback` and callback requiring `recorded_callback` |
+
+Independent re-verification by this lane:
+- The 37-file run and input list (`a5657bd4…`) and the 80-file evaluator and
+  acceptance list (`b81aec0a…`) re-hash unchanged.
+- The ledger `callback-source-ledger.json` (`6f028d09…7532`) is read-only and
+  was last written at 09:14:47Z. That is before callback round 2 produced a
+  plan, and 86 minutes before this run started.
+- For all 14 ledger cases, the authored expectation and script copy the
+  ledger exactly: calls and typed arguments, closing mode, final flags, `now`,
+  `customer_id` and receipts. `allowed_operations` is the ledger's permitted
+  pair in every case. The driver requires the exact ordered call list, so this
+  does not widen any check.
+- There are 6 lane-authored variants. The CB02, CB03 and CB13 guard probes have
+  review pass an ineligible slot. CB08 has the model reopen after a definite
+  failure. In CB11 the model falsely claims uncertainty after recording. In
+  CB05 the caller declines after a re-collection. Each variant keeps its base
+  case's ledger calls.
+- I re-ran the unchanged official driver myself on every case: **20/20
+  `pass: true`**, empty stderr. Each result equals the lane's result except
+  for `replay.elapsed_seconds`.
+- Structural check of the selected workflow:
+  - All 36 nodes are reachable from `bg_init`, and every node can reach an
+    `end_call` node.
+  - All 12 conversation nodes have `max_node_turns`. Eleven of them route to
+    `bg_turn_budget_stop`; the protected confirm node routes to its accept step.
+  - This is not proof that every runtime path terminates.
+
+Policy adaptation (what the frozen cases show):
+- **Calendar.** The next-business-day window start is booked. Today's slot
+  must be strictly later than `now`, and the window end is inclusive. Closures
+  on 24 and 31 December are refused, and 1 January is the next business day.
+  Today is bookable even on a closure day.
+- **Consent.** A correction voids consent, so only 11:30 is sent. A declined
+  confirmation or a declined callback makes no request and sends one R11 close.
+- **Failures.** A definite failure, on HTTP 200 or on 503, makes one schedule
+  attempt, no retry and one R11 close. The call-wide cap blocks a second slot.
+- **Unknown or contradictory receipts.** These quarantine with no close.
+- **Recorded booking.** It cannot be changed, and the call closes with R10.
+- **Clock input.** An offset-less `now` quarantines at `bg_init` with no
+  request.
+
+Source review (the reason banking acceptance is withheld):
+- **What the brief requires.** Brief line 35: before the only scheduling
+  attempt, read back the complete date, the local HH:MM and the fact that the
+  call goes to the number already held by the bank. Brief line 8: the
+  conversation begins in Turkish.
+- **What the candidate says.** It has no model read-back node. Its only
+  read-back before consent is the protected line `Please confirm these exact
+  terms: {{bg_readback}}. Do you agree?`, where `bg_readback` is
+  `Callback on <date> at <time>` (`builder/guards.py:883`, `:1991`).
+- **The gap.** That line leaves out the destination term and is fixed English.
+  The candidate's own collection nodes (`request_slot`, `existing_number`)
+  speak Turkish, so callers would hear the language change at consent.
+- **Owner.** The confirmation-wording lane (scope comment 6108260299, branch
+  `rapid/gap-confirmation-wording-20261011-claude`). A fresh callback build is
+  needed after it merges.
+- **Minor.** `input_unavailable` is reachable only if the model mis-routes, and
+  it sends an honest R11 close although its prompt says that no close is sent.
+
+Caller wording robustness, speech, hosted behaviour, platform entry-event
+timing and all-path safety are **not proven**. The frames are ideal extraction,
+and the driver's own flags say so.
+
+### Other candidates posted on issue 8
+
+| Run | Source | Result | Acceptance |
+| --- | --- | --- | --- |
+| public-B r3 `20261011T103837801868Z` | `5b02000` | Policy passed. Workflow attempt 1 was rejected (2 errors: wrong semantic input fields in `failure_disposition` and `stop_dispositions`). Attempt 2 was rejected (47 errors, starting with missing explicit `min_confidence`). Attempt 3 exceeded its allocation. `EXIT=1` at 11:03:37Z | None: nothing exported |
+| S04 rebuild `20261011T103444643839Z` | `5b02000` | Policy passed with 0 declarations. All 3 workflow attempts were rejected because `validate_workflow` does not resolve local OpenAPI `$ref` (G-REF, comment 6108288262) | None: nothing exported. The 8/8 replay of an unexported attempt is diagnostic only |
+| public-B r2 `20261011T094055665686Z` | `a3debf6` | Workflow attempt 1 ran out of time at 1500 s | None |
+| public-B r1 `20261011T082830213253Z` | `82b1cfc` | Exported in 1291.9 s | Official driver 0/3 (trailing `always` row before intents). PR 158 validation now refuses this shape |
+| callback r2 `20261011T091014880740Z` | `3d9812a` | Exported in 512.5 s | Official driver 0/14. Superseded by round 3 |
+| probes on `ebaccc0`, `05e363c` and declarations-v2 `453e46f` | unmerged branches | Labelled not evidence by their lanes. The declarations-v2 train-1 probe exported, but two of its goal codes quarantine the whole call at `bg_init` (comment 6108324245) | Not run; not candidates |
+| public-A, train-1 and train-2 rebuilds (freya-final-push-v2) | none yet | Not posted by 11:05Z; they wait for the categorised-declarations fix | None |
+
+### Decision against the issue 8 finish condition
+
+- **Executable acceptance.** One different supported goal and schema (callback
+  scheduling) has audited original turns, a frozen contract, independently
+  checked executable behaviour, fingerprints, and its exact source and time.
+- **Banking acceptance.** That candidate still omits a source-required
+  read-back term and the required call language.
+- **Second goal.** No second goal or schema has an accepted candidate.
+
+The finish condition is therefore **not met**. `tools/cowork.py complete` was
+not run, and T08/T09 closure stays pending.
+
+What remains:
+1. Merge the confirmation-wording fix, then build the callback once on that
+   main commit and re-run acceptance against the same frozen ledger.
+2. Merge the G-REF fix (local `$ref` in `validate_workflow`), then build S04
+   once and run the official driver against `s04-source-ledger.json`
+   (`fa6eab6c…dd01`).
+3. Merge the categorised-declarations fix, and the per-goal close and silent
+   `by_value` fixes where needed. Then rebuild public-A, public-B, train-1,
+   train-2 and S03 on main, and run acceptance on whatever exports.
+4. Prove caller wording robustness and hosted behaviour separately. The
+   ideal-extraction driver cannot prove either.

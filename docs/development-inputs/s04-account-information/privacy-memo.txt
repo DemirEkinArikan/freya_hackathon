@@ -1,0 +1,24 @@
+ACCOUNT INFORMATION / INTERNAL MEMO P-29
+Synthetic development material. Applies to every call on this service.
+
+Replace exactly the base-policy.md account_disclosure_fields rule with:
+
+Common fields required on EVERY product: label_text, kind_tag, and currency_tag.
+For K11 (card) only: balance_minor and tail_digits.
+For K12 (loan) only: balance_minor and installment_minor.
+For K13 (deposit) only: yield_bps.
+
+Deposit balances must not be disclosed, even when balance_minor is present in
+the valid account response. Common fields plus only the matching type's fields
+are the full permitted disclosure set. This is a typed product condition, not
+an unconditional global list. Do not request tail_digits on a loan/deposit,
+installment_minor on a card/deposit, or yield_bps on a card/loan. The source-
+defined product type and currency meanings remain unchanged. Existing rules
+still require full permitted readback, private identifiers/internal fields to
+stay private, and missing required scalar fields to fail without a guessed value.
+
+This memo explicitly supersedes the base disclosure rule on every call. It
+changes no identity rule: operations-email.txt retains its limit of 2. Product
+order/counts, tool permissions, schema/outcome meanings, calendars and end states
+retain their base definitions. No effective date, callback, note, transfer,
+collection promise, or alternate source precedence is introduced.

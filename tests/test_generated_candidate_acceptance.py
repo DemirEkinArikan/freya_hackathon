@@ -11,7 +11,7 @@ from unittest.mock import patch
 from builder.safety import digest
 from development_protocol_samples import protocol_response
 from test_replay_guarded import authored, scenario
-from tools.generated_candidate_acceptance import evaluate, input_bindings, AcceptanceError
+from tools.generated_candidate_acceptance import evaluate, input_bindings, AcceptanceError, _operations
 from tools.replay_guarded import ReplayError
 
 
@@ -181,6 +181,14 @@ class GeneratedCandidateAcceptanceTests(unittest.TestCase):
             mutation(inputs)
             with self.subTest(mutation=mutation), self.assertRaises(AcceptanceError):
                 evaluate(*inputs)
+
+    def test_kit_api_without_operation_ids_uses_builder_path_names(self):
+        root = Path(__file__).resolve().parents[1]
+        kit = json.loads((root / "build-the-builder/tools/openapi.json").read_text(encoding="utf-8"))
+        self.assertEqual(_operations(kit), {"verify_identity", "get_account", "create_promise", "add_note",
+                                            "schedule_callback", "transfer_to_agent", "close_call"})
+        with self.assertRaises(AcceptanceError):
+            _operations({"paths": {"/a/close_call": {"post": {}}, "/b/close_call": {"post": {}}}})
 
     def test_cli_writes_sanitized_report_and_never_overwrites_it(self):
         root = Path(__file__).resolve().parents[1]

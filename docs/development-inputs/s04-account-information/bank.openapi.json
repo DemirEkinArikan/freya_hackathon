@@ -1,0 +1,234 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "S04 synthetic account-information bank contract",
+    "version": "1.0.0",
+    "description": "New synthetic development contract for account-information calls. This reserved server is for offline contract and mock checks only. It does not authorize deployment or a live bank call. Opaque wire values have the meanings supplied by this run's approved source material."
+  },
+  "servers": [
+    {
+      "url": "https://account-information-s04.invalid/bank/v1",
+      "description": "Reserved synthetic offline-only target; never deploy this contract."
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/identity/check": {
+      "post": {
+        "operationId": "verify_identity",
+        "summary": "Check one supplied identity factor",
+        "description": "CALL for each permitted factor answer in the source-defined factor order. A successful request is accepted=true; only matched=true verifies the submitted factor. Send the exact subject_ref from the read-only call context. The returned remaining counter is cumulative across factors. Advice does not establish a successful match or consume an attempt by itself.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/IdentityRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Identity answer checked; matched states whether this factor passed.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/IdentityResult"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/RejectedRequest"},
+          "503": {"$ref": "#/components/responses/UnavailableService"}
+        }
+      }
+    },
+    "/account/read": {
+      "post": {
+        "operationId": "get_account",
+        "summary": "Read the verified customer's account information",
+        "description": "CALL exactly once after all permitted identity factors have passed. A successful response has accepted=true and one or two holdings in bank-returned order. Copy identifiers and scalar facts unchanged. Disclosure is limited to the fields explicitly permitted by the effective source policy; internal age_days and arrears_amount do not authorize collection activity.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/AccountRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified customer's account information loaded.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/AccountResult"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/RejectedRequest"},
+          "403": {"$ref": "#/components/responses/UnverifiedRequest"},
+          "503": {"$ref": "#/components/responses/UnavailableService"}
+        }
+      }
+    },
+    "/call/complete": {
+      "post": {
+        "operationId": "close_call",
+        "summary": "Record the final call disposition",
+        "description": "CALL once as the last bank tool action after the source-required goodbye. Use the exact completion_tag and, when required, detail_tag from the effective source outcome table. Omit detail_tag for C81; supply the source-required reason for every other outcome. accepted=true establishes recorded closure; sending the request does not. No retry or further bank action is authorized after any close result.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/CloseRequest"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The exact submitted subject and disposition were recorded.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/CloseResult"}
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/RejectedRequest"},
+          "503": {"$ref": "#/components/responses/UnavailableService"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SubjectRef": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Exact bank customer identifier supplied in the read-only call context; never infer or invent an identifier."
+      },
+      "FactorTag": {
+        "type": "string",
+        "enum": ["F21", "F22"],
+        "description": "Source-defined identity factor codes: F21 means birth_year; F22 means postal_suffix."
+      },
+      "CompletionTag": {
+        "type": "string",
+        "enum": ["C81", "C82", "C83", "C84", "C85"],
+        "description": "Source-defined outcomes: C81 informed, C82 not_verified, C83 not_reached, C84 information_incomplete, C85 service_failure. Information outcomes are not payment or collection outcomes."
+      },
+      "DetailTag": {
+        "type": "string",
+        "enum": ["R14", "R15", "R16", "R17", "R18", "R19"],
+        "description": "Source-defined reasons: R14 failed, R15 declined, R16 wrong_number, R17 unclear, R18 refused, R19 service_error. Absent only for informed C81; present with the supplied reason for every other source outcome."
+      },
+      "IdentityRequest": {
+        "type": "object",
+        "properties": {
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "factor_tag": {"$ref": "#/components/schemas/FactorTag"},
+          "factor_reply": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The caller's answer to the selected source-defined identity question, normalized only as the effective source permits."
+          }
+        },
+        "required": ["subject_ref", "factor_tag", "factor_reply"],
+        "additionalProperties": false
+      },
+      "IdentityResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {"type": "boolean", "enum": [true], "description": "Positive service success flag; not by itself evidence that identity matched."},
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "factor_tag": {"$ref": "#/components/schemas/FactorTag"},
+          "matched": {"type": "boolean", "description": "True only when the exact submitted factor was verified."},
+          "remaining": {"type": "integer", "minimum": 0, "description": "Authoritative number of wrong answers remaining across all identity factors."},
+          "advice": {"type": "string", "description": "Optional bank advice; no value implies no hint. Never treat advice as a matched factor."},
+          "fault": {"type": "string", "description": "Optional bank error text; never a substitute for accepted and matched flags."}
+        },
+        "required": ["accepted", "subject_ref", "factor_tag", "matched", "remaining"],
+        "additionalProperties": false
+      },
+      "AccountRequest": {
+        "type": "object",
+        "properties": {
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"}
+        },
+        "required": ["subject_ref"],
+        "additionalProperties": false
+      },
+      "Holding": {
+        "type": "object",
+        "description": "One bank-returned product. Common fields are required on every product. tail_digits is required by the service for K11 only, installment_minor for K12 only, and yield_bps for K13 only; these conditional fields remain optional in the shared flat schema and have no inferred or default values. The disclosure controller validates only source-permitted fields for the actual kind_tag.",
+        "properties": {
+          "holding_ref": {"type": "string", "minLength": 1, "description": "Exact opaque product identifier, unique within this account result; never disclose or invent it."},
+          "kind_tag": {"type": "string", "enum": ["K11", "K12", "K13"], "description": "K11 card, K12 loan, K13 deposit, as mapped by the supplied source."},
+          "age_days": {"type": "integer", "minimum": 0, "description": "Internal days_late scalar retained for controller compatibility; not a disclosure permission or a collection goal."},
+          "arrears_amount": {"type": "number", "minimum": 0, "description": "Internal past_due scalar retained for controller compatibility; not a disclosure permission or a collection goal."},
+          "label_text": {"type": "string", "minLength": 1, "description": "Bank product display name; disclose only when the effective source permits."},
+          "balance_minor": {"type": "integer", "minimum": 0, "description": "Bank balance in currency minor units; disclose only for source-permitted product kinds."},
+          "currency_tag": {"type": "string", "enum": ["X91", "X92"], "description": "Source-defined currency codes: X91 GBP; X92 EUR."},
+          "tail_digits": {"type": "string", "pattern": "^[0-9]{4}$", "minLength": 4, "maxLength": 4, "description": "Bank card's final four digits. Required for K11; disclose only for a card when the effective source permits."},
+          "installment_minor": {"type": "integer", "minimum": 0, "description": "Loan installment in currency minor units. Required for K12; disclose only for a loan when the effective source permits."},
+          "yield_bps": {"type": "integer", "minimum": 0, "description": "Deposit interest in basis points. Required for K13; disclose only for a deposit when the effective source permits."}
+        },
+        "required": ["holding_ref", "kind_tag", "age_days", "arrears_amount", "label_text", "balance_minor", "currency_tag"],
+        "additionalProperties": false
+      },
+      "AccountResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {"type": "boolean", "enum": [true], "description": "Positive evidence that the exact customer's account information was loaded."},
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "holdings": {"type": "array", "minItems": 1, "maxItems": 2, "items": {"$ref": "#/components/schemas/Holding"}, "description": "One or two products in the exact returned bank order. holding_ref values are unique."},
+          "fault": {"type": "string", "description": "Optional bank error text; never establishes loaded account facts."}
+        },
+        "required": ["accepted", "subject_ref", "holdings"],
+        "additionalProperties": false
+      },
+      "CloseRequest": {
+        "type": "object",
+        "properties": {
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "completion_tag": {"$ref": "#/components/schemas/CompletionTag"},
+          "detail_tag": {"$ref": "#/components/schemas/DetailTag"}
+        },
+        "required": ["subject_ref", "completion_tag"],
+        "additionalProperties": false
+      },
+      "CloseResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {"type": "boolean", "enum": [true], "description": "Positive evidence that closure was recorded for the exact returned identifier and disposition."},
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "completion_tag": {"$ref": "#/components/schemas/CompletionTag"},
+          "detail_tag": {"$ref": "#/components/schemas/DetailTag"},
+          "fault": {"type": "string", "description": "Optional bank error text; not evidence of recorded closure."}
+        },
+        "required": ["accepted", "subject_ref", "completion_tag"],
+        "additionalProperties": false
+      },
+      "ErrorResult": {
+        "type": "object",
+        "properties": {
+          "accepted": {"type": "boolean", "enum": [false], "description": "Explicit service failure; no successful identity, account-load, or closure fact is established."},
+          "subject_ref": {"$ref": "#/components/schemas/SubjectRef"},
+          "fault": {"type": "string", "minLength": 1, "description": "Bank error text. Failure does not authorize guessing account facts or retrying closure."}
+        },
+        "required": ["accepted", "subject_ref", "fault"],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "RejectedRequest": {
+        "description": "Request rejected without establishing a successful action fact.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResult"}}}
+      },
+      "UnverifiedRequest": {
+        "description": "Account access rejected because the customer's required identity factors are not verified.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResult"}}}
+      },
+      "UnavailableService": {
+        "description": "Service could not provide positive action evidence. This response grants no retry permission.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResult"}}}
+      }
+    }
+  }
+}

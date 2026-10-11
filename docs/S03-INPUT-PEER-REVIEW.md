@@ -73,3 +73,64 @@ build keeps the 1,800-second deadline, the export reserve and a fresh
 tool-free audit, and the synthetic `.invalid` endpoint stays local.
 Evaluator-only boundary cases and ledgers wait for candidate freeze. This
 review is not generation, candidate or banking evidence.
+
+## Round 2 (07:00 UTC): F1 resolved, input approved
+
+A fresh-context Claude reviewer read R01-R12 and the whole OpenAPI. The
+inputs are now committed beside `approved-provenance.json`. The
+canonical hash is the `builder.safety.digest` value that `builder/build.py`
+records.
+
+| Generator input (order) | raw sha256 | canonical sha256 |
+|---|---|---|
+| 1. `--brief brief.md` | `74fe4cd1f99c84334612ecf5cd5bfb6aefa129078f2141524cf16897cf4cf4fe` | `69119728068f29e90a38dd64f3d1a6b19396ce935a6c13917f353bd18c86b828` |
+| 2. `--tool-api bank.openapi.json` | `bec299c656baff8cc40831ec977e7e1541c35cc89289a09e6b3413f94601c262` | `855462455f93c07648475574fa792cc6f7c9df71e48a1b2117ed2f2b36217e84` |
+
+**Diff from the reviewed bytes.** The OpenAPI is byte-identical. The brief
+differs from `d1857a2a` only by two sentences appended to R09. They define
+"initial answer", "answer to the initial contact question" and "spoken
+initial-contact reply" (R02, R09, R10) as a confirmation, a denial or an
+uncertain answer such as "maybe". A question back, an off-topic request or
+other speech that does not address that question is not an answer and does
+not count as contact. The definition adds no tool, permission or identity
+shortcut, so no requirement is weakened. It replaces the uncommitted
+`9b1e305d` draft, which defined only R09's phrase. That draft left R09's
+"initial answer" undefined and left open whether "Who is calling?" is an
+uncertain answer.
+
+**Checked readings.** Each outcome now follows from the text:
+
+- Opening, then "Who is calling?", re-ask, then "What's this about?": two
+  non-answers, so `no_contact`. R02 "never answers", R09 and row 7 now agree.
+- "Maybe", the R02 clarification, then "I'm not sure": `unfinished_pair`
+  (row 8). The uncertain answer was contact (R09).
+- "Maybe", the clarification, then "Who is calling?": a question back is not
+  an answer, so it is not "still uncertain". It counts as an R09 non-answer
+  (R09's precedence list does not include R02 uncertainty). A later
+  confirmation continues. A second consecutive non-answer ends with
+  `unfinished_pair`, because "maybe" was contact.
+- Hang-up after only questions back: `no_contact` (R02, row 7). Hang-up
+  after a confirmation or uncertain answer: `unfinished_pair` (R09 "initial
+  answer", row 8). A denial is row 1.
+
+**Mechanical checks** were run on main `3f2399d`, all passing:
+
+- OpenAPI 3.0.3 with one `.invalid` server and seven operations.
+- 45/45 fields carry a semantic mapping. Every schema is closed, and every
+  200 response requires `done_flag`.
+- The closing table has eight rows, uses only declared enums, and has no
+  unused value or duplicate pair.
+- `builder.build._load_inputs` accepts both files (path guard, secret scan,
+  `operations()`).
+- The novel wire names are absent from `benchmarks/`, the holdout rows and
+  the fixtures.
+
+**Open advisories.** F2 and F3 stand unchanged. New A4: if the single R08
+transient repeat returns `bad_shape`, R06 (malformed) and R08 (definite
+failure on the repeat, so check failure) both apply. Evaluator cases must not
+depend on that sequence unless a separately reviewed amendment settles it.
+
+**Gate.** Generation still waits for the generic typed identity-terminal
+source fix. On `3f2399d`, `builder/guards.py` lines 328-329 and 947 are
+unchanged. This approval is input evidence only. It is not generation,
+candidate or banking evidence.

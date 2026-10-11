@@ -1,0 +1,58 @@
+{
+  "status": "approved_for_new_development_generation",
+  "authored_utc": "2026-10-11T06:00:22Z",
+  "revised_utc": "2026-10-11T06:35:17Z",
+  "goal": "identity_only",
+  "input_dir": "docs/development-inputs/s03-identity-only",
+  "original_author": "Codex S03 lane (uncommitted worktree rapid-s03-20261011; brief d1857a2a, API bec299c6)",
+  "revision_author": "Claude S03 lane (one appended R09 definition resolving review finding F1)",
+  "independently_authored_normative_policy": true,
+  "existing_120_fixture_membership": false,
+  "held_out_content_used": false,
+  "old_expected_records_or_customer_scripts_used": false,
+  "builder_input_order": [
+    {"argument": "--brief", "file": "brief.md"},
+    {"argument": "--tool-api", "file": "bank.openapi.json"}
+  ],
+  "brief_raw_sha256": "74fe4cd1f99c84334612ecf5cd5bfb6aefa129078f2141524cf16897cf4cf4fe",
+  "brief_canonical_text_sha256": "69119728068f29e90a38dd64f3d1a6b19396ce935a6c13917f353bd18c86b828",
+  "brief_bytes": 11979,
+  "api_raw_sha256": "bec299c656baff8cc40831ec977e7e1541c35cc89289a09e6b3413f94601c262",
+  "api_canonical_sha256": "855462455f93c07648475574fa792cc6f7c9df71e48a1b2117ed2f2b36217e84",
+  "api_bytes": 33595,
+  "fingerprint_method": "raw = sha256(file bytes); canonical = builder.safety.digest of the brief text and of the parsed OpenAPI, which builder.build records for generator inputs",
+  "not_generator_inputs": ["approved-provenance.json", "../../S03-INPUT-PEER-REVIEW.md"],
+  "permitted_operation_ids": [
+    "verify_identity",
+    "close_call"
+  ],
+  "required_call_variables": [
+    "customer_id"
+  ],
+  "model_calls": 0,
+  "network_calls": 0,
+  "source_checks": [
+    "api_byte_identical_to_reviewed_bec299c6",
+    "brief_differs_from_reviewed_d1857a2a_only_by_appended_r09_definition",
+    "openapi_3_0_3_single_invalid_server_seven_operations",
+    "every_request_and_result_field_semantic_mapped_45_of_45",
+    "every_schema_closed_200_requires_done_flag_500_409_bodyless",
+    "closing_table_8_rows_declared_enums_no_unused_value_no_duplicate_pair",
+    "builder_load_inputs_accepts_both_files_on_main_3f2399d",
+    "novel_wire_names_absent_from_benchmarks_fixtures_and_holdout_rows_on_main_3f2399d"
+  ],
+  "known_current_compiler_questions": [
+    "Generation stays gated on a generic typed identity-terminal source fix: on main 3f2399d builder/guards.py lines 328-329 accept only failed/incomplete/unreached identity closes and line 947 rejects a verified close without account evidence.",
+    "Evaluator cases must not depend on a bad_shape result to the single R08 transient repeat: R06 (treat as malformed) and R08 (repeat fails definitively, finish check failure) both apply and the text does not settle it."
+  ],
+  "approval": {
+    "by": "Claude S03 lane round-2 independent reviewer (fresh context), within the issue #8 development-input scope",
+    "at": "2026-10-11T07:00:24Z",
+    "review": "R01-R12 and the full OpenAPI read end to end; F1 resolved by a definition consistent with R02 and closing row 7; no requirement added, removed or weakened; details in docs/S03-INPUT-PEER-REVIEW.md."
+  },
+  "brief_file": "brief.md",
+  "previous_brief_raw_sha256": "d1857a2a16dc17b0f3f217968e2aece5e6bd73d0e1f2c09fe45c0aaff7ea75b6",
+  "superseded_uncommitted_revision_raw_sha256": "9b1e305dac6bf214302c4e9321d9491d57ac9c6d6f71238da08a6f96a8668133",
+  "normative_requirements_changed": false,
+  "change": "One appended R09 sentence pair defines initial answer, answer to the initial contact question and spoken initial-contact reply (R02, R09, R10) as a confirmation, denial or uncertain answer; questions back and off-topic speech are not answers and do not count as contact. All other requirement text, the closing table and the API bytes are unchanged."
+}

@@ -100,7 +100,7 @@ class ControllerAcceptanceTests(unittest.TestCase):
                 generator.generate.return_value = extracted
                 generator.generate_plan.side_effect = lambda *a, **kw: {"plan": proposed, "contract_sha256": kw["contract_sha256"]}
                 with self.assertRaisesRegex(ValueError, "execution_actions"):
-                    execute(self.helper.args(), generator=generator,
+                    execute(self.helper.args("--no-plan-fallback"), generator=generator,
                             client_factory=lambda **kw: self.fail("platform started"))
                 self.assertEqual(generator.generate.call_count, 1)
                 self.assertEqual(generator.generate_plan.call_count, 3)
@@ -167,7 +167,7 @@ class ControllerAcceptanceTests(unittest.TestCase):
         broken = plan(); broken["initial_node"] = "missing"
         generator.generate_plan.side_effect = lambda *a, **kw: {"plan": copy.deepcopy(broken), "contract_sha256": kw["contract_sha256"]}
         with self.assertRaisesRegex(ValueError, "bounded repairs"):
-            execute(self.helper.args(), generator=generator,
+            execute(self.helper.args("--no-plan-fallback"), generator=generator,
                     client_factory=lambda **kw: self.fail("platform started"))
         self.assertEqual(generator.generate.call_count, 2)
         self.assertEqual(generator.generate_plan.call_count, 2)

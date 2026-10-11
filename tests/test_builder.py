@@ -135,7 +135,7 @@ class BuilderTests(unittest.TestCase):
         broken["workflow"]["initial_node"] = "missing"
         generator.generate.return_value = broken
         with self.assertRaises(ValueError):
-            execute(self.args(), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
+            execute(self.args("--no-plan-fallback"), generator=generator, client_factory=lambda **kw: self.fail("platform touched"))
         self.assertEqual(generator.generate.call_count, 1)
         self.assertEqual(generator.generate_plan.call_count, 3)
 

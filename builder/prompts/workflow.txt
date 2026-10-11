@@ -92,7 +92,9 @@ event operator, or assume the farewell text itself records the bank close.
 
 Extraction, dialogue and routing must agree. Ask for missing/ambiguous exact terms,
 recognize corrections and compound intent, and follow brief-defined counter scopes.
-Resolve speech dates against supplied now. Human product readback uses only fields
+Resolve speech dates against supplied {{now}}, never a platform date. A proposed
+date before the call's date is misheard: ask for it again, never call it past.
+Human product readback uses only fields
 allowed by the contract. Do not expose customer/internal product identifiers.
 Persuasion and speech interpretation remain your dialogue responsibility; routing
 through a guard does not establish that the conversation complied with the policy.

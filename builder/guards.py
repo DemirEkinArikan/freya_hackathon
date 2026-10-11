@@ -1280,7 +1280,8 @@ def guard_refusal(state, action, inputs, message):
         try:
             if any(value is None or str(value).strip() == '' for value in inputs.values()):
                 raise ValueError('blank caller value')
-            guard_date(inputs.get('date', state['now']))
+            if guard_date(inputs.get('date', state['now'])) < guard_date(state['now']):
+                raise ValueError('proposed date precedes the call date')
             datetime.time.fromisoformat(str(inputs.get('time', '00:00')))
         except ValueError:
             reason = 'missing_input'
@@ -2316,6 +2317,16 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 and all(row.get("is_tool_call") is True for row in exits) and any(row.get("target_node") == name for row in exits)):
             rows[-1]["condition"] = {"operator": "always"}
             node.pop("routing_prompt", None)
+    # The kit date types anchor the extractor on the platform's real date; the
+    # kernel judges dates by the call's supplied now (hosted round 1, R8).
+    clocked = {value for node in plan["nodes"].values() if node["node_type"] == "guard_action"
+               for key, value in node.get("inputs", {}).items() if key in ("date", "time")}
+    for node in nodes.values():
+        for entry in node.get("extraction_schema", []):
+            if entry.get("type") in ("date", "datetime") or entry["name"] in clocked:
+                entry["description"] = (entry.get("description", "") + " This call's current date and time is {{now}}:"
+                                        " resolve today, tomorrow, weekdays and every other relative date or time"
+                                        " from it, never from any other current date.").strip()
     _bound_entries(nodes, list(plan["nodes"]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:

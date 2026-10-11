@@ -2183,12 +2183,15 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             result_vars['_types'] = PREFIX + name + '_result_types'
         needs_confirmation = (action == "commit_promises" and profile.get("require_confirmation") is True
                               or action in profile.get("confirmation_actions", []))
-        routes = [copy.deepcopy(quarantine_route), _transition(success, "done")]
+        # bg_route values are exclusive. Listing done after allow/confirm keeps a
+        # success target equal to the blocked fallback adjacent to it, so the
+        # kit's same-target merge cannot shadow the allow route.
+        routes = [copy.deepcopy(quarantine_route)]
         if operation:
             routes += [_transition(api, "allow")]
             if needs_confirmation:
                 routes += [_transition(confirm, "confirm")]
-        routes += [_transition(blocked)]
+        routes += [_transition(success, "done"), _transition(blocked)]
         if action == "close_call":
             # A turn-limit exit must not return to the same public recovery
             # loop when no authorized bank disposition can be formed. End

@@ -3,7 +3,7 @@ Root: initial_node, nodes (object keyed by name), optional system_prompt.
 Every node has matching name and node_type. Public names begin with a letter or
 underscore and contain letters/digits/underscores; bg_* is reserved.
 
-conversation fields: name,node_type,task_message,routing_prompt,on_enter,
+conversation fields: name,node_type,task_message,on_enter,
 on_enter_first_entry_only,extraction_schema,transitions,max_node_turns,
 max_turn_transition,passthrough,passthrough_default_transition. No other fields.
 passthrough is a boolean; its default target names a public plan node.
@@ -31,12 +31,11 @@ matches_intent and merges same-target routes, so list every ordinary
 deterministic route before every intent route and never follow intent routes
 with an ordinary always. An unmatched caller turn stays in its node anyway; a
 catch-all that must move elsewhere is itself a final matches_intent route.
-Hosted routing may return no match or select the first listed intent route for
-an ordinary answer: put the ordinary expected route first, rare call-ending or
-irreversible exits later and a catch-all last; a route that can only end the call
-is never the first intent route. For more than three caller-answer outcomes, use
-one catch-all intent into an LLM-entry decision step whose is_tool_call
-completions choose.
+At most one matches_intent route per node: with several, the hosted router
+returned no match or the first listed intent. Branch a caller answer through one
+catch-all intent into an LLM-entry decision step whose is_tool_call completions
+choose, or through an extracted route-choice enum with ordered equals routes
+(unset stays and asks again).
 
 Entry scheduling follows the kit, not just graph reachability:
 - on_enter:{type:silent} alone waits for the user. A state-only decision on
@@ -100,9 +99,9 @@ status and recorded-action counts. Every guard step refreshes this protected JSO
 no authored extraction may write it. Raw bg_state/bg_body/result variables,
 customer_id and automatic operation-result variables cannot be templated. now
 may be read. Never place bg_facts in authored on_enter speech/TTS.
-Raw protected values also cannot appear in condition.variable reads. The string
-routing_prompt may read {{bg_facts}} explicitly; task_message is not visible to
-the routing model, so put needed routing context in routing_prompt/transitions.
+Raw protected values also cannot appear in condition.variable reads. Do not author
+routing_prompt: it replaces the router's default instruction.
+task_message is not visible to the routing model; a decision step reads context.
 
 internal_action_references.products contains product_ref IDs needed for proposed
 action inputs; these are internal and must never be spoken. position is policy

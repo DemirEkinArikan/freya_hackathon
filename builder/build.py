@@ -28,7 +28,7 @@ from .contract import compile_policy_contract, PolicyContractError
 from .runtime import CodexGenerator, Deadline, DeadlineExceeded, GenerationFormatError, Trace
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
-from .validation import validate_workflow
+from .validation import plan_routing_errors, validate_workflow
 from .action_bindings import compile_action_bindings
 from .policy import compile_execution_policy, PolicyError, MissingExecutionRules, normalise_policy
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
@@ -683,7 +683,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 _attempt_snapshot(attempt_dir, "workflow.json", guard_bundle["workflow"], secret_values)
                 candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": guard_bundle["workflow"]}
                 errors = validate_workflow(candidate["workflow"], openapi, frozen_policy,
-                                           guard_context=guard_context)
+                                           guard_context=guard_context) + plan_routing_errors(plan)
             except MissingExecutionRules as exc:
                 trace.emit("frozen_contract_failure", missing_kinds=list(exc.missing_kinds),
                            policy_preserved=True, plan_repair_attempted=False)

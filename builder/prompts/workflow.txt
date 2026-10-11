@@ -61,15 +61,14 @@ deterministic conditions (variable checks and always) before the routing model:
 in each node, list every ordinary deterministic route before every matches_intent
 route and add no always fallback after intent routes. An unmatched caller turn
 already stays in its node; when unmatched answers must move elsewhere, end with a
-matches_intent catch-all route instead. The hosted routing model can return no
-match, or match an ordinary answer to the first listed intent route (or to every
-route, where list order picks the first). List the ordinary expected answer's
-intent route first, described specifically rather than as a catch-all, rare
-terminal or irreversible exits after it and a catch-all last; a route that can
-only end the call is never the first intent route or the catch-all, and a
-routing_prompt does not tell the router to prioritize such exits. When a caller answer can lead to more than three outcomes, prefer one
+matches_intent catch-all route instead. The hosted router returns no match, or
+the first listed intent, when a node has several intent routes, so a node has at
+most one matches_intent route. To branch on a caller answer, send it through one
 catch-all matches_intent route into a nonspeaking LLM-entry decision step
-(described below) whose completions choose the outcome. For a state-only decision on declared
+(described below) whose completions choose the outcome, or extract a route-choice
+enum in the answer node and branch with ordered equals routes (an unset value
+stays in the node and the dialogue asks again). Do not author routing_prompt: it
+replaces the router's default instruction. For a state-only decision on declared
 public variables that needs no new answer, set node-level passthrough:true, a
 public passthrough_default_transition, deterministic routes and an ordinary final
 always fallback without a tool-call flag; a passthrough node never uses
@@ -78,8 +77,8 @@ A state-only decision judged from the bg_facts view is instead an LLM-entry step
 whose task_message reads that view and directs the dialogue model, without waiting
 for the caller, to take the one engine-offered completion transition
 (is_tool_call:true, described below) whose description matches the current state.
-Put approved runtime context for caller-answer intent routes in routing_prompt;
-task_message alone cannot direct the routing model.
+The routing model sees only the conversation and transition descriptions;
+task_message cannot direct it, so put runtime context in a decision step.
 Capture needed public action proposals in the preceding caller-answer step; an
 immediate state router cannot obtain a new answer by declaring extraction fields.
 Do not make a caller-answer node passthrough or skip the fresh answer it requires.

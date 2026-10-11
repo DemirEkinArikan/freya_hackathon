@@ -43,7 +43,9 @@ def _path(value, path):
 def _condition(condition, variables, *, intent=False):
     if "conditions" in condition:
         values = [_condition(item, variables, intent=intent) for item in condition["conditions"]]
-        return any(values) if condition["logic"] == "or" else all(values)
+        if condition["logic"] == "or":
+            return True if True in values else None if None in values else False
+        return False if False in values else None if None in values else True
     operator = condition["operator"]
     if operator == "always":
         return True
@@ -75,6 +77,80 @@ def _has_intent(condition):
         _has_intent(item) for item in condition.get("conditions", []))
 
 
+def _frames(script, nodes, readonly):
+    """Authenticate evaluator selectors and extraction scopes before execution."""
+    normalized = []
+    for frame in script["frames"]:
+        if not isinstance(frame, dict) or not isinstance(frame.get("node"), str):
+            raise ReplayError("invalid conversation extraction frame")
+        node = nodes.get(frame["node"])
+        if node is None or node["node_type"] != "conversation":
+            raise ReplayError("event must name an actual conversation node")
+        event = "caller" if script["version"] == 1 else frame.get("event")
+        base = {"node"} if script["version"] == 1 else {"node", "event"}
+        if event == "caller":
+            if set(frame) - base - {"values", "intent_transition"} or not isinstance(frame.get("values"), dict):
+                raise ReplayError("invalid conversation extraction frame")
+            declared = {item["name"] for item in node.get("extraction_schema", [])}
+            if (set(frame["values"]) - declared or set(frame["values"]) & readonly
+                    or any(name.startswith("bg_") and name != "bg_consent" for name in frame["values"])):
+                raise ReplayError("conversation frame may write only this node's extraction outputs")
+        elif event == "agent_completion":
+            if set(frame) != base | {"transition"}:
+                raise ReplayError("agent completion requires only a transition selector")
+            index = frame["transition"]
+            if (type(index) is not int or not 0 <= index < len(node.get("transitions", []))
+                    or node["transitions"][index].get("is_tool_call") is not True):
+                raise ReplayError("completion selector must name this node's actual tool transition index")
+        elif event == "entry_routing":
+            if set(frame) != base | {"intent_transition"} or node.get("passthrough") is not True:
+                raise ReplayError("entry routing evidence requires a passthrough conversation")
+        else:
+            raise ReplayError("unknown evaluator event")
+        if event in {"caller", "entry_routing"}:
+            index = frame.get("intent_transition")
+            if index is not None:
+                if type(index) is not int or not 0 <= index < len(node.get("transitions", [])):
+                    raise ReplayError("intent selector must name this node's actual transition index")
+                route = node["transitions"][index]
+                if route.get("is_tool_call") or not _has_intent(route["condition"]):
+                    raise ReplayError("intent selector cannot force a deterministic condition or tool transition")
+        normalized.append(dict(frame, event=event))
+    return normalized
+
+
+def _route(node, variables, intent_index=None, *, evidence=True):
+    """Tool transitions are offered choices, never ordinary routing conditions."""
+    rows = [(index, row) for index, row in enumerate(node.get("transitions", [])) if not row.get("is_tool_call", False)]
+    # The kit checks deterministic matches before asking its routing model for
+    # intent. Rows stay in list order: the kit does not document where a merged
+    # duplicate-target transition sits, so replay does not emulate that merge.
+    unresolved = []
+    for index, row in rows:
+        match = _condition(row["condition"], variables, intent=None)
+        if match is True:
+            return row["target_node"], True
+        if match is None:
+            unresolved.append((index, row))
+    if unresolved and not evidence:
+        return None, False
+    for index, row in unresolved:
+        if _condition(row["condition"], variables, intent=index == intent_index):
+            return row["target_node"], True
+    return None, True
+
+
+def _responses(responses, nodes):
+    api_nodes = {name: node["pre_actions"][0]["function"]["name"]
+                 for name, node in nodes.items() if node["node_type"] == "api_request"}
+    for response in responses:
+        if (not isinstance(response, dict) or set(response) - {"operation", "node", "envelope"}
+                or "envelope" not in response or response.get("operation") not in api_nodes.values()
+                or "node" in response and (not isinstance(response["node"], str)
+                    or api_nodes.get(response["node"]) != response["operation"])):
+            raise ReplayError("mock response must name an actual API operation and matching node")
+
+
 def _execute(code, namespace, remaining):
     if remaining <= 0:
         raise ReplayError("replay execution deadline exhausted")
@@ -102,7 +178,7 @@ def _execute(code, namespace, remaining):
 
 
 def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
-    """Use explicit ideal extraction/intent frames, never interpret caller speech."""
+    """Use explicit evaluator events, never interpret caller or agent speech."""
     if type(max_steps) is not int or not 1 <= max_steps <= 10000 or not isinstance(seconds, (int, float)) or isinstance(seconds, bool) or not 0 < seconds <= 1800:
         raise ReplayError("invalid replay resource limits")
     started = time.monotonic()
@@ -116,7 +192,7 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
     if errors:
         raise ReplayError("exact trusted workflow validation failed: " + "; ".join(errors[:8]))
     if (not isinstance(script, dict) or set(script) != {"version", "initial_inputs", "frames", "responses"}
-            or type(script["version"]) is not int or script["version"] != 1
+            or type(script["version"]) is not int or script["version"] not in (1, 2)
             or not isinstance(script["initial_inputs"], dict)
             or not isinstance(script["frames"], list) or not isinstance(script["responses"], list)):
         raise ReplayError("invalid evaluator replay script")
@@ -125,8 +201,13 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
         raise ReplayError("initial inputs must be declared call inputs, including customer_id and now")
     variables = deepcopy(script["initial_inputs"])
     nodes, current = workflow["nodes"], workflow["initial_node"]
+    frames = _frames(script, nodes, readonly)
+    _responses(script["responses"], nodes)
     steps, calls, prompts, seen, turns = [], [], [], set(), {}
     frame_index = response_index = 0
+    entering = True
+    entered_nodes = set()
+    dialogue_ready = False
     status = "step_limit"
     for _ in range(max_steps):
         if time.monotonic() >= deadline:
@@ -135,11 +216,11 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
         node = nodes[current]
         signature = digest({"node": current, "variables": variables})
         frame = None
-        if node["node_type"] == "conversation" and frame_index < len(script["frames"]):
-            candidate = script["frames"][frame_index]
-            if isinstance(candidate, dict) and candidate.get("node") == current:
+        if node["node_type"] == "conversation" and frame_index < len(frames):
+            candidate = frames[frame_index]
+            if candidate["node"] == current:
                 frame = candidate
-        if frame is None and signature in seen:
+        if node["node_type"] != "conversation" and signature in seen:
             status = "absorbing_loop"
             break
         seen.add(signature)
@@ -148,6 +229,8 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
             status = "terminated"
             break
         intent_index = None
+        target = None
+        waiting = False
         if node["node_type"] == "code":
             code = node["pre_actions"][0]["function"]["parameters"]["properties"]["code"]["default"]
             _execute(code, {"vars": variables}, deadline - time.monotonic())
@@ -174,41 +257,70 @@ def replay(workflow, context, openapi, script, *, max_steps=256, seconds=30):
                 variables[mapping["variable"]] = _mapped(_path(result, mapping["path"]))
             response_index += 1
         elif node["node_type"] == "conversation":
-            prompts.append({"node": current, "task_message": node.get("task_message", ""), "on_enter": node.get("on_enter", {})})
-            if frame is not None:
-                if set(frame) - {"node", "values", "intent_transition"} or not isinstance(frame.get("values"), dict):
-                    raise ReplayError("invalid conversation extraction frame")
-                declared = {item["name"] for item in node.get("extraction_schema", [])}
-                if set(frame["values"]) - declared or set(frame["values"]) & readonly or any(name.startswith("bg_") and name != "bg_consent" for name in frame["values"]):
-                    raise ReplayError("conversation frame may write only this node's extraction outputs")
-                intent_index = frame.get("intent_transition")
-                if intent_index is not None and (type(intent_index) is not int or not 0 <= intent_index < len(node.get("transitions", []))):
-                    raise ReplayError("intent selector must name this node's actual transition index")
-                if intent_index is not None and not _has_intent(node["transitions"][intent_index]["condition"]):
-                    raise ReplayError("intent selector cannot force a deterministic condition")
+            if entering:
+                entry_runs = not node.get("on_enter_first_entry_only", False) or current not in entered_nodes
+                dialogue_ready = entry_runs and node.get("on_enter", {}).get("type", "llm") == "llm"
+                entered_nodes.add(current)
+                prompts.append({"node": current, "task_message": node.get("task_message", ""),
+                                "on_enter": node.get("on_enter", {}), "entry_executed": entry_runs})
+            if frame is not None and frame["event"] == "agent_completion":
+                if not dialogue_ready:
+                    raise ReplayError("agent completion requires a model dialogue phase; silent or fixed entry waits for caller")
+                steps[-1].update(event="agent_completion", frame_index=frame_index, transition=frame["transition"])
+                target = node["transitions"][frame["transition"]]["target_node"]
+                frame_index += 1
+                seen.clear()
+            elif entering and node.get("passthrough") is True:
+                entry_frame = frame if frame is not None and frame["event"] == "entry_routing" else None
+                if dialogue_ready and any(row.get("is_tool_call") for row in node.get("transitions", [])) and entry_frame is None:
+                    status = "missing_agent_completion"
+                    break
+                target, proven = _route(node, variables, entry_frame.get("intent_transition") if entry_frame else None,
+                                        evidence=entry_frame is not None)
+                if entry_frame is not None:
+                    steps[-1].update(event="entry_routing", frame_index=frame_index)
+                    frame_index += 1
+                    seen.clear()
+                if not proven:
+                    status = "missing_routing_evidence"
+                    break
+                target = target or node.get("passthrough_default_transition")
+            elif frame is None:
+                status = "missing_agent_completion" if dialogue_ready and any(row.get("is_tool_call") for row in node.get("transitions", [])) else "missing_conversation_frame"
+                break
+            elif frame["event"] == "caller":
+                waiting = True
+                steps[-1].update(event="caller", frame_index=frame_index)
                 variables.update(deepcopy(frame["values"]))
                 frame_index += 1
                 turns[current] = turns.get(current, 0) + 1
                 seen.clear()  # New evaluator input may recover a prior blocked action.
+                intent_index = frame.get("intent_transition")
+                target, _proven = _route(node, variables, intent_index)
+                if node.get("max_node_turns") is not None and turns[current] >= node["max_node_turns"]:
+                    target = node.get("max_turn_transition", target)
+            else:
+                raise ReplayError("entry routing event cannot substitute for a caller or completion")
         else:
             raise ReplayError("unhandled node in exact compiled workflow")
-        target = next((route["target_node"] for index, route in enumerate(node.get("transitions", []))
-                       if _condition(route["condition"], variables, intent=index == intent_index)), None)
-        if node["node_type"] == "conversation" and frame is not None and node.get("max_node_turns") is not None and turns[current] >= node["max_node_turns"]:
-            target = node.get("max_turn_transition", target)
-        target = target or node.get("passthrough_default_transition")
+        if node["node_type"] != "conversation":
+            target, _proven = _route(node, variables)
+            target = target or node.get("passthrough_default_transition")
         if target is None:
             # Kit routing rule 4 keeps a conversation in place when a caller
             # turn matches no route. Missing future input remains incomplete.
-            if node["node_type"] == "conversation" and frame is not None:
+            if waiting:
+                entering = False
+                dialogue_ready = True
                 continue
             status = "missing_conversation_frame" if node["node_type"] == "conversation" and frame is None else "routing_deadlock"
             break
-        if target != current:
-            turns[current] = 0
+        turns[current] = 0
+        entering = True
         current = target
     state = json.loads(variables.get("bg_state", "{}"))
     return {"version": 1, "status": status, "terminal_node": current if status == "terminated" else None,
+            "script_version": script["version"],
             "workflow_sha256": digest(workflow), "contract_sha256": context["contract"]["sha256"],
             "script_sha256": digest(script), "steps": steps, "calls": calls, "prompts": prompts,
             "frames_consumed": frame_index, "responses_consumed": response_index,

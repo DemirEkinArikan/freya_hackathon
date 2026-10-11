@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -185,6 +186,20 @@ class RehearsalArchiveTests(unittest.TestCase):
 
 
 class RehearsalProcessTests(unittest.TestCase):
+    def test_real_child_disables_site_startup_and_reports_actual_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            home = root / "empty-home"
+            home.mkdir()
+            log = root / "check.log"
+            report = rehearsal.run_check(
+                [sys.executable, "-c", "import sys; print(sys.flags.no_site); print('site' in sys.modules)"],
+                root, home, log, rehearsal.time.monotonic() + 10)
+            self.assertEqual(report["returncode"], 0)
+            self.assertEqual(log.read_text().splitlines(), ["1", "False"])
+            self.assertEqual(report["argv"][1], "-S")
+            self.assertEqual(list(home.iterdir()), [])
+
     def test_clean_environment_drops_credentials_python_hooks_and_host_configuration(self):
         hostile = {"FREYA_API_KEY": "synthetic", "API_TOKEN": "synthetic", "FREYA_TOOL_AUTH_BANK": "synthetic",
                    "PYTHONPATH": "/host/code", "PYTHONHOME": "/host/python", "CODEX_HOME": "/host/codex",
@@ -275,6 +290,12 @@ class RehearsalOrchestrationTests(unittest.TestCase):
         self.assertFalse((root / ".env").exists())
         self.assertEqual(list(home.iterdir()), [])
         log.write_text("Local stub; no live acceptance\n")
+        if "benchmarks.export_inputs" in argv:
+            destination = root / argv[argv.index("--out") + 1]
+            destination.mkdir(parents=True)
+            (destination / "policy.md").write_text("Synthetic policy input\n")
+            (destination / "bank.openapi.json").write_text(json.dumps({
+                "openapi": "3.0.3", "info": {"title": "Synthetic", "version": "1"}, "paths": {}}))
         if "--output" in argv:
             with patch.object(rehearsal.package, "ROOT", root):
                 rehearsal.package.main(argv[2:])
@@ -310,6 +331,27 @@ class RehearsalOrchestrationTests(unittest.TestCase):
         self.assertEqual(report["checks"][0]["returncode"], 7)
         for name in ("source.zip", "source/README.md", "check-01.log", "report.json"):
             self.assertTrue((self.output / name).exists(), name)
+        self.assertFalse(report["candidate_frozen"])
+
+    def test_successful_noop_exports_leave_failed_report_and_original_logs(self):
+        def skip_exports(argv, root, home, log, end):
+            if "benchmarks.export_inputs" in argv:
+                log.write_text("Successful no-op exporter\n")
+                return {"argv": argv, "returncode": 0, "timed_out": False,
+                        "elapsed_seconds": 0, "log": log.name,
+                        "log_sha256": fingerprint(log.read_bytes())}
+            return self.check_stub(argv, root, home, log, end)
+
+        with patch.object(subprocess, "run", side_effect=self.fake_git), \
+                patch.object(rehearsal, "run_check", side_effect=skip_exports):
+            report = rehearsal.rehearse(self.output)
+        self.assertEqual(report["status"], "failed")
+        self.assertEqual(len(report["checks"]), 10)
+        self.assertTrue(all(check["returncode"] == 0 for check in report["checks"]))
+        self.assertIn("Development inputs", report["error"])
+        self.assertNotIn("development_inputs", report)
+        self.assertTrue((self.output / "source.zip").is_file())
+        self.assertTrue((self.output / "check-09.log").is_file())
         self.assertFalse(report["candidate_frozen"])
 
     def test_source_commit_mismatch_preserves_failed_report_before_execution(self):

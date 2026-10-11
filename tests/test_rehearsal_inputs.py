@@ -82,7 +82,7 @@ class RehearsalDevelopmentInputTests(unittest.TestCase):
     def test_linked_export_parent_and_profile_are_rejected(self):
         for path in (self.root / "artifacts", self.inputs, self.inputs / "raw"):
             with self.subTest(path=path.name):
-                moved = path.with_name(path.name + "-plain")
+                moved = self.root / (path.name + "-plain")
                 path.rename(moved)
                 path.symlink_to(moved, target_is_directory=True)
                 self.assert_rejected()

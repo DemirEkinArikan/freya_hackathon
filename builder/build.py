@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import time
 from typing import Any, Callable
@@ -164,12 +165,39 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
                "active_rules": {kind: copy.deepcopy(rule["value"]) for kind, rule in contract["active_rules"].items()},
                "permitted_operations": contract["permitted_operations"], "sources": contract["sources"],
                "runtime_reference": reference}
+    if "degraded_constraints" in contract:
+        payload["degraded_constraints"] = copy.deepcopy(contract["degraded_constraints"])
     if execution_requirements is not None:
         payload["execution_requirements"] = copy.deepcopy(execution_requirements)
     if repair:
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
+
+
+def declaration_feedback(policy: Any) -> list[str]:
+    """Name each fatal declaration and the interface labels it cites, never its prose."""
+    declared = policy.get("unsupported_constraints") if isinstance(policy, dict) else None
+    if not isinstance(declared, list):
+        return []
+    actions = execution_action_catalogue()
+    labels = set(execution_rule_guidance()) | set(actions) | {spec["operation_role"] for spec in actions.values()}
+    feedback = []
+    for index, item in enumerate(declared):
+        if not isinstance(item, str):
+            continue
+        cited = sorted(set(re.findall(r"[A-Za-z][A-Za-z0-9_]*", item)) & labels)
+        if cited:
+            check = ("it cites " + ", ".join(cited) + ": if their rule_shapes or controller_state_effects already "
+                     "enforce this requirement, encode it there and delete the declaration")
+        else:
+            check = ("it cites no typed kind or sealed action: delete it only after encoding its requirement "
+                     "through a typed kind or controller_state_effect that enforces it")
+        feedback.append(f"policy.unsupported_constraints[{index}] rejects the build; {check}. If no typed "
+                        "interface enforces it and the source itself prescribes transferring that situation to an "
+                        "active transfer_reasons queue, replace it with a degraded {constraint, trigger, "
+                        "fallback_queue, source} object; otherwise keep it unchanged")
+    return feedback
 
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True):
@@ -204,15 +232,20 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             requirements = compile_execution_requirements(policy, sources, openapi)
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
+            feedback = declaration_feedback(policy)
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
-                {"policy": policy, "validation_errors": errors}, secrets=secrets))
+                {"policy": policy, "validation_errors": errors,
+                 **({"declaration_feedback": feedback} if feedback else {})}, secrets=secrets))
             trace.emit("policy_validation", passed=False, errors=errors)
             if attempt == MAX_REPAIRS:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
+            if feedback:
+                repair["declaration_feedback"] = feedback
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
-                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"])
+                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
+                   degraded_constraints=len(compiled.get("degraded_constraints", [])))
         return copy.deepcopy(policy), compiled, requirements, attempt
     raise AssertionError("unreachable policy extraction state")
 

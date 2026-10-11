@@ -116,7 +116,7 @@ _SHAPE_GUIDANCE = {
     "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent',
     "definite_failure_resume": 'an optional unique string array containing only finalize_notes/schedule_callback/commit_transfer; an empty array is allowed. For selected roles an explicit attempt_scopes entry and matching positive limit are required. Only source-authorized continuation after an exact API-qualified nonpersistent negative receipt is enabled: retry the same frozen request below its cap, or resume without claiming success at the cap. This supplies no bank disposition, never resumes uncertainty, and never replays close_call or changes promise exhaustion handling',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
-    "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
+    "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer. Rank only protected facts that can coexist. Recorded promises and notes are never removed, and the controller refuses a later promise or local disposition for a product that already has a recorded promise or note, so a later claim about that same product adds no competing closing fact: this sealed invariant is supported, not an unsupported constraint, unless the source explicitly requires replacing an already recorded outcome. Facts from different products, or a recorded transfer after a recorded promise, can coexist and need a sourced ranking; without one the controller refuses the ambiguous close",
     "identity_close": "an optional object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
@@ -567,13 +567,24 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
         except (PolicyError, TypeError, ValueError):
             errors.append(f"policy rules for {kind} are conflicting or malformed")
     unsupported = policy.get("unsupported_constraints", [])
-    if not isinstance(unsupported, list) or any(not isinstance(x, str) for x in unsupported):
-        errors.append("policy.unsupported_constraints must be a string list")
+    if not isinstance(unsupported, list) or any(not isinstance(x, str) and not degraded_constraint_shape(x) for x in unsupported):
+        errors.append("policy.unsupported_constraints must contain strings or degraded "
+                      "{constraint, trigger, fallback_queue, source: {id, quote}} objects")
     try:
         canonical_json(policy)
     except (TypeError, ValueError):
         errors.append("policy must contain finite JSON values")
     return errors
+
+
+def degraded_constraint_shape(item: Any) -> bool:
+    """A declared gap with a named sourced transfer fallback; its prose is never parsed."""
+    def text(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+    return (isinstance(item, dict) and set(item) == {"constraint", "trigger", "fallback_queue", "source"}
+            and all(text(item[key]) for key in ("constraint", "trigger", "fallback_queue"))
+            and isinstance(item["source"], dict) and set(item["source"]) == {"id", "quote"}
+            and all(text(value) for value in item["source"].values()))
 
 
 def _active_rules(policy: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:

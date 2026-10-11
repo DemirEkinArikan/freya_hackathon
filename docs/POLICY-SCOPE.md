@@ -11,7 +11,8 @@ precedence exception, transfer or closing disposition.
 conflicts. Explicit `conditional_mode="inspect"` validates and hashes a detached
 partial contract whose conditional descriptor has `runtime_enforced: false`.
 Inspection artifacts cannot be substituted into the ordinary builder/publisher.
-Existing nonempty `unsupported_constraints` remain fatal in both modes. An
+Plain string `unsupported_constraints` entries remain fatal in both modes; only a
+degraded entry with a verified quoted transfer fallback is kept as a diagnostic. An
 ordinary contract without this feature retains its existing shape and hash.
 
 The optional feature lives inside the normal quoted rule inventory as the typed

@@ -46,6 +46,14 @@ Reconcile diagnostics without inventing values, erasing operative constraints or
 clearing unsupported declarations without resolving their reasons. Preserve
 literal witnesses and separately bound API qualifications. Requirements the
 current compiler cannot faithfully enforce remain explicit failures.
+Before declaring a constraint unsupported, check the rule_shapes and each action's
+controller_state_effects. A requirement that a typed kind or sealed controller
+invariant already enforces is supported: encode it there instead. Declare only a
+requirement that no typed kind or sealed invariant enforces faithfully. For
+example, the sealed readback names each product only by the promise_readback
+fields present in that product's trusted account result, so a field the API
+returns for some product types is read back for those products alone, and
+confirmation is refused unless every loaded product gets a unique label.
 
 When supplied sources declare variables available at call start, retain their
 exact names in a source-backed call_variables array, including the declaration

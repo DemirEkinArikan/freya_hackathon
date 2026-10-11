@@ -1,7 +1,7 @@
 {
   "version": 1,
   "kind": "t15_hosted_wording_lane_baseline_record",
-  "recorded_at": "2026-10-11T10:06:14.485257+00:00",
+  "recorded_at": "2026-10-11T11:14:08.825513+00:00",
   "method": "baseline",
   "plan": "docs/runtime-evidence/t15-rapid-development-plan-20261011.json",
   "selection": {
@@ -169,9 +169,9 @@
     "agent_llm": "experimental-5/experimental-5",
     "persona_llm": "google/gemini-3-flash-preview",
     "analysis_llm": "google/gemini-3-flash-preview",
-    "platform_gateway_retries": "5 from evaluator ae40623 (PR #156); absent in 991847f attempts",
+    "platform_get_retry": "attempts 1-2 (991847f): none; attempts 3-4 (ae40623, PR #156): platform_gateway_retries 5 on 502/503/504; from a03e2b9 (PR #168): platform_get_retry {max_retries 5, statuses [500, 502, 503, 504]}",
     "bank_route": "attempts 1-2 system_dns; attempt 3 onward --bank-connect-address 188.114.96.7 (decision issue 16 comment 6107469173)",
-    "evaluator": "attempts 1-2 detached main 991847f; attempt 3 onward detached main ae40623 (benchmarks/ identical to later main until changed)",
+    "evaluator": "attempts 1-2 detached main 991847f; attempts 3-4 detached main ae40623; from attempt 5 and for every remaining trial of both methods detached main a03e2b9",
     "manifests_raw_sha256": {
       "hosted-train-A.json": "68bd208ad8620314ae5ec27102d0bba7386c4883f9f301159d4fb678878ed67f",
       "hosted-train-B.json": "87840e34233ef4f5da016ff9d650c9f63eb4406969e7f6d2ab791b45d8b680bd",
@@ -255,7 +255,8 @@
           "retries": 0,
           "proxies": false
         }
-      }
+      },
+      "bundle_trial_record_check": "calendar_inventory_incomplete"
     },
     {
       "trial": "B-train-20261011T084530Z",
@@ -332,7 +333,8 @@
           "retries": 0,
           "proxies": false
         }
-      }
+      },
+      "bundle_trial_record_check": "calendar_inventory_incomplete"
     },
     {
       "trial": "B-train-20261011T091257Z",
@@ -495,7 +497,115 @@
           "proxies": false,
           "retries": 0
         }
-      }
+      },
+      "bundle_trial_record_check": "calendar_inventory_incomplete"
+    },
+    {
+      "trial": "B-train-20261011T102739Z",
+      "evaluator_dir": "s06-eval-ae40623",
+      "trial_record": "artifacts/t15-baseline-hosted/B-train-20261011T102739Z/evidence/d92f1aa9016a4af0a7cfeaa3c4d7d513/trial.json",
+      "results_sha256": "35b3dca1961e6473f82f357be957e17295484a20dd26f922f3052a2d605a5be2",
+      "trial_sha256": "cb0220fd7ca270c84c0db236ed77172fa1ca9f1859e2ef3174ac55cf257531c0",
+      "started_at": "2026-10-11T10:27:43.869840+00:00",
+      "ended_at": "2026-10-11T10:48:42.062550+00:00",
+      "elapsed_seconds": 1258.1371491669997,
+      "record_status": "recorded",
+      "report_status": "infrastructure_failure",
+      "case_manifest_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906",
+      "fixtures": 10,
+      "reps": 3,
+      "strict_fixture_passes": 0,
+      "call_rows": 10,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_infrastructure_or_evidence": 10,
+      "failure_categories": {
+        "infrastructure": 10
+      },
+      "infrastructure_messages": [
+        "PlatformError: GET /api/v2/simulations/c5e138ea-647d-4155-ac00-1d6257f50b5c: HTTP 500: {\"success\":false,\"data\":{\"message\":\"Internal server error\",\"result\":{\"req"
+      ],
+      "simulations": [
+        {
+          "repetition": 1,
+          "interrupted": true,
+          "simulation_id": "c5e138ea-647d-4155-ac00-1d6257f50b5c",
+          "iteration_id": null,
+          "status": "active"
+        }
+      ],
+      "platform_retries": [
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/c5e138ea-647d-4155-ac00-1d6257f50b5c",
+          "status": 504,
+          "attempt": 1,
+          "at": "2026-10-11T10:29:49.354524+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/c5e138ea-647d-4155-ac00-1d6257f50b5c",
+          "status": 504,
+          "attempt": 2,
+          "at": "2026-10-11T10:30:59.599281+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 1,
+          "at": "2026-10-11T10:48:04.621052+00:00"
+        }
+      ],
+      "calendar_rows": 10,
+      "calendar_complete": false,
+      "pin_verified": true,
+      "bank_transport": {
+        "mode": "explicit_connect_address",
+        "hostname": "freya-bank-mock.freyavoice.workers.dev",
+        "port": 443,
+        "connect_address": "188.114.96.7",
+        "certificate_verification": true,
+        "hostname_verification": true,
+        "redirects": false,
+        "proxies": false,
+        "retries": 0
+      },
+      "conditions": {
+        "builder_model": "gpt-6.1-sol",
+        "reasoning_effort": "high",
+        "reps": 3,
+        "concurrency": 5,
+        "budget_seconds": 9000,
+        "max_call_seconds": 420,
+        "platform_gateway_retries": 5,
+        "agent_llm": {
+          "provider": "experimental-5",
+          "model": "experimental-5"
+        },
+        "persona_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "analysis_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "platform_base_url": "https://staging-app.freyavoice.ai",
+        "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev",
+        "bank_transport": {
+          "mode": "explicit_connect_address",
+          "hostname": "freya-bank-mock.freyavoice.workers.dev",
+          "port": 443,
+          "connect_address": "188.114.96.7",
+          "certificate_verification": true,
+          "hostname_verification": true,
+          "redirects": false,
+          "proxies": false,
+          "retries": 0
+        }
+      },
+      "bundle_trial_record_check": "calendar_inventory_incomplete"
     }
   ],
   "coverage": [
@@ -542,13 +652,13 @@
         "version_number": 1,
         "published": true
       },
-      "attempted_call_rows": 30,
+      "attempted_call_rows": 40,
       "calls_with_behavioral_verdict": 0,
       "calls_passed": 0,
       "calls_behavior_failed": 0,
       "calls_uncovered": 30,
       "fixtures_completed": 0,
-      "note": "uncovered/incomparable: every attempt ended as platform infrastructure failure in repetition 1"
+      "note": "uncovered/incomparable: no attempt produced a complete capture (bundle trial_record check failed for every attempt)"
     },
     {
       "brief": "B",
@@ -577,9 +687,10 @@
     "calls_with_behavioral_verdict": 0,
     "calls_passed": 0,
     "calls_behavior_failed": 0,
-    "infrastructure_call_rows": 30,
+    "attempted_call_rows": 40,
     "declared_fixtures": 60,
-    "fixtures_completed": 0
+    "fixtures_with_all_repetitions_verdicted": 0,
+    "strict_fixture_passes_final_attempt": 0
   },
   "comparable_bundles": [],
   "non_claims": [

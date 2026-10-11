@@ -126,3 +126,145 @@ kit/source/diff checks; push the checked immutable head and merge its matching
 same-repository PR. Close T08 only when its three checks and T07 dependency are
 complete, then notify T09 with that exact evidence. Until then, merge useful
 checked preparation and record the remaining dependency without closing T08.
+
+## Candidate evidence: callback round 3 (11 October 2026)
+
+**Candidate.** Run `20261011T104109500476Z` (`generated_validated`,
+generate-only, plan-002 selected), built on
+`6fac1dd61dfa9622eaf8dec44182e361dc779ef2` (`builder_source_sha256`
+`f04957e4…5b2b`) from the approved callback inputs (raw sha256: brief
+`6a646d16…`, API `3223a518…`, approval `ea0d7c49…`). Its T07 acceptance
+evidence is issue 8 comment 6108295952. Nothing here establishes T07
+acceptance.
+
+**Bindings.** The unchanged `load_candidate` ran from a detached checkout at
+the source commit. It recompiled the contract, action bindings, execution
+policy, execution requirements, plan coverage, workflow and guard manifest
+exactly, and matched the trace, manifest and builder provenance.
+- Raw sha256: `workflow.json` `cc5377cf…`, `plan.json` `0c3e1f86…`,
+  `policy.json` `7b8a61d2…`, `policy.contract.json` `c80a16a8…`,
+  `execution-policy.json` `5a845f73…`, `guard-manifest.json` `3e433aa0…`,
+  `attempts/plan-002/guard-context.json` `f0daa523…`, `manifest.json`
+  `a22ebc56…`, `trace.jsonl` `412dff5e…`.
+- Canonical: workflow `7d5c75c6…`, plan `8d517912…`, policy `b9396b50…`,
+  contract `c58e5bd2…`, guard manifest `53617455…`, OpenAPI `eb561508…`.
+- All 37 run and input files re-verified unchanged after evaluation.
+
+**Compiled kernel/API order.** A booking runs: `bg_init`, `entry_check`,
+`request_slot`, `slot_review`, guard `schedule_callback` (prepare, read-back),
+`bg_schedule_callback_confirm` (the only consent step),
+`bg_schedule_callback_accept`, `POST /schedule_callback`,
+`bg_schedule_callback_result`, `recorded_callback`, guard `close_call`,
+`POST /close_call`, `bg_close_call_result`, `bg_terminal`.
+- A `bg_gate_*` entry-budget gate precedes every public node.
+- Uncertain receipts end at `bg_quarantine` with no close.
+- The only API operations are `schedule_callback` and `close_call`.
+- The close node has no dialogue inputs, so its outcome and reason come only
+  from protected evidence.
+- `bg_close_call_result` has one unconditional transition, to `bg_terminal`.
+
+**Method.**
+- 15 rows were written from quotations of the approved brief and the request
+  schema, independently of the T07 ledger: 12 ready and 3 unsupported.
+- Each ready row has an explicit replay script, complete ordered requests and
+  final-state facts. "Probe" rows use deliberately non-ideal agent
+  completions, so the sealed guard has to hold on its own.
+- A check counts only if it also fails under an in-memory kernel mutant:
+  `builder.guards._KERNEL` or the `_code` tail is patched in memory, then the
+  workflow is recompiled from the candidate's own guard context. Where a check
+  depends on several guard layers, the mutant removes them all.
+- Mid-call public-variable edits and node re-entry cannot be expressed in the
+  matrix. They use a small hook around `tools/replay_guarded.replay`.
+
+**Release matrix** (`tools/t08_release_matrix.py --max-steps 10000 --seconds
+600`): **FAIL**.
+- `confirmed_final_terms`: FAIL (11 PASS, 1 FAIL, 1 unsupported).
+- `deferred_notes_transfer`: PENDING (unsupported).
+- `partial_success_close_once`: PENDING (unsupported).
+
+| Row | Scenario (source-derived expectation) | Ordered requests | Result | Mutant under which it fails |
+| --- | --- | --- | --- | --- |
+| R1 | A correction during the read-back is `unclear`; re-collect, fresh read-back, yes. Only the corrected slot is sent, and the withdrawn slot never enters the attempt history | schedule 2026-12-30 15:30; close R10 | PASS | M1 (any answer except `no` consents) sends the stale 14:00. M8 (a withdrawn unsent request is counted) refuses the corrected slot |
+| R2a | Probe: the caller claims an earlier booking; empty terms reach the action; the agent treats the claim as recorded | close R11 | PASS | M2 (close ignores callback evidence) sends R10 with nothing booked |
+| R2b | Probe: a definite HTTP503 failure, then the caller insists it is booked | schedule; close R11 | PASS | M2 sends R10 |
+| R3 | Probe: after HTTP200 `verification_denied`, the identical tuple and then 11:00 reach the action | schedule 10:00; close R11 | PASS | M3a (call-wide cap removed) reads back again and, given a yes, resends the identical tuple |
+| R4 | HTTP503 with `accepted="true"` | schedule only | PASS | M6a (positive flag trusted at non-2xx) records the callback |
+| R5 | HTTP200 `accepted="false"` without `failure_code` | schedule only | PASS | M6b (any negative treated as the declared definite failure) resumes to a close |
+| R6 | HTTP503 `accepted="false"` with `invalid_request` (declared only for 200) | schedule only | PASS | M6b |
+| R7 | HTTP200 with `accepted` as a JSON boolean `true` (malformed type) | schedule only | **FAIL** | none (finding V2) |
+| R8 | The entry budget is first exceeded at the result node; positive receipt | schedule only | PASS: callback recorded, nothing in flight, quarantined, no close | M7 (abort before reconciliation): the callback is lost and the request is left in flight |
+| R8b | The entry budget is first exceeded at preparation | none | PASS | M7b (preparation ignores the budget) reads back and, given a yes, sends |
+| R10 | Callback recorded; the close gets HTTP200 `accepted="false"` | schedule 16:45; close R10 | PASS: callback kept, close not claimed, one close | MPS1 (a failed close is recorded as closed) |
+| R10b | Callback recorded; the close gets `accepted="true"` plus `failure_code` | schedule; close R10 | PASS | MPS2 (contradictory receipt trusted) |
+
+**Hook checks** (exact candidate code, outside the matrix):
+- **H4, later public-variable edits.** Right after `bg_init`, public
+  `customer_id` and `now` are edited to another id and to 2027-01-04T08:00.
+  The kernel still refuses 2027-01-04 under the sealed clock, then sends both
+  requests with the sealed id and an eligible date. PASS. Under MSEAL (the
+  kernel reads the public inputs) it sends `session_ref` `t08_public_edit` for
+  2027-01-04.
+- **H1, close re-entry.** The exact `close_call` node code is run again on R1's
+  final variables; the graph cannot reach this. The result is `blocked`, with
+  an empty body and unchanged history. The close has three layers: the
+  closed/close_attempted refusal, the duplicate-request refusal and the
+  exact-request cap of 1. Removing one or two of them still blocks it.
+  Removing all three (M3b-123) sends a second R10 close. After R10's failed
+  close, the quarantine also blocks it.
+- **H3, transfer request.** The caller asks for a transfer, an unsupported
+  action. The only request is close R11, and no transfer or note state is
+  created. This is informational and not counted: it rests on the operation's
+  absence, not on a kernel guard.
+
+**The eight lane checks on this candidate.**
+1. Corrections invalidate consent: demonstrated (R1).
+2. Caller claims never record success: demonstrated (R2a, R2b).
+3. No duplicate promise, callback or close: demonstrated for callbacks (R3)
+   and closes (H1 and the single terminal transition). The promise part is not
+   applicable.
+4. Notes wait for a non-transfer close: not applicable; the source permits no
+   notes.
+5. A handoff discards pending notes and unwritten commitments but keeps
+   recorded promises: not applicable; the source permits no transfer.
+6. Unknown persistence stops further writes: R4, R5, R6 and R10b pass. R7
+   **fails**.
+7. A positive receipt is reconciled before a resource abort: demonstrated (R8;
+   R8b covers the stop before preparation).
+8. No unsent batch member is counted: the callback analog passes (R1).
+   Multi-member batches are not applicable.
+
+**Finding V2** (reserved guard code, not edited here).
+- HTTP200 with `accepted: true` as a JSON boolean is recorded as a persisted
+  callback.
+- When R7 is continued with the agent's acknowledgement, the candidate also
+  sends close R10.
+- The source says the field "is a string, not a boolean" and treats malformed
+  types as uncertain: "Stop every bank write, including close_call".
+- The cause is the same as S05 V1. The kit delivers result values as strings
+  ("Booleans arrive as strings"). The compiled API `post_process_code` is the
+  only hook that sees typed values, and it passes on only `status_code`. That
+  hook is byte-identical on main `6cb1c72`.
+
+**Issue 9 bullets on this candidate.** None is fully demonstrated, so this
+candidate alone cannot complete T08.
+- Bullet 1: its callback analog holds except R7. There is no promise half.
+- Bullet 2: cannot be exercised, because the approved source forbids `add_note`
+  and `transfer_to_agent`.
+- Bullet 3: only its callback analog (R10, R10b, H1) can be exercised, because
+  the source forbids `create_promise`.
+
+Two things remain: a separately accepted candidate whose approved source
+permits notes, transfer and promises, and a guard-owner decision on V2.
+
+**Local evidence** (git-ignored, not in GitHub), under
+`<claude scratchpad>/wt/t08-verify-20261011T104109500476Z/artifacts/t08-release/`:
+- `cases-20261011T104109500476Z.json`: `fd41a4f9…` (canonical `ce3f774b…`)
+- `report-20261011T104109500476Z.json`: `48a568cb…`
+- `mutants-20261011T104109500476Z.json`: `792daddd…`
+- `source-inputs.json`: `1a451853…`
+- `scripts/`: `cases_spec.py` `e5856e17…`, `make_cases.py` `866bd346…`,
+  `mutants.py` `cb5c1b36…`
+
+This is local ideal-extraction evidence. It proves nothing about caller speech,
+hosted behavior, bank persistence or T07 acceptance. No model, hosted call,
+simulation, lease or holdout was used.

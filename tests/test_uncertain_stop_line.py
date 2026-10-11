@@ -1,11 +1,13 @@
 """Spoken line before the sealed uncertain stop; invented policies, no model, bank or platform I/O."""
 import copy
 import hashlib
+import json
 import os
 import unittest
 from pathlib import Path
 
 from builder.action_bindings import compile_action_bindings
+from builder.build import make_policy_prompt
 from builder.contract import compile_policy_contract
 from builder.execution_requirements import (ExecutionRequirementsError, compile_execution_requirements,
                                             validate_plan_execution)
@@ -89,6 +91,12 @@ class UncertainStopLineTests(unittest.TestCase):
         policy, _, _ = packed(WORDS)
         next(item for item in policy["rules"] if item["kind"] == "uncertain_stop_explanation")["value"] = "unsourced words"
         self.assertIn("uncertain_stop_explanation must appear literally", " ".join(validate_policy(policy, strict=True)))
+
+    def test_policy_prompt_routes_the_stop_explanation_to_the_typed_rule(self):
+        _, sources, api = packed()
+        header, data = make_policy_prompt(sources, api).split("\n\nAUTHORIZED INPUTS:\n", 1)
+        self.assertIn("so encode it in uncertain_stop_explanation", " ".join(header.split()))
+        self.assertIn("uncertain_stop_explanation", json.loads(data)["execution_interface"]["rule_shapes"])
 
     def test_sealed_compiler_rechecks_the_quotation(self):
         _, context, _ = compiled(*packed(WORDS))

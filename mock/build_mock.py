@@ -94,6 +94,7 @@ def operations(doc):
             ok = next((responses[c] for c in ("200", "201") if c in responses), {})
             ops.append({"name": name, "method": method.upper(), "path": path, "body": body,
                         "response": json_schema(ok.get("content")), "codes": list(responses),
+                        "failures": {c: json_schema(r.get("content")) for c, r in responses.items() if c.startswith("5")},
                         "text": " ".join(str(spec.get(k, "")) for k in ("summary", "description"))})
     return ops
 
@@ -111,7 +112,10 @@ def response_shape(op):
     err = "error" if "error" in resp else next((k for k, p in resp.items() if k != ok and p.get("type") == "string"
                                                 and re.search(r"error|fail|reason|hata|code", fold(k))), None)
     lit = lambda k, b: b if resp[k].get("type") == "boolean" else next((v for v in resp[k]["enum"] if str(v).lower() == str(b).lower()), str(b).lower())
-    return {"ok": ok, "yes": lit(ok, True) if ok else None, "no": lit(ok, False) if ok else None, "error": err,
+    # A tool failure answers with the contract's declared failure response (a 5xx with its schema), else ok=false.
+    fcode = next((c for c in op["failures"] if op["failures"][c].get("properties")), next(iter(op["failures"]), None))
+    fault_codes = (op["failures"].get(fcode, {}).get("properties", {}).get(err) or {}).get("enum") if err else None
+    return {"fault_status": int(fcode) if fcode else (200 if ok else 500), "fault_code": fault_codes[0] if fault_codes else None,"ok": ok, "yes": lit(ok, True) if ok else None, "no": lit(ok, False) if ok else None, "error": err,
             "codes": resp.get(err, {}).get("enum") if err else None,
             "bools": {k: [lit(k, True), lit(k, False)] for k, p in resp.items() if p.get("type") != "boolean" and boolish(p)}}
 
@@ -274,7 +278,8 @@ def build(contract_path, customers_path, name, overrides):
     over_ops = overrides.get("operations", {})
     counts = Counter(k for op in ops for k in op["body"]["properties"])
     everywhere = [k for k, n in counts.most_common() if n == len(ops)] or [k for k, _ in counts.most_common()]
-    ckey = overrides.get("customer_key") or next((k for k in everywhere if re.search(r"customer|musteri|client", fold(k))), "customer_id")
+    in_all = [k for k, n in counts.items() if n == len(ops)]
+    ckey = overrides.get("customer_key") or next((k for k in everywhere if re.search(r"customer|musteri|client", fold(k))), in_all[0] if len(in_all) == 1 else "customer_id")
     for op in ops:
         op["kind"] = over_ops.get(op["name"], {}).get("kind") or kind_of(op)
         if op["kind"] not in ("identity", "read", "write", "close"):
@@ -301,6 +306,15 @@ def build(contract_path, customers_path, name, overrides):
 
     renames = {fold(k): v for k, v in overrides.get("columns", {}).items()}
     customers, skipped = customers_from(read_rows(customers_path), ckey, identity_fields, item_types, pid, renames)
+    for c in customers.values():   # behaviour columns such as fail_<operation> or faults=<operation>: that call fails that many times
+        for k in [k for k in c["variables"] if re.search(r"fail|fault|error|outage|unavail|hata", fold(k))]:
+            tools = [op["name"] for op in ops if op["name"] in fold(k)] or [op["name"] for op in ops if op["name"] in fold(c["variables"][k])]
+            v = c["variables"].pop(k) if tools else None
+            try:
+                times = int(number(v))
+            except (TypeError, ValueError):
+                times = 0 if fold(v) in ("", "no", "false", "hayir", "yok", "none") else 1
+            c["faults"] += [{"tool": t, "fail_first_n": times} for t in tools if times > 0]
     if not customers:
         sys.exit("customers: none found (is there a customer id column? map it with --overrides columns)")
 

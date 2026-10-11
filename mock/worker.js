@@ -162,7 +162,7 @@ function shape(op, result) {
   if (!o) return result;
   const { ok, error, ...rest } = result;
   const r = o.ok ? { [o.ok]: ok === false ? o.no : o.yes } : {};
-  if (ok === false) r[o.error || "error"] = o.codes ? code(o.codes, error) : error;
+  if (ok === false) r[o.error || "error"] = error === FAILED && o.fault_code ? o.fault_code : o.codes ? code(o.codes, error) : error;
   for (const [k, v] of Object.entries(rest)) r[k] = o.bools[k] && typeof v === "boolean" ? o.bools[k][v ? 0 : 1] : v;
   return r;
 }
@@ -203,7 +203,7 @@ async function operation(request, storage, op, params, url) {
   if (s.closed) result = { ok: false, error: "the call is already closed" };
   else if (fault && (s.failures[op.name] || 0) < (fault.fail_first_n || 0)) {
     s.failures[op.name] = (s.failures[op.name] || 0) + 1;
-    status = 500;
+    status = op.shape ? op.shape.fault_status : 500;
     result = { ok: false, error: FAILED };
   } else {
     const checked = validate(op, args);

@@ -50,7 +50,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("agent_id"); ap.add_argument("--brief"); ap.add_argument("--cases", default=str(ROOT / "public-test-set.json")); ap.add_argument("--out"); ap.add_argument("--only"); ap.add_argument("--reps", type=int, default=1); ap.add_argument("--style", choices=sorted(STYLES)); ap.add_argument("--rerun-if-slow", type=int, default=0)
     a = ap.parse_args()
     cases = [c for c in json.load(open(a.cases)) if (not a.brief or c["brief"] == a.brief) and (not a.only or c["id"] in a.only.split(","))]
-    ident = {c["id"]: {"identity": c["identity"]} for c in cases}
+    ident = {c["id"]: {"identity": c.get("identity") or {}} for c in cases}
     store = ROOT / ".personas.json"; ids = json.load(open(store)) if store.exists() else {}
     # a persona is recreated whenever its text changes, so an edited case never runs with a stale customer
     spec = {c["id"]: persona_for(c, ident[c["id"]], a.style) for c in cases}
@@ -95,8 +95,8 @@ def run_once(agent_id, cases, ids):
         j = judge.get(ids[c["id"]], {})                      # the conversation checks, read from the transcript by the judge model
         if j.get("outcome") != "pass": r["failed"].append("conversation: " + " ".join(str(j.get("reason") or "no verdict").split())[:400])
         r["pass"] = not r["failed"]
-        rows.append({"id": c["id"], "level": c["level"], "family": c["family"], "pass": r["pass"], "failed": r["failed"], "call_id": j.get("callId"), "tools": [x["tool"] for x in led["calls"]], "customer_id": sessions[c["id"]]["customer_id"]})
-        print(("PASS" if r["pass"] else "FAIL"), c["id"], f"{c['level']:<6}", f"{c['family']:<14}", "|", " > ".join(x["tool"].replace("verify_identity", "verify").replace("create_promise", "promise") for x in led["calls"]) or "(no tool calls)")
+        rows.append({"id": c["id"], "level": c["level"], "family": c["family"], "pass": r["pass"], "failed": r["failed"], "call_id": j.get("callId"), "tools": [x["tool"] for x in led.get("calls") or []], "customer_id": sessions[c["id"]]["customer_id"]})
+        print(("PASS" if r["pass"] else "FAIL"), c["id"], f"{c['level']:<6}", f"{c['family']:<14}", "|", " > ".join(x["tool"].replace("verify_identity", "verify").replace("create_promise", "promise") for x in led.get("calls") or []) or "(no tool calls)")
         for f in r["failed"]: print("       -", f[:260])
     # How long the phone agent kept the customer waiting. A call whose customer hung up after long silences says
     # something about the speed of the model at that moment, not only about the agent.

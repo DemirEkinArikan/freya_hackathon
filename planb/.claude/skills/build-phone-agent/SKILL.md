@@ -254,6 +254,7 @@ With `MOCK_URL` set, the seeds are the case's test customers, from which the moc
 ```
 
    - `"family": "Third party"` (or `"third_party": true`) makes the caller someone else, who does not know the security answers. Otherwise the caller is the seed customer and gives the seed's identity answers when asked, or the wrong ones the script names.
+   - When the call is not in English, give every case `"persona": {"confirm": "<'Yes, I confirm.' in the call's language>", "goodbye": "<'Thank you, goodbye.' in the call's language>"}`, the simulated caller's fixed confirmation and farewell.
    - Product ids are `p1`, `p2` and so on, in the seed's product order. Today is the seed's clock variable.
    - Compute every expected value by hand, or with a few independent lines of Python, from the brief and the seed facts. Never use your agent's code: a shared mistake would pass its own test.
    - The script names every value the caller says. The caller invents nothing that is not written there.

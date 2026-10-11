@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parent.parent / 'planb'
 sys.path.insert(0, str(ROOT / 'tools'))
 sys.path.insert(0, str(ROOT))
 import score  # noqa: E402
+import run_cases  # noqa: E402
 
 
 def closed(exp, **extra):
@@ -18,7 +19,7 @@ def closed(exp, **extra):
 
 class ScoreLedgerTests(unittest.TestCase):
     def test_practice_cases_score_as_before(self):
-        for case in json.load(open(ROOT / 'public-test-set.json')):
+        for case in json.loads((ROOT / 'public-test-set.json').read_text()):
             self.assertEqual(score.score_ledger(case, closed(case['expected'])), {'pass': True, 'failed': []}, case['id'])
             bad = score.score_ledger(case, {'calls': []})['failed']
             self.assertIn('the call was not closed with close_call', bad, case['id'])
@@ -44,6 +45,34 @@ class ScoreLedgerTests(unittest.TestCase):
         self.assertIn('cancel_thing called 1 time(s), expected never', wrong)
         ids = {'id': 'x5', 'expected': {'make_change': [{'ref': '0012'}]}}
         self.assertFalse(score.score_ledger(ids, {'calls': [call('make_change', ref='12')]})['pass'])
+
+
+class PersonaPhraseTests(unittest.TestCase):
+    CASE = {'id': 'x4', 'brief': 'S', 'family': 'Promise', 'title': 't', 'variables': {'first_name': 'A', 'last_name': 'B'},
+            'script': 'You agree {to} pay.', 'checks': ['c']}
+
+    def test_default_phrases_are_the_english_ones(self):
+        prompt = run_cases.persona_for(self.CASE, {'identity': {}})['prompt']
+        self.assertIn('matches what you agreed, say "Yes, I confirm."', prompt)
+        self.assertIn('say "Thank you, goodbye." and say nothing more.', prompt)
+        self.assertIn('You agree {to} pay.', prompt)
+
+    def test_phrases_from_the_case(self):
+        case = dict(self.CASE, persona={'confirm': 'Ja, klopt.', 'goodbye': 'Dank je, dag.'})
+        prompt = run_cases.persona_for(case, {'identity': {'pin': '1'}})['prompt']
+        self.assertIn('say "Ja, klopt."', prompt)
+        self.assertIn('say "Dank je, dag." and say nothing more.', prompt)
+        self.assertNotIn('Yes, I confirm.', prompt)
+        self.assertNotIn('Thank you, goodbye.', prompt)
+
+    def test_practice_personas_unchanged(self):
+        old_path = Path(__file__).resolve().parent / 'fixtures' / 'planb_run_cases_persona_hashes.json'
+        want = json.loads(old_path.read_text())
+        for case in json.loads((ROOT / 'public-test-set.json').read_text()):
+            for style in [None, *sorted(run_cases.STYLES)]:
+                spec = run_cases.persona_for(case, {'identity': case['identity']}, style)
+                got = __import__('hashlib').sha1(json.dumps(spec, sort_keys=True).encode()).hexdigest()
+                self.assertEqual(got, want[f"{case['id']}:{style}"], (case['id'], style))
 
 
 if __name__ == '__main__':

@@ -20,8 +20,8 @@ RULES:
 - Answer what you are asked. Do not volunteer information nobody asked for.
 - When you give a number or a date, say all of it in one turn. Never stop halfway through.
 - Do not invent dates, amounts or facts that are not written above. If asked something that is not covered, give a short neutral answer.
-- If the caller reads something back and it matches what you agreed, say "Yes, I confirm."
-- When the caller says goodbye, say "Thank you, goodbye." and say nothing more."""
+- If the caller reads something back and it matches what you agreed, say "{confirm}"
+- When the caller says goodbye, say "{goodbye}" and say nothing more."""
 
 # How a customer talks. The facts of the case stay the same, only the way of saying them changes.
 STYLES = {
@@ -43,7 +43,8 @@ def persona_for(case, ident, style=None):
                "company_number": "Your company number is {}.", "founded_year": "The company was founded in {}."}
         who = f"You are {me}. " + " ".join(say.get(k, "Your " + k.replace("_", " ") + " is {}.").format(x) for k, x in i.items()) + " Give these only when asked, and give the wrong ones where the text below says so."
     style = style or case.get("style")
-    text = PERSONA.format(who=who, script=case["script"]) + ("\n\n" + STYLES[style] if style else "")
+    ph = case.get("persona") or {}        # the fixed phrases in the call's language, when the case gives them
+    text = PERSONA.format(who=who, script=case["script"], confirm=ph.get("confirm", "Yes, I confirm."), goodbye=ph.get("goodbye", "Thank you, goodbye.")) + ("\n\n" + STYLES[style] if style else "")
     return {"name": case["id"] + " " + case["title"] + (f" [{style}]" if style else ""), "prompt": text, "successCriteria": "All of these are true:\n- " + "\n- ".join(case["checks"]), "tags": ["hackathon", "brief-" + case["brief"]]}
 
 def main():

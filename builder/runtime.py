@@ -141,6 +141,8 @@ GENERATION_SCHEMA = {"type": "object", "additionalProperties": False,
                      "required": ["policy_json", "workflow_json"],
                      "properties": {"policy_json": {"type": "string", "description": "Serialized provenance policy JSON object"},
                                     "workflow_json": {"type": "string", "description": "Serialized complete Freya workflow JSON object"}}}
+PATCH_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["patch_json"],
+                "properties": {"patch_json": {"type": "string", "description": "Serialized policy patch JSON object"}}}
 
 
 def plan_generation_schema(contract_sha256: str) -> dict:
@@ -435,15 +437,20 @@ class CodexGenerator:
         return self._generate(prompt, purpose, max_seconds=max_seconds, reserve_seconds=reserve_seconds,
                               reasoning_effort=reasoning_effort)
 
+    def generate_policy_patch(self, prompt: str, *, max_seconds: float, reserve_seconds: float) -> dict:
+        return self._generate(prompt, "Repair rejected banking policy with a structured patch",
+                              max_seconds=max_seconds, reserve_seconds=reserve_seconds, patch=True)
+
     def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
         return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
                               max_seconds=max_seconds, plan_contract_sha256=contract_sha256)
 
     def _generate(self, prompt: str, purpose: str, *, max_seconds: float,
-                  plan_contract_sha256: str | None = None, reserve_seconds: float = 300,
+                  plan_contract_sha256: str | None = None, reserve_seconds: float = 300, patch: bool = False,
                   reasoning_effort: str | None = None) -> dict:
         effort = reasoning_effort or self.reasoning_effort
-        schema_value = plan_generation_schema(plan_contract_sha256) if plan_contract_sha256 else GENERATION_SCHEMA
+        schema_value = (plan_generation_schema(plan_contract_sha256) if plan_contract_sha256
+                        else PATCH_SCHEMA if patch else GENERATION_SCHEMA)
         if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
             raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
         if (type(reserve_seconds) not in {int, float} or not math.isfinite(reserve_seconds)
@@ -615,6 +622,16 @@ class CodexGenerator:
             if not isinstance(plan, dict):
                 raise GenerationFormatError("inner_shape")
             return {"plan": plan, "contract_sha256": plan_contract_sha256}
+        if patch:
+            if not isinstance(value, dict) or set(value) != {"patch_json"} or not isinstance(value["patch_json"], str):
+                raise GenerationFormatError("wire_shape")
+            try:
+                value = _strict_json(value["patch_json"])
+            except (json.JSONDecodeError, ValueError):
+                raise GenerationFormatError("inner_json") from None
+            if not isinstance(value, dict):
+                raise GenerationFormatError("inner_shape")
+            return {"patch": value}
         if isinstance(value, dict) and ("policy_json" in value or "workflow_json" in value):
             if set(value) != {"policy_json", "workflow_json"}:
                 raise GenerationFormatError("wire_shape")

@@ -40,6 +40,7 @@ from .policy import execution_rule_guidance
 from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
+from .policy_patch import apply_policy_patch, repair_excerpt
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -57,7 +58,8 @@ FIRST_WORKFLOW_RESERVE = 450
 # took 0.62-1.19 times this). A repair starts only when its allocation covers 90%
 # of the estimate; otherwise the build stops with the real failure instead of
 # timing out. A format repair has no previous document, so only the 61 s base is
-# checked; the two on 11 Oct took 261 s and 443 s.
+# checked; the two on 11 Oct took 261 s and 443 s. A patch repair rewrites only the
+# excerpt it is shown, so its estimate is sized by that excerpt.
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9
@@ -67,6 +69,10 @@ REPAIR_ADMISSION_FRACTION = 0.9
 # retried at medium. With no policy yet there is no workflow to reserve time for,
 # so the retry keeps only the export reserve.
 RETRY_REASONING_EFFORT = {"high": "medium", "xhigh": "medium"}
+PROMPT_ENFORCED_GUIDANCE = ("No sealed controller check enforces these source rules. The compiler adds them to system_prompt "
+                            "and to nodes that route into the actions they concern. Also state each rule in the "
+                            "task_message of every other node where it applies, and plan the dialogue so that the "
+                            "agent follows it before it proposes any affected action.")
 FORMAT_REPAIR_GUIDANCE = ("Return only the exact required outer JSON object. Serialize each inner object "
                          "as a valid JSON string; escape quotes, backslashes and control characters once "
                          "for each JSON layer. Do not return commentary, duplicate keys or nonfinite numbers.")
@@ -99,7 +105,12 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--test-brief", choices=("A", "B"), help="Evaluator-only selection when supplied cases mix practice briefs")
     out.add_argument("--model", default=os.environ.get("FREYA_BUILDER_MODEL") or os.environ.get("BUILDER_MODEL") or "gpt-6.1-sol")
     out.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh"), default="high")
+    out.add_argument("--policy-repair", choices=("patch", "full"), default="patch",
+                     help="Repair a rejected policy by a structured patch first (falls back to a full re-emission), or only by full re-emission")
     out.add_argument("--codex", default="codex", help="Existing Codex CLI executable")
+    out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
+                     help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
+                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy")
     return out
 
 
@@ -160,11 +171,15 @@ def make_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) 
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) -> str:
+def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None = None, *, patch: bool = False) -> str:
     template = (PROJECT / "builder/prompts/compile.txt").read_text(encoding="utf-8")
     policy_instructions = template.split("Adapt to the supplied banking objective", 1)[1].split(
         "Generate a complete Freya workflow", 1)[0]
     header = (PROJECT / "builder/prompts/extract.txt").read_text(encoding="utf-8")
+    if patch:
+        # The patch wire format replaces only the extraction role and wire paragraph.
+        header = ((PROJECT / "builder/prompts/patch.txt").read_text(encoding="utf-8")
+                  + "\nRead every supplied source." + header.split("Read every supplied source.", 1)[1])
     payload = {"sources": sources, "openapi": openapi,
                "execution_interface": {"actions": execution_action_catalogue(),
                                        "rule_shapes": execution_rule_guidance()}}
@@ -185,13 +200,17 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
                "runtime_reference": reference}
     if execution_requirements is not None:
         payload["execution_requirements"] = copy.deepcopy(execution_requirements)
+    if contract.get("prompt_enforced_limitations"):
+        payload["prompt_enforced_rules"] = {"guidance": PROMPT_ENFORCED_GUIDANCE, "rules": [
+            {"requirement": entry["requirement"], "source_quotes": [source["quote"] for source in entry["sources"]]}
+            for entry in contract["prompt_enforced_limitations"]]}
     if repair:
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, reserve):
+def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, reserve, **fields):
     """Start a repair only if it can finish before the reserve; otherwise keep the real failure."""
     size = len(json.dumps(previous, ensure_ascii=False, separators=(",", ":"))) if previous is not None else 0
     estimate = REPAIR_BASE_SECONDS + REPAIR_SECONDS_PER_CHARACTER * size
@@ -199,7 +218,7 @@ def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, re
     admitted = available >= REPAIR_ADMISSION_FRACTION * estimate
     trace.emit("repair_admission", stage=stage, attempt=attempt, admitted=admitted,
                estimated_seconds=round(estimate, 1), available_seconds=round(available, 2),
-               reserve_seconds=reserve, remaining_seconds=round(deadline.remaining(), 2))
+               reserve_seconds=reserve, remaining_seconds=round(deadline.remaining(), 2), **fields)
     if not admitted:
         raise DeadlineExceeded(f"No time for a repair ({max(available, 0):.0f} s available, "
                                f"about {estimate:.0f} s needed): {failure}")
@@ -213,52 +232,107 @@ def _stage_completed(trace, deadline, durations, stage, started, **fields):
                remaining_seconds=round(deadline.remaining(), 2), **fields)
 
 
-def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True):
-    repair = failure = retry = None
+def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt, failure, *, cap, reserve):
+    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt.
+
+    The excerpt, prompt and apply code never read the deadline, so any exception
+    they raise is a patch failure: a bug there must not lose the full repair.
+    """
+    try:
+        request = repair_excerpt(rejected["policy"], rejected["errors"])
+        prompt = make_policy_prompt(sources, openapi, request, patch=True)
+    except Exception as exc:
+        trace.emit("policy_patch", attempt=attempt, applied=False, error=f"{type(exc).__name__}: {exc}")
+        return None
+    _admit_repair(trace, deadline, "policy", attempt, request["excerpt"], failure, cap=cap, reserve=reserve,
+                  repair_mode="patch")
+    deadline.require(seconds=1, reserve=reserve)
+    allocated = deadline.timeout(cap, reserve=reserve)
+    trace.emit("policy_generation_budget", attempt=attempt, repair_mode="patch", cap_seconds=cap,
+               allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
+               remaining_seconds=round(deadline.remaining(), 2))
+    started = deadline.elapsed()
+    patch = patched = error = None
+    try:
+        returned = generator.generate_policy_patch(prompt, max_seconds=allocated, reserve_seconds=reserve)
+        patch = returned.get("patch") if isinstance(returned, dict) else None
+    except GenerationFormatError as exc:
+        error = str(exc)
+    try:
+        patched = None if error else apply_policy_patch(rejected["policy"], patch)
+    except Exception as exc:  # PolicyPatchError, or a bug in the apply
+        error = f"{type(exc).__name__}: {exc}"
+    try:
+        size = len(json.dumps(patch, ensure_ascii=False, separators=(",", ":")))
+    except (TypeError, ValueError):
+        patch, size = None, None
+    operations = patch.get("operations") if isinstance(patch, dict) else None
+    trace.emit("policy_patch", attempt=attempt, applied=patched is not None, error=error,
+               operations=len(operations) if isinstance(operations, list) else None, patch_characters=size,
+               excerpt_characters=len(json.dumps(request["excerpt"], ensure_ascii=False, separators=(",", ":"))),
+               rejected_policy_characters=len(json.dumps(rejected["policy"], ensure_ascii=False, separators=(",", ":"))),
+               prompt_characters=len(prompt), elapsed_seconds=round(deadline.elapsed() - started, 3),
+               patch=sanitize(patch, secrets=secrets))
+    return patched
+
+
+def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
+                    repair_mode="patch", declarations="strict"):
+    repair = failure = rejected = retry = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
+    # Injected generators without the patch call keep full repairs.
+    patching = repair_mode == "patch" and callable(getattr(generator, "generate_policy_patch", None))
     for attempt in range(MAX_REPAIRS + 1):
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
-        call_reserve = EXPORT_RESERVE if retry is not None and attempt == 1 else reserve
-        if repair:
-            _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
-                          cap=cap, reserve=reserve)
-        deadline.require(seconds=1, reserve=call_reserve)
-        allocated = deadline.timeout(cap, reserve=call_reserve)
-        trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
-                   allocated_seconds=round(allocated, 2), reserve_seconds=call_reserve,
-                   first_workflow_reserve_seconds=call_reserve - EXPORT_RESERVE,
-                   remaining_seconds=round(deadline.remaining(), 2))
+        retrying = retry is not None and attempt == 1
         started = deadline.elapsed()
-        try:
-            extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
-                                           purpose="Extract banking policy and source/API bindings",
-                                           max_seconds=allocated, reserve_seconds=call_reserve,
-                                           **(retry if retry is not None and attempt == 1 else {}))
-        except GenerationFormatError as exc:
-            _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
-            trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
-                       elapsed_seconds=round(deadline.elapsed() - started, 3))
-            if attempt == MAX_REPAIRS:
-                raise
-            failure = str(exc)
-            repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
-            continue
-        except GenerationTimeout as exc:
-            if attempt:
-                raise
-            failure = str(exc)
-            _admit_repair(trace, deadline, "policy", 2, None, failure, cap=POLICY_REPAIR_CAP, reserve=EXPORT_RESERVE)
-            effort = getattr(generator, "reasoning_effort", None)
-            effort = effort if isinstance(effort, str) else None
-            retry = {"reasoning_effort": RETRY_REASONING_EFFORT.get(effort, effort)}
-            trace.emit("policy_generation_retry", attempt=2, after="stall" if isinstance(exc, GenerationStalled) else "timeout",
-                       failed_reasoning_effort=effort, reasoning_effort=retry["reasoning_effort"],
-                       reserve_seconds=EXPORT_RESERVE, elapsed_seconds=round(deadline.elapsed() - started, 3),
+        policy = None
+        if patching and rejected is not None and isinstance(rejected["policy"], dict):
+            policy = _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt + 1,
+                                     failure, cap=cap, reserve=reserve)
+        mode = None if attempt == 0 else "patch" if policy is not None else "retry" if retrying else "full"
+        if policy is None:
+            call_reserve = EXPORT_RESERVE if retrying else reserve
+            if repair:
+                _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
+                              cap=cap, reserve=reserve)
+            deadline.require(seconds=1, reserve=call_reserve)
+            allocated = deadline.timeout(cap, reserve=call_reserve)
+            trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
+                       allocated_seconds=round(allocated, 2), reserve_seconds=call_reserve,
+                       first_workflow_reserve_seconds=call_reserve - EXPORT_RESERVE,
                        remaining_seconds=round(deadline.remaining(), 2))
-            continue
+            started = deadline.elapsed()
+            try:
+                extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
+                                               purpose="Extract banking policy and source/API bindings",
+                                               max_seconds=allocated, reserve_seconds=call_reserve,
+                                               **(retry if retrying else {}))
+            except GenerationFormatError as exc:
+                _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
+                trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
+                           elapsed_seconds=round(deadline.elapsed() - started, 3))
+                if attempt == MAX_REPAIRS:
+                    raise
+                failure = str(exc)
+                repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+                continue
+            except GenerationTimeout as exc:
+                if attempt:
+                    raise
+                failure = str(exc)
+                _admit_repair(trace, deadline, "policy", 2, None, failure, cap=POLICY_REPAIR_CAP, reserve=EXPORT_RESERVE)
+                effort = getattr(generator, "reasoning_effort", None)
+                effort = effort if isinstance(effort, str) else None
+                retry = {"reasoning_effort": RETRY_REASONING_EFFORT.get(effort, effort)}
+                trace.emit("policy_generation_retry", attempt=2, after="stall" if isinstance(exc, GenerationStalled) else "timeout",
+                           failed_reasoning_effort=effort, reasoning_effort=retry["reasoning_effort"],
+                           reserve_seconds=EXPORT_RESERVE, elapsed_seconds=round(deadline.elapsed() - started, 3),
+                           remaining_seconds=round(deadline.remaining(), 2))
+                continue
+            policy = extracted.get("policy")
         elapsed = round(deadline.elapsed() - started, 3)
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
-        policy = extracted.get("policy")
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
             # Recorded trivial rewrites (quote edges/marks/whitespace, unread descriptive
@@ -266,23 +340,25 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             policy, changes = normalise_policy(policy, {source["id"]: source["text"] for source in sources})
             if changes:
                 trace.emit("policy_normalisation", attempt=attempt + 1, changes=changes)
-            compiled = compile_policy_contract(policy, sources, openapi)
+            compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
             # Execution-shape errors belong to bounded extraction repairs,
             # before the policy is frozen; plans cannot repair bank rules.
-            requirements = compile_execution_requirements(policy, sources, openapi)
+            requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
                 {"policy": policy, "validation_errors": errors}, secrets=secrets))
-            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed)
+            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed,
+                       repair_mode=mode)
             if attempt == MAX_REPAIRS:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
             failure = "Policy extraction failed: " + "; ".join(errors)
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
+            rejected = {"policy": repair["previous_policy"], "errors": errors}
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
                    selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
-                   attempt=attempt + 1, elapsed_seconds=elapsed)
+                   attempt=attempt + 1, elapsed_seconds=elapsed, repair_mode=mode)
         return copy.deepcopy(policy), compiled, requirements, attempt
     raise AssertionError("unreachable policy extraction state")
 
@@ -298,7 +374,8 @@ def _candidate(path: Path, policy_path: Path | None) -> dict:
     return {"workflow": workflow, "policy": policy}
 
 
-def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, require_policy: bool) -> list[str]:
+def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, require_policy: bool,
+                     declarations: str = "strict") -> list[str]:
     errors = []
     try:
         assert_no_secrets(candidate, forbidden_values=_known_secrets())
@@ -310,7 +387,7 @@ def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, requir
             errors.append("Generated candidates require a provenance policy")
     else:
         try:
-            compile_policy_contract(policy, sources, openapi)
+            compile_policy_contract(policy, sources, openapi, declarations=declarations)
         except PolicyContractError as exc:
             errors.extend(getattr(exc, "errors", [str(exc)]))
     errors.extend(validate_workflow(candidate.get("workflow", {}), openapi, policy if isinstance(policy, dict) else None))
@@ -403,11 +480,12 @@ def _attempt_status(directory: Path, record: dict, secrets: tuple[str, ...], **c
     _attempt_snapshot(directory, "attempt.json", record, secrets)
 
 
-def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace) -> str | None:
+def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace,
+                            declarations: str = "strict") -> str | None:
     policy = candidate.get("policy")
     if policy is None:
         return None
-    contract = compile_policy_contract(policy, sources, openapi)
+    contract = compile_policy_contract(policy, sources, openapi, declarations=declarations)
     _write_json(run_dir / "policy.json", policy)
     _write_json(run_dir / "policy.contract.json", contract)
     trace.emit("policy_contract", sha256=contract["sha256"], sources=len(contract["sources"]),
@@ -443,6 +521,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     source_record = None
     evaluator_input = None
     stage_durations = {}
+    declarations = getattr(args, "declarations", "strict")
+    relaxed_record = {"declaration_mode": "relaxed"} if declarations == "relaxed" else {}
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -471,6 +551,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
             "codex_executable": args.codex, "deadline_seconds": deadline.duration_seconds,
             "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
+            "policy_repair_mode": args.policy_repair,
             "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
                                    "policy_repair_cap_seconds": POLICY_REPAIR_CAP,
                                    "first_workflow_reserve_seconds": FIRST_WORKFLOW_RESERVE,
@@ -480,6 +561,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                         "fraction": REPAIR_ADMISSION_FRACTION}},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
             "evaluator_input": evaluator_input,
+            **({"declaration_mode": "relaxed"} if declarations == "relaxed" else {}),
         })
         _write_json(run_dir / "builder-source.json", source_record)
         trace.emit("builder_source_snapshot", builder_source_sha256=source_record["builder_source_sha256"],
@@ -487,17 +569,18 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                    resolved_config=source_record["resolved_config"])
         if mode in {"offline-fixture", "validate-only"}:
             candidate = _candidate(args.workflow_file, args.policy_file)
-            errors = candidate_errors(candidate, sources, openapi, require_policy=False)
+            errors = candidate_errors(candidate, sources, openapi, require_policy=False, declarations=declarations)
             if errors:
                 raise ValueError("Candidate validation failed: " + "; ".join(errors))
             _write_json(run_dir / "workflow.json", candidate["workflow"])
-            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace)
+            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace, declarations)
             manifest = {"mode": mode, "status": "validated", "sources": source_manifest,
                         "tool_api_sha256": digest(openapi), "workflow_sha256": digest(candidate["workflow"]),
                         "policy_provenance_checked": candidate.get("policy") is not None,
                         "policy_contract_sha256": contract_sha256,
                         "action_guard_compilation_verified": False,
-                        "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT))}
+                        "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT)),
+                        **relaxed_record}
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="validated", hosted_behavior_verified=False)
 
@@ -508,8 +591,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         if args.policy_file:
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
-            compiled = compile_policy_contract(policy, sources, openapi)
-            requirements = compile_execution_requirements(policy, sources, openapi)
+            compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
+            requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
             trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
                        selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"])
             policy_repairs = 0
@@ -517,16 +600,26 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         else:
             policy, compiled, requirements, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
-                workflow_pending=mode != "extract-policy-only")
+                workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair,
+                declarations=declarations)
             policy_origin = "extracted"
         _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
                          repairs=policy_repairs, origin=policy_origin)
         frozen_policy = copy.deepcopy(policy)
         policy_sha256 = digest(frozen_policy)
-        contract_sha256 = _write_policy_artifacts(run_dir, {"policy": frozen_policy}, sources, openapi, trace)
+        contract_sha256 = _write_policy_artifacts(run_dir, {"policy": frozen_policy}, sources, openapi, trace, declarations)
         _write_json(run_dir / "execution-requirements.json", requirements)
         trace.emit("policy_frozen", policy_sha256=policy_sha256, contract_sha256=contract_sha256,
                    execution_requirements_sha256=requirements["sha256"])
+        if declarations == "relaxed":
+            # Listed, never claimed as controller enforcement: these hold only as dialogue rules.
+            unguarded = compile_action_bindings(frozen_policy, openapi, declarations=declarations)
+            relaxed_record.update({"prompt_enforced_limitations": [
+                {"category": entry["category"], "rule_ids": entry["rule_ids"], "enforced_by": "dialogue_prompt"}
+                for entry in compiled["prompt_enforced_limitations"]],
+                "unguarded_close_codes": {category: data["unbound_codes"] for category, data in unguarded["categories"].items()
+                                          if "unbound_codes" in data and unguarded.get("declaration_mode") == "relaxed"}})
+            trace.emit("relaxed_declarations", **relaxed_record)
         if mode == "extract-policy-only":
             deadline.require()
             manifest = {"mode": mode, "status": "policy_extracted", "sources": source_manifest,
@@ -535,7 +628,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                         "execution_requirements_sha256": requirements["sha256"],
                         "policy_provenance_checked": True, "workflow_created": False, "hosted_behavior_verified": False,
                         "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
-                        "run_directory": str(run_dir.relative_to(PROJECT))}
+                        "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="policy_extracted", remaining_seconds=deadline.remaining())
         client = None
@@ -585,7 +678,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
             _stage_completed(trace, deadline, stage_durations, "workflow", stage_started, attempt=workflow_repairs + 1)
             stage_started = deadline.elapsed()
-            if digest(frozen_policy) != policy_sha256 or compile_policy_contract(frozen_policy, sources, openapi)["sha256"] != contract_sha256:
+            if (digest(frozen_policy) != policy_sha256 or compile_policy_contract(
+                    frozen_policy, sources, openapi, declarations=declarations)["sha256"] != contract_sha256):
                 raise ValueError("Frozen policy contract changed during workflow generation")
             if not isinstance(generated, dict) or set(generated) != {"plan", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
                 raise ValueError("Plan output must match the frozen contract and cannot replace policy")
@@ -594,11 +688,12 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             guard_context = None
             try:
                 assert_no_secrets(plan, forbidden_values=secret_values)
-                coverage_errors = validate_plan_execution(plan, requirements, frozen_policy, sources, openapi)
+                coverage_errors = validate_plan_execution(plan, requirements, frozen_policy, sources, openapi,
+                                                          declarations=declarations)
                 if coverage_errors:
                     raise GuardCompileError(coverage_errors)
                 _attempt_snapshot(attempt_dir, "execution-requirements.json", requirements, secret_values)
-                bindings = compile_action_bindings(frozen_policy, openapi)
+                bindings = compile_action_bindings(frozen_policy, openapi, declarations=declarations)
                 _attempt_snapshot(attempt_dir, "action-bindings.json", bindings, secret_values)
                 execution_policy = compile_execution_policy(
                     frozen_policy, bindings, required_kinds=required_execution_kinds(plan))
@@ -661,7 +756,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
-                            "run_directory": str(run_dir.relative_to(PROJECT))}
+                            "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                      status="generated_validated", remaining_seconds=deadline.remaining())
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
@@ -764,7 +859,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "evaluator_input": evaluator_input,
-                    "run_directory": str(run_dir.relative_to(PROJECT))}
+                    "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
         return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                              status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
     except Exception as exc:
@@ -781,7 +876,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                          "last_attempt": attempt_number or None,
                                                          "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
                                                          "evaluator_input": evaluator_input,
-                                                         "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
+                                                         "run_directory": str(run_dir.relative_to(PROJECT)),
+                                                         **relaxed_record}, secrets=secret_values))
         trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining(),
                    stage_durations=stage_durations)
         raise

@@ -175,6 +175,8 @@ class FirstPolicyRetryTests(unittest.TestCase):
         budgets = [row for row in rows if row["event"] == "policy_generation_budget"]
         self.assertEqual([(row["reserve_seconds"], row["first_workflow_reserve_seconds"]) for row in budgets],
                          [(750, 450), (300, 0)])
+        accepted = next(row for row in rows if row["event"] == "policy_execution_requirements")
+        self.assertEqual((accepted["attempt"], accepted["repair_mode"]), (2, "retry"))
 
     def test_timed_out_high_attempt_is_retried_at_medium_then_plans_at_high(self):
         run, calls = scripted_run((870, None), (0, POLICY_WIRE), (0, "plan"))

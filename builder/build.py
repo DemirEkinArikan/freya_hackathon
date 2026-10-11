@@ -337,7 +337,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         trace.emit("inputs", sources=source_manifest, tool_api_sha256=digest(openapi))
         source_record = capture_source_provenance(PROJECT, {
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
-            "codex_executable": args.codex, "deadline_seconds": deadline.limit - deadline.start,
+            "codex_executable": args.codex, "deadline_seconds": deadline.duration_seconds,
             "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
             "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
                                    "policy_repair_cap_seconds": POLICY_REPAIR_CAP,

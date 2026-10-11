@@ -166,6 +166,8 @@ artifacts, never builder source or static prompts.
 See the [submission package contract](docs/SUBMISSION-PACKAGE.md) and
 [final-window runbook](docs/T18-FINAL-WINDOW.md) for the two-run evidence manifest,
 shared simulation lease, source/evidence commits and protected submission buffer.
+The [submission checklist](docs/T18-SUBMISSION-CHECKLIST.md) holds the channel,
+send and receipt records.
 
 See [pinned contract](docs/CONTRACT.md), [task definitions](docs/tasks.json) and
 [contribution/handoff rules](AGENTS.md). The organizer kit is pinned by SHA-256;

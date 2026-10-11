@@ -5,12 +5,14 @@ from fresh official practice sessions, never from the local expected fixture.
 """
 import argparse
 from copy import deepcopy
+import datetime as dt
 import hashlib
 import importlib.util
 import json
 import math
 import os
 from pathlib import Path
+import re
 import urllib.request
 import urllib.parse
 
@@ -18,6 +20,25 @@ from .generate import KIT, ROOT
 from .scoring import score_ledger
 
 BANK = "https://freya-bank-mock.freyavoice.workers.dev"
+GATEWAY_RETRIES = 5
+
+
+def retry_gateway_gets(client, log):
+    """Retry idempotent platform GETs on transient gateway HTTP 502/503/504, recording every retry in log."""
+    from builder.platform import PlatformError
+    request = client.request
+    def retrying(method, path, body=None, params=None):
+        for attempt in range(1, GATEWAY_RETRIES + 2):
+            try:
+                return request(method, path, body, params)
+            except PlatformError as exc:
+                status = re.match(re.escape(f"{method} {path}: HTTP ") + r"(50[234]): ", str(exc))
+                if method != "GET" or body is not None or not status or attempt > GATEWAY_RETRIES:
+                    raise
+                log.append({"method": method, "path": path, "status": int(status[1]), "attempt": attempt,
+                            "at": dt.datetime.now(dt.timezone.utc).isoformat()})
+                client.sleep(min(10, client.deadline.timeout(10, reserve=client.reserve)))
+    client.request = retrying
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -363,6 +384,7 @@ def evaluate(backend, agent_id, rows, *, reps=3, concurrency=5, deployment=None)
             "status": "infrastructure_failure" if any(f["category"] in ("infrastructure", "evidence") for f in failures) else "completed",
             "failures": failures, "final": final, "rows": all_rows,
             "simulations": simulations,
+            "platform_retries": deepcopy(retries) if isinstance(retries := getattr(backend, "platform_retries", None), list) else [],
             "deployment_pin": {"before": pin_before, "after": pin_after, "verified": bool(pin_before and pin_after == pin_before),
                                "per_call_version_verified": bool(deployment and len(all_rows) == len(rows) * reps
                                                                  and all(r.get("version_attribution", {}).get("verified") for r in all_rows)),
@@ -439,12 +461,14 @@ def main(argv=None):
     deadline = Deadline(args.budget_seconds)
     client = FreyaClient(deadline=deadline, lease_path=Path(args.simulation_lease))
     backend = HostedBackend(client, deadline, bank_connect_address=args.bank_connect_address, max_call_seconds=args.max_call_seconds)
+    backend.platform_retries = []
+    retry_gateway_gets(client, backend.platform_retries)
     from builder.platform import AGENT_LLM, SIM_LLM
     from .evidence import backend_secrets, record_evaluation
     conditions = {"builder_model": deployment.get("model") if deployment else None,
                   "reasoning_effort": deployment.get("reasoning_effort") if deployment else None,
                   "reps": args.reps, "concurrency": args.concurrency, "budget_seconds": args.budget_seconds,
-                  "max_call_seconds": args.max_call_seconds,
+                  "max_call_seconds": args.max_call_seconds, "platform_gateway_retries": GATEWAY_RETRIES,
                   "agent_llm": AGENT_LLM, "persona_llm": SIM_LLM, "analysis_llm": SIM_LLM,
                   "platform_base_url": client.base_url, "bank_base_url": BANK,
                   "bank_transport": deepcopy(getattr(backend, "bank_transport_configuration", {"mode": "unrecorded"}))}

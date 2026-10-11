@@ -476,8 +476,16 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         raise GuardCompileError(["transfer prerequisite queues must belong to permitted transfer queues"])
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
-    for proposal in result.get("identity_close", {}).values():
+    for scope, proposal in result.get("identity_close", {}).items():
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
+        if allowed and "reason" not in proposal:
+            # A reasonless phase row refined by sourced choices only supplies
+            # the phase outcome: the kernel closes through one declared choice,
+            # each checked below, and never on this row. No reason is picked.
+            if scope in result.get("identity_close_choices", {}):
+                continue
+            raise GuardCompileError(["identity_close scope omits the reason its outcome requires; supply its sourced reason, "
+                                     "or list each sourced reason as identity_close_choices for an unreached/incomplete scope"])
         if allowed is None or (allowed and proposal.get("reason") not in allowed) or (not allowed and proposal.get("reason")):
             raise GuardCompileError(["identity_close disposition conflicts with allowed closing outcomes/reasons"])
     for scope, choices in result.get("identity_close_choices", {}).items():

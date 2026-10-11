@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "review_id": "S01-claude-20261011",
+  "review_kind": "source_only_semantic_review",
+  "base_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+  "input_boundaries": "Approved brief A, kit v3 and original frozen Public A artifacts only. No evaluator scripts, customer scripts, expected records, transcripts, raw model events or held-out inputs were read.",
+  "checker": "python3.11 tools/review_evidence_check.py docs/S01-SEMANTIC-REVIEW-20261011.json",
+  "original_run": "20261010T234440089175Z",
+  "original_status": "exported_not_accepted",
+  "findings": [
+    {
+      "id": "L-01",
+      "source_rule": "rule 2",
+      "classification": "satisfied_in_stored_fixed_speech",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 25,
+          "quote": "Ask \"Am I speaking with {title} {last_name}?\"."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/policy.json",
+          "raw_sha256": "3f5773c659c7e885c6379f4fa7a4e736dc48bd2577e213b75c9e1907cab59a8e",
+          "pointer": "/rules/31/value/identification_question",
+          "quote": "Am I speaking with {title} {last_name}?"
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/opening/on_enter/type",
+          "value": "tts"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/opening/on_enter/text",
+          "quote": "Am I speaking with {{title}} {{last_name}}?"
+        }
+      ],
+      "conclusion": "Exact literal is compiled into fixed opening speech. This establishes stored text only, not the hosted utterance."
+    },
+    {
+      "id": "L-02",
+      "source_rule": "rule 9",
+      "classification": "unproven_dialogue",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 35,
+          "quote": "say \"I am sorry for your loss.\", ask nothing else"
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/policy.json",
+          "raw_sha256": "3f5773c659c7e885c6379f4fa7a4e736dc48bd2577e213b75c9e1907cab59a8e",
+          "pointer": "/rules/33/value/branches/deceased/say",
+          "quote": "I am sorry for your loss."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/identity_exit/on_enter/type",
+          "value": "llm"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/identity_exit/task_message",
+          "quote": "say 'I am sorry for your loss' and ask nothing further"
+        }
+      ],
+      "conclusion": "Extracted exactly, but the export carries it only as a model instruction in a generated-speech node. No fixed line or guard establishes the sentence."
+    },
+    {
+      "id": "L-03",
+      "source_rule": "rule 28",
+      "classification": "unproven_dialogue",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 77,
+          "quote": "First ask: \"Can you make this payment today?\"."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/policy.json",
+          "raw_sha256": "3f5773c659c7e885c6379f4fa7a4e736dc48bd2577e213b75c9e1907cab59a8e",
+          "pointer": "/rules/41/value/first_question",
+          "quote": "Can you make this payment today?"
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/account_intro/on_enter/type",
+          "value": "llm"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/account_intro/task_message",
+          "quote": "ask 'Can you make this payment today?'"
+        }
+      ],
+      "conclusion": "Extracted exactly, but present only as a model instruction. Runtime evidence must show the first ask uses the literal."
+    },
+    {
+      "id": "L-04",
+      "source_rule": "rule 34",
+      "classification": "unsupported_controller_representation",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 88,
+          "quote": "ask \"Do you confirm?\". Call `create_promise` only after a clear yes."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/policy.json",
+          "raw_sha256": "3f5773c659c7e885c6379f4fa7a4e736dc48bd2577e213b75c9e1907cab59a8e",
+          "pointer": "/rules/44/value/readback/question",
+          "quote": "Do you confirm?"
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/bg_commit_promises_confirm/on_enter/type",
+          "value": "tts"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/bg_commit_promises_confirm/on_enter/text",
+          "quote": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
+        }
+      ],
+      "conclusion": "Extracted exactly, but the compiled fixed confirmation line replaces the literal question with different wording. This is the stored-text defect the draft lists as PA-01."
+    },
+    {
+      "id": "L-05",
+      "source_rule": "rule 38",
+      "classification": "unproven_dialogue",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 92,
+          "quote": "say this sentence: \"You will receive a text message confirming this promise.\""
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/policy.json",
+          "raw_sha256": "3f5773c659c7e885c6379f4fa7a4e736dc48bd2577e213b75c9e1907cab59a8e",
+          "pointer": "/rules/44/value/after_recorded/mandatory_sentence",
+          "quote": "You will receive a text message confirming this promise."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/promise_recorded/on_enter/type",
+          "value": "llm"
+        },
+        {
+          "path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t05-phase-scoped-extraction/artifacts/t05-phase-live-public-A/20261010T234440089175Z/submission.workflow.json",
+          "raw_sha256": "402c440b0f13eda515613d5dd16e43a70b9bf249d427447d3a33508ec9280cac",
+          "pointer": "/workflow/nodes/promise_recorded/task_message",
+          "quote": "say exactly 'You will receive a text message confirming this promise.'"
+        }
+      ],
+      "conclusion": "Extracted exactly, but present only as a model instruction after recording. Runtime evidence must show the sentence follows a positive create_promise result and is not spoken otherwise."
+    }
+  ],
+  "classification_summary": {
+    "missing_source_requirement": 0,
+    "model_omission": 0,
+    "unsupported_controller_representation": 1,
+    "unproven_dialogue": 3,
+    "satisfied_in_stored_fixed_speech": 1
+  },
+  "draft_verification": {
+    "observed_at_utc": "2026-10-11T06:12Z",
+    "note": "Codex S01 draft files were untracked in its worktree when checked. Results bind only to these exact bytes.",
+    "records": [
+      {
+        "record_path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/rapid-s01-20261011/docs/source-semantic-review/public-a-20261010T234440089175Z.json",
+        "record_sha256": "175afd0eaa104a62af868a05d4f7a74c4dc29c5e6e0edeba06ce014d5b47e690",
+        "evidence_items": 81,
+        "quoted_items": 61,
+        "failures": 0
+      },
+      {
+        "record_path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/rapid-s01-20261011/docs/source-semantic-review/ab-20261010T224748051958Z.json",
+        "record_sha256": "53159ef17f9a70b855461258364dc457d5f34be7170624dbfbc37a80863ff013",
+        "evidence_items": 58,
+        "quoted_items": 36,
+        "failures": 0
+      },
+      {
+        "record_path": "/Users/demirekinarikan/VsCode/freya_hackathon-worktrees/rapid-s01-20261011/docs/source-semantic-review/development-rejections-20261011.json",
+        "record_sha256": "43bdf62b142d5469768ee2631663e3e79b68a9c1f68852436b49b20f8f6ced34",
+        "evidence_items": 150,
+        "quoted_items": 134,
+        "failures": 0
+      }
+    ]
+  },
+  "limits": [
+    "Stored text is not hosted speech. Every prompt-only literal needs authorized runtime evidence.",
+    "Later merged source fixes are not retested here and do not upgrade this original export.",
+    "Hash and quote matches show that the evidence is accurate. They do not confirm the interpretive classification."
+  ]
+}

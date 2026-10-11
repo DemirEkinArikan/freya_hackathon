@@ -5,7 +5,9 @@ underscore and contain letters/digits/underscores; bg_* is reserved.
 
 conversation fields: name,node_type,task_message,routing_prompt,on_enter,
 on_enter_first_entry_only,extraction_schema,transitions,max_node_turns,
-max_turn_transition. No other fields. on_enter is {type:llm}, {type:tts,text:...}
+max_turn_transition,passthrough,passthrough_default_transition. No other fields.
+passthrough is a boolean; its default target names a public plan node.
+on_enter is {type:llm}, {type:tts,text:...}
 or {type:silent}. Transitions may target public plan nodes only.
 Extraction entries: name,type,description,min_confidence, optional enum_values,
 validation_pattern,max_retries,extraction_prompt. Types are string,integer,float,
@@ -14,12 +16,36 @@ Custom extraction_prompt must include the kit's extractor.speech,
 extractor.conversation.last-10,extractor.type_preamble,extractor.variables_list
 placeholders. Use documented template substitution for read-only dialogue values.
 
-Transitions: {target_node,description,condition}. Intent conditions use
+Transitions: {target_node,description,condition}, optionally is_tool_call:boolean
+at transition level. Intent conditions use
 {operator:matches_intent,description:...}; fallback {operator:always}.
 Variable comparisons use outer {logic:or,conditions:[...]}; nested and/or groups
 are permitted. Operators: equals,not_equals,greater_than,less_than,contains,
 is_set,is_not_set. Avoid duplicate routes to the same target with incompatible
 conditions. Every conversation fallback and failure route targets a public node.
+
+Entry scheduling follows the kit, not just graph reachability:
+- on_enter:{type:silent} alone waits for the user. A state-only decision that
+  needs no new input uses passthrough:true, passthrough_default_transition and a
+  final ordinary always fallback (is_tool_call absent or false). Immediate routing may inspect only approved context in
+  routing_prompt/transitions; it does not extract a new caller answer.
+  Capture required public proposals in the preceding caller-answer node.
+- A node collecting a new answer must wait for that input. Do not make it
+  passthrough merely because its entry is silent or its graph has an always edge.
+- Short fixed TTS entry speech may complete through passthrough. An LLM speaking
+  step may use is_tool_call:true on the transition; the engine offers a tool named
+  transition_to_<compiled target>, which the model calls after required speech to
+  move in the same message. Use the offered completion tool by its description,
+  not a hardcoded name from the authored target: controller entry gates may change
+  the compiled target/name. Internal gate names must not be spoken. The router
+  does not evaluate that tool transition as an
+  ordinary per-turn branch. Do not place is_tool_call inside condition or use an
+  undocumented is_tool_call_transition alias.
+- For required farewell, make the completion target the public guarded close
+  action without waiting for another caller utterance. Speech, task-message
+  routing instructions and an outgoing edge alone do not execute close_call.
+Keep tool-triggered and ordinary routes distinct; do not combine duplicate target
+routes with incompatible conditions or trigger modes.
 
 Action placeholder:
 {name,node_type:"guard_action",action,inputs:{semantic_field:public_variable},

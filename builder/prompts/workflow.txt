@@ -55,6 +55,30 @@ Do not add a conversation after close_call to represent a closed call. Every dec
 must have a graph path to a call-ending handler; any required routing references
 must name valid nodes already participating in that path.
 
+Entry speech and a graph edge are not themselves routing triggers. A silent
+conversation waits for the caller unless it declares passthrough. For a state-only
+decision that needs no new answer, set node-level passthrough:true, a public
+passthrough_default_transition, and an ordinary final always fallback without a
+tool-call flag. Put approved runtime
+context in routing_prompt; task_message alone cannot direct the routing model.
+Capture needed public action proposals in the preceding caller-answer step; an
+immediate state router cannot obtain a new answer by declaring extraction fields.
+Do not make a caller-answer node passthrough or skip the fresh answer it requires.
+Do not mark every silent node passthrough: silence may deliberately await input.
+
+Source-required farewell speech must actually lead into guarded close_call
+without requiring another caller utterance. A short fixed TTS entry can use the
+documented passthrough completion route. For an LLM speaking step, use a
+transition-level is_tool_call:true and instruct the dialogue model to use its
+engine-offered completion transition after the required words in the same message.
+The engine derives transition_to_<target> from the compiled target; do not hardcode
+a tool name from authored node names, because the controller may remap targets
+through protected entry gates. Identify the offered completion by its description.
+This transition moves to a declared plan step; it is not permission to
+author or invoke a bank API tool directly. Its condition stays a normal documented
+condition object. Do not put a tool-call flag inside condition, invent an entry
+event operator, or assume the farewell text itself records the bank close.
+
 Extraction, dialogue and routing must agree. Ask for missing/ambiguous exact terms,
 recognize corrections and compound intent, and follow brief-defined counter scopes.
 Resolve speech dates against supplied now. Human product readback uses only fields

@@ -52,10 +52,11 @@ WORKFLOW_CAP = 900
 # a smaller one changed timing success by at most 0.07.
 FIRST_WORKFLOW_RESERVE = 450
 # A repair rewrites its whole document: about 61 s plus 0.0044 s per character of
-# the previous attempt's compact JSON (38 policy and plan repairs completed on
-# 11 Oct took 0.62-1.19 times this). A repair starts only when its allocation
-# covers 90% of the estimate; otherwise the build stops with the real failure
-# instead of timing out.
+# the previous attempt's compact JSON (47 validation repairs completed on 11 Oct
+# took 0.62-1.19 times this). A repair starts only when its allocation covers 90%
+# of the estimate; otherwise the build stops with the real failure instead of
+# timing out. A format repair has no previous document, so only the 61 s base is
+# checked; the two on 11 Oct took 261 s and 443 s.
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9

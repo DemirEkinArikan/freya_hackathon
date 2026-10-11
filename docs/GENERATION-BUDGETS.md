@@ -21,12 +21,21 @@ Timeouts remain failures; they do not automatically restart a model call.
 
 Repair admission (11 Oct). A repair rewrites its whole document, so a policy
 or plan repair starts only when its allocation covers 90% of 61 seconds plus
-0.0044 seconds per character of the previous attempt's compact JSON. The 38
-policy and plan repairs completed on 11 Oct took 0.62-1.19 times that estimate,
-and none would have been refused. Five of that day's seven timed-out repairs
+0.0044 seconds per character of the previous attempt's compact JSON. The 47
+validation repairs completed on 11 Oct took 0.62-1.19 times that estimate,
+and none would have been refused. Nine of that day's twelve timed-out repairs
 would not have started. A refused repair ends the build with `DeadlineExceeded`.
 The message gives the available and estimated seconds, then the real validation
 or format failure, instead of a generic timeout.
+
+Two limits follow from this rule. A format repair has no previous document to
+size, so only the 61-second base is checked: it can still start with about 55
+seconds left and then time out. That day's two format repairs took 261 and
+443 seconds, 1.19 and 0.66 times their failed calls. An estimate from the
+failed call would have refused the second, which then passed.
+A policy repair is capped at 450 seconds, so a policy whose compact JSON exceeds
+about 99,800 characters is never repaired. That day's 111 generated policies
+had 29,800 to 83,400 characters (median 45,400).
 
 The 1800-second limit, the 300-second export reserve and the 450-second
 first-workflow reserve are unchanged. In a replay of that day's call times, a

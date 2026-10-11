@@ -146,6 +146,25 @@ class GenerationBudgetTests(unittest.TestCase):
             execute(self.args("--generate-only"), generator=generator, deadline=deadline)
         self.assertEqual(generator.generate.call_count, 1)
 
+    def test_policy_repair_admission_uses_the_450_s_repair_cap(self):
+        # The first call ends at 100 s: min(450, 1700 - 750) = 450 s, so the repair cap, not the reserve, decides.
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        invalid = fixture()
+        invalid["policy"]["sources"][0]["sha256"] = "0" * 64
+        invalid["policy"]["goal"] += " " + "x" * 100000
+        estimate = 61 + 0.0044 * len(json.dumps(invalid["policy"], ensure_ascii=False, separators=(",", ":")))
+        self.assertTrue(450 < 0.9 * estimate <= 900)  # refused at the 450 s cap, admitted at 900 s
+        generator = self.generator()
+        def extract(*args, **kwargs):
+            now[0] += 100
+            return copy.deepcopy(invalid)
+        generator.generate.side_effect = extract
+        with self.assertRaisesRegex(DeadlineExceeded, rf"^No time for a repair \(450 s available, about "
+                                                      rf"{estimate:.0f} s needed\): Policy extraction failed: "):
+            execute(self.args("--generate-only"), generator=generator, deadline=deadline)
+        self.assertEqual(generator.generate.call_count, 1)
+
     def test_plan_repair_starts_only_if_it_can_finish_before_the_export_reserve(self):
         broken = plan()
         broken["initial_node"] = "missing"

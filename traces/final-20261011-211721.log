@@ -1,0 +1,132 @@
+Plan B builder: final case run
+start: 2026-10-11T21:17:22+03:00
+command: python3 planb/build.py /private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/final/run2/case https://freya-final-mock.build-practice.workers.dev
+repo commit: ae6039c5cdd2fc0a1f0349dfce1163f4e507b0b6
+skill: planb/.claude/skills/build-phone-agent/SKILL.md sha256 7c2e21d383c23596
+mock: tool base URL https://freya-final-mock.build-practice.workers.dev/voice/v1; the mock reports 34 customers and 7 operations
+self-tests: Freya simulations in workspace 170389cd-814f-42ec-aeb7-5495a36be368, at most 10 calls at once, lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock
+working copy: /var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit
+case: 19 documents (2 other text, 1 pdf, 16 text) -> out/case/INDEX.md
+builder: model claude-opus-5-5, effort max, fallback claude-sonnet-5-5, skill build-phone-agent
+[21:17:23] Claude session started: model claude-opus-5-5, skills ['build-phone-agent', 'deep-research', 'design', 'design-sync', 'dataviz', 'update-config', 'verify', 'debug', 'code-review', 'simplify', 'batch', 'fewer-permission-prompts', 'doctor', 'loop', 'claude-api', 'workflow-authoring', 'run', 'run-skill-generator', 'plugin-authoring']
+[21:17:25] model call 1 (claude-opus-5-5): says: I'll start by loading the build-phone-agent skill.
+      also: Skill: {"skill": "build-phone-agent", "args": "Build the phone agent for the bank case in out/case/. Start with out/case/INDEX.md. Service contract is the tool API file; tool base URL is https://freya-fin...
+[21:17:29] model call 2 (claude-opus-5-5): Bash: date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}; echo FREYA_LEASE=${FREYA_LEASE:-}; echo FREYA_BANK_HOST=${FREYA_BANK_HOST:-}
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/INDEX.md
+[21:17:33] model call 3 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/BRIEF.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/README.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/statement-debt-call-flow.pdf.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/example-scenarios.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/documents/2026-10-01-service-contract.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/emails/2026-10-09-decisions-recap.txt
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/emails/attachments/2026-10-08-statement-debt-analysis.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/meetings/2026-10-10-follow-up-session-transcript.txt
+[21:17:46] model call 4 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/files/statement-debt-call-flow.pdf
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/meetings/2026-10-07-analysis-session-transcript.txt
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/emails/2026-09-24-kickoff-questions.txt
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/documents/2026-09-10-ivr-prompt-sheet.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/documents/2025-08-14-cards-faq.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/sources/emails/attachments/2026-09-02-statement-debt-analysis.md
+[21:17:57] model call 5 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/test-environment/test-customers.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/cloudflare-mock/README.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/cloudflare-mock/example/worker.js
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/cloudflare-mock/example/example-response.json
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/out/case/text/cloudflare-mock/example/wrangler.toml
+[21:18:06] model call 6 (claude-opus-5-5): Bash: date; cd /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit && python3 -I -c " import json d=json.load(open('out/case/text/test-environment/test-customers.json...
+[21:18:23] model call 7 (claude-opus-5-5): Bash: python3 -I -c " import json d=json.load(open('out/case/text/test-environment/test-customers.json')) for c in d['customers']: s=c['services'] cl=s.get('cards.list',{}) print('==',c['customerNo'],c['...
+[21:18:26] model call 8 (claude-opus-5-5): Read: /var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/claude-config/projects/-private-var-folders-2b-ntl6fldn4cq-4r4skssgwc5w0000gn-T-planb-final-20261011-211721-kit/84a7d522-ceda-4e47-8825-...
+[21:18:32] model call 9 (claude-opus-5-5): Read: /var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/claude-config/projects/-private-var-folders-2b-ntl6fldn4cq-4r4skssgwc5w0000gn-T-planb-final-20261011-211721-kit/84a7d522-ceda-4e47-8825-...
+[21:18:44] model call 10 (claude-opus-5-5): Bash: date; python3 -I -c " import json d=json.load(open('out/case/text/test-environment/test-customers.json')) for c in d['customers']: if c['customerNo'] not in ('97917292','97974112','98390128','98814...
+[21:18:48] model call 11 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/examples/base-agent.json
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/docs/tools-and-code.md
+[21:18:52] model call 12 (claude-opus-5-5): Bash: date; cat "${FREYA_LEASE%.lock}.json" 2>/dev/null; echo; grep -n "persona\|variables\|identity\|FREYA_BANK_HOST\|def \|customer_id\|first_name\|style\|third_party\|expected" tools/run_cases.py | he...
+[21:18:55] model call 13 (claude-opus-5-5): Bash: sed -n 1,50p tools/run_cases.py; sed -n 85,140p tools/run_cases.py; python3 -c "import json,sys; sys.path.insert(0,'tools'); from score import http; print(json.dumps(http('/v1/practice/sessions', d...
+[21:19:02] model call 14 (claude-opus-5-5): Bash: grep -n "def \|expected\|args\|data\b\|\"data\"\|'data'" tools/score.py | head -60; wc -l tools/score.py
+[21:19:04] model call 15 (claude-opus-5-5): Bash: sed -n 19,55p tools/score.py
+[21:19:12] model call 16 (claude-opus-5-5): Bash: python3 -c " import json,sys,urllib.request sys.path.insert(0,'tools') from score import http s=http('/v1/practice/sessions', dict(case='90000001')) print(s) cid=s['variables']['customer_id'] def p...
+[21:19:16] model call 17 (claude-opus-5-5): Bash: curl -s -i -X POST "$MOCK_URL/cards.list" -H 'Content-Type: application/json' -d '{"data":{"customerNo":"90000001","aiFlow":"CardOps"},"call":{"ani":"","lang":"tr"}}' | head -c 1200; echo; echo ---...
+[21:19:20] model call 18 (claude-opus-5-5): Bash: python3 -c "import json,sys; sys.path.insert(0,'tools'); from score import http; print(json.dumps(http('/v1/practice/ledger/'+sys.argv[1]), ensure_ascii=False)[:1500])" c_3980fbef-60d; date
+[21:21:08] model call 19 (claude-opus-5-5): Bash: grep -n -i "trigger_pattern_both\|trigger_pattern\b\|inactivity\|silence\|nested\|idle" docs/workflow-format.md docs/api.md docs/tools-and-code.md | head -40
+[21:21:12] model call 20 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/docs/workflow-format.md
+      also: Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/docs/workflow-format.md
+[21:26:49] model call 21 (claude-opus-5-5): Read: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/docs/workflow-format.md
+[21:29:34] model call 22 (claude-opus-5-5): says: Writing the generator now: rule list at the top, then the hooks and code steps as plain strings, compiled and checked for `{{`/`}}` before the workflow is written.
+      also: Bash: date; mkdir -p builders results
+[21:32:41] model call 23 (claude-opus-5-5): Write: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+[21:32:49] model call 24 (claude-opus-5-5): Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Write: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/check_final.py
+[21:33:29] model call 25 (claude-opus-5-5): Bash: date; python3 builders/final.py && python3 builders/check_final.py 2>&1 | head -150
+[21:33:35] model call 26 (claude-opus-5-5): says: Local checks pass: the readings, the follow-up questions, the week and e-mail texts, and the error routes all print as the brief prescribes. Saving the slot twice now and reading it back.
+      also: Bash: date; python3 -c "import freya,json,sys; print(json.dumps(freya.save_workflow(sys.argv[1], json.load(open(sys.argv[2])))))" final out/final.workflow.json && python3 -c "import freya,json,sys; print...
+[21:33:48] model call 27 (claude-opus-5-5): Bash: python3 -c "import freya,sys; freya.export_workflow(sys.argv[1], sys.argv[2])" 1dacfa20-3cd4-4538-b0b6-8068f81e022a out/final.readback.json && python3 -c " import json w=json.load(open('out/final.r...
+[21:35:20] model call 28 (claude-opus-5-5): Bash: date; python3 -I - <<'EOF' import json P = {"confirm": "Evet, onaylıyorum.", "goodbye": "Teşekkürler, iyi günler."} NOW = "2026-10-12T10:30:00+03:00" def case(cid, first, last, family, title, scrip...
+[21:35:28] model call 29 (claude-opus-5-5): Bash: cat > out/final.notes.txt <<'EOF' Trace notes: final slot (Freya Bank credit card statement debt, Turkish) Start: Sun Oct 11 21:17:29 +03 2026 Builder: one Claude session (build-phone-agent skill):...
+[21:36:22] model call 30 (claude-opus-5-5): says: Smoke test: 4/4 passed in 44 s. The pre-hooks built the contract bodies correctly, and the week change was recorded with week 3 and day 9. Running all 10 cases now.
+      also: Bash: echo "- 21:35 smoke: FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent> --cases results/selftest.json --only 95004361,96125950,92030487,96158684 --out results/selftest-smoke.json -> 4 / 4 ...
+[21:37:46] model call 31 (claude-opus-5-5): says: 9/10 passed. The one failure (94339861, week preview service error) is a judge verdict that begins by saying every criterion was met, so I'm reading its full reason and the call timeline.
+      also: Bash: echo "- 21:36 full: same command without --only, --out results/selftest-full.json -> 9 / 10 passed, simulation 32e55d47-067f-44fb-a4e3-967670ec8a2e; FAIL 94339861 (week preview 500 path, judge)" >>...
+[21:38:05] model call 32 (claude-opus-5-5): Bash: python3 builders/timeline.py results/selftest-full.json 92335586,92220795,93821776 2>&1 | grep -v "route_evaluated\|function_call_start\|node_enter\|code_exec" | cut -c1-420 | head -60
+[21:38:28] model call 33 (claude-opus-5-5): Bash: python3 builders/timeline.py results/selftest-full.json 92030487,97526380,96125950 2>&1 | grep " assi \| user \|=====" | cut -c1-330 | head -60
+[21:38:47] model call 34 (claude-opus-5-5): Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+[21:38:58] model call 35 (claude-opus-5-5): Bash: date; python3 builders/final.py && python3 builders/check_final.py > /tmp/check_final.out 2>&1; echo "check exit $?"; tail -3 /tmp/check_final.out; python3 -c " import json; w=json.load(open('out/f...
+[21:39:46] model call 36 (claude-opus-5-5): Bash: date; python3 -I - <<'EOF' import json P = {"confirm": "Evet, onaylıyorum.", "goodbye": "Teşekkürler, iyi günler."} NOW = "2026-10-12T10:30:00+03:00" def case(cid, first, last, family, title, scrip...
+[21:45:57] model call 37 (claude-opus-5-5): Bash: python3 builders/timeline.py results/selftest-full2.json 97526380,92030487 2>&1 | grep " assi \| user \|=====\|end_call\|error" | cut -c1-300 | head -40
+[21:46:14] model call 38 (claude-opus-5-5): Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+[21:46:26] model call 39 (claude-opus-5-5): Bash: date; python3 builders/final.py && python3 builders/check_final.py > /tmp/check_final.out 2>&1; echo "check exit $?"; python3 -c "import freya,json,sys; print(json.dumps(freya.save_workflow(sys.arg...
+[21:46:36] model call 40 (claude-opus-5-5): says: Version 8 saved and read back. Exporting now so the export exists whatever happens, then starting the last test run: 11 cases, 21:47, inside the minute-38 limit.
+      also: Bash: python3 -c "import freya,sys; freya.export_workflow(sys.argv[1], sys.argv[2])" 1dacfa20-3cd4-4538-b0b6-8068f81e022a out/final.export.json && ls -la out/final.export.json; date; FREYA_SIM_CONCURRENC...
+[21:48:07] model call 41 (claude-opus-5-5): Bash: echo "- 21:47 last set: FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent> --cases results/selftest-final.json --out results/selftest-final-run.json (3 earlier fails + 8 new cases from res...
+[21:48:25] model call 42 (claude-opus-5-5): Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+[21:48:36] model call 43 (claude-opus-5-5): Bash: date; python3 builders/final.py && python3 builders/check_final.py > /tmp/check_final.out 2>&1; echo "check exit $?"; python3 -c "import freya,json,sys; print(json.dumps(freya.save_workflow(sys.arg...
+[21:49:38] model call 44 (claude-opus-5-5): says: The two counting fixes worked: 97526380 and 98390128 now pass. 92030487 (same name and same last four, digits in parts) failed this time, so I'm reading its transcript.
+      also: Bash: echo "- 21:48 confirm: --cases results/selftest-confirm.json (95004361, 97526380, 92030487, 98390128) --out results/selftest-confirm-run.json -> 3 / 4 passed, simulation 472c82a9-585e-4724-a8ed-305...
+[21:50:04] model call 45 (claude-opus-5-5): Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+      also: Edit: /private/var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/builders/final.py
+[21:50:19] model call 46 (claude-opus-5-5): Bash: date; python3 builders/final.py && python3 builders/check_final.py > /tmp/check_final.out 2>&1; echo "check exit $?"; grep -A6 "^1) Yıldız Deneme" /tmp/check_final.out | head -6; python3 -c "import...
+[21:51:18] model call 47 (claude-opus-5-5): says: 2/2 passed on both same-name, same-last-four customers. That was the last test (started 21:50, before the cutoff). Exporting version 10 and finishing the trace notes.
+      also: Bash: python3 -c "import freya,sys; freya.export_workflow(sys.argv[1], sys.argv[2])" 1dacfa20-3cd4-4538-b0b6-8068f81e022a out/final.export.json && python3 -c " import json w=json.load(open('out/final.exp...
+[21:51:45] model call 48 (claude-opus-5-5): says: I built the `final` phone agent for the Turkish statement-debt case and saved it as version 10. In the last test it passed 2 of 2 cases, but that run only covered the latest fix. The full self-test...
+Claude finished: success, 74 turns, 2062 s, $9.35
+  model claude-haiku-5-5: 1534 input (+0 cached), 197 output tokens, $0.00; Claude Code's own helper calls (such as summaries), not listed one by one
+  model claude-opus-5-5: 96 input (+10553145 cached), 148176 output tokens, $9.35
+Claude's last message: I built the `final` phone agent for the Turkish statement-debt case and saved it as version 10. In the last test it passed 2 of 2 cases, but that run only covered the latest fix. The full self-test sets were run on earlier versions and not repeated on version 10. **What it does:** the bank services (the card list and the e-mail lookup) are called by the workflow itself, not by the model. Code turns each card's balance into the finished Turkish reading the bank prescribes: - amounts in words, with full currency names, never TL, USD, EUR or GBP; - the last four digits read one by one, and no other digits of a card ever; - "another card?" before the offer; - the offer limited to what the caller can actually do; - the no-debt, new-card, cut-day and due-date wordings. The model only chooses which card, which week, and whether the caller said a clear yes. Every exit uses the bank's own closing sentences (main menu or customer representative), and all tool calls go to the mock. **Self-tests** (on the case's test customers, with Turkish callers): | Version | Cases | Result | |---|---|---| | 6 | smoke, then all 10 | 4/4, then 9/10 | | 7 | all 10 | 7/10 (one was a platform timeout, not the agent) | | 8 | 3 failed + 8 new paths | 9/11 | | 9 | 4 | 3/4 | | 10 | 2 (same name and same last four) | 2/2 | The failures were all fixed with small prompt changes: - the call looping when the caller kept talking after a closing sentence; - miscounting the three tries and the three calming replies by one; - digits said in two parts being counted as wrong answers; - reading a card when two cards share the same last four digits. Paths that passed include every service error, the joint statement, a supplementary card, a new card with no statement, the card name that contains an instruction, the first-digits request, an angry caller and the spouse's card. **Judgement calls you may want to review:** - **E-mail lookup failure:** that lookup must happen before the offer, and any service failur...
+model calls: 48; raw messages: /var/folders/2b/ntl6fldn4cq_4r4skssgwc5w0000gn/T/planb-final/20261011-211721/kit/traces/messages.jsonl
+self-test at 2026-10-11 21:36:19: 4 / 4 passed, 44 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed []
+self-test at 2026-10-11 21:37:43: 9 / 10 passed, 65 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed ['94339861']
+self-test at 2026-10-11 21:45:50: 7 / 10 passed, 351 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed ['97526380', '92030487', '92335586']
+self-test at 2026-10-11 21:47:59: 9 / 11 passed, 65 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed ['97526380', '98390128']
+self-test at 2026-10-11 21:49:35: 3 / 4 passed, 44 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed ['92030487']
+self-test at 2026-10-11 21:51:14: 2 / 2 passed, 44 s, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, failed []
+builder notes (written by Claude):
+  Trace notes: final slot (Freya Bank credit card statement debt, Turkish)
+  Start: Sun Oct 11 21:17:29 +03 2026
+  Builder: one Claude session (build-phone-agent skill): read every document of out/case (INDEX order, flow drawing PDF opened), wrote builders/final.py (rule list + generator) and builders/check_final.py (local checks on made-up customers), saved slot `final`, self-tested on the case's test customers via the mock.
+  Mock / tool base: https://freya-final-mock.build-practice.workers.dev/voice/v1 + contract paths (cards.list, cards.balance, statement.week.get/decide/change, contact.email.get, statement.pdf.send)
+  Freya: slot final, workflow_id 1dacfa20-3cd4-4538-b0b6-8068f81e022a, agent_id 2b3677b8-553a-42e0-a09a-8a3dd7bdd389
+  Saved: 21:33 (save x2, platform version 6), read back out/final.readback.json (all nodes, tools, hooks, mappings, transitions present)
+  Self-test cases: results/selftest.json (10 cases on test customers 95004361, 96158684, 97526380, 92460108, 96125950, 92030487, 93821776, 92335586, 94339861, 92220795)
+  Tests:
+  - 21:35 smoke: FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent> --cases results/selftest.json --only 95004361,96125950,92030487,96158684 --out results/selftest-smoke.json -> 4 / 4 passed, simulation 3cafce08-4641-4daf-816b-2768cb4c5295
+  - 21:36 full: same command without --only, --out results/selftest-full.json -> 9 / 10 passed, simulation 32e55d47-067f-44fb-a4e3-967670ec8a2e; FAIL 94339861 (week preview 500 path, judge)
+  - 21:39 fix after full run: closing-sentence loop (caller kept talking in the end_call window) -> rule 'never repeat a closing sentence, else end_call'; digits request -> 'yalnızca son dört hane' sentence. Saved version 7, read back OK.
+  - 21:46 full rerun: same command, --out results/selftest-full2.json -> 7 / 10 passed, simulation 652092ee-bba3-4e90-9258-103b79b07d9a; FAIL 97526380 + 92030487 (model miscounted tries: ended after 2nd 'all cards', treated digits in parts as lost tries), FAIL 92335586 platform 'analysis never arrived (300s)'. Fix: join digit parts, explicit try count. Saved version 8 (read back OK).
+  - 21:47 last set: FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent> --cases results/selftest-final.json --out results/selftest-final-run.json (3 earlier fails + 8 new cases from results/selftest2.json) -> 9 / 11 passed, simulation 2d535e71-e45f-4e37-be7e-3522ca66376b; FAIL 97526380 (all-cards tries), 98390128 (angry caller not transferred after 3 calming replies)
+  - 21:49 fix: tries counted as the caller's unusable answers (3rd one ends), calming replies counted as complaints (4th complaint transfers). Saved version 9 (read back OK).
+  - 21:48 confirm: --cases results/selftest-confirm.json (95004361, 97526380, 92030487, 98390128) --out results/selftest-confirm-run.json -> 3 / 4 passed, simulation 472c82a9-585e-4724-a8ed-305ac812f68d; FAIL 92030487 (same-name/same-last-four disambiguation)
+  - 21:50 fix: shared last four never settles the card (KARTLAR warning + step rule). Saved version 10 (read back OK).
+  - 21:50 last test: --cases results/selftest-confirm2.json (92030487 + same-name/same-last-four case on 94030575) --out results/selftest-confirm2-run.json -> 2 / 2 passed, simulation 1792f939-087b-4403-bc6d-61ee4cab29f0
+  Saved versions of slot final on Freya (workflow 1dacfa20-3cd4-4538-b0b6-8068f81e022a, agent 2b3677b8-553a-42e0-a09a-8a3dd7bdd389): 6 (21:33, first build), 7 (21:39), 8 (21:46), 9 (21:48), 10 (21:50, final). Each saved twice and read back to out/final.readback.json.
+  Generic failure families seen: closing-sentence loop when the caller keeps talking in the end_call window; model miscounting tries / calming replies (off by one); digits said in parts treated as lost tries; shared last four taken as a unique card; one platform delay ("analysis never arrived (300s)", not the agent).
+  Tested paths that passed: single card readings (below minimum, minimum paid, nothing paid, foreign currencies, missing GBP block), multi-card selection with examples, "all cards" retries, same name + same last four (last four -> last six -> card number, digits in parts), supplementary card, injected card name, out-of-scope question, statement week change incl. joint statement, preview 500 and week-get 500, e-mail send (readable and shortened address), PDF 404, e-mail lookup 500, card list 404 and 500, slow balance (12 s), new card without statement, agent request, angry caller, first-digits request with injection, spouse's card.
+  Not testable on the mock: cut-day / due-today / due-passed readings (sessions fix now = 2026-10-12T10:30); covered by local checks in builders/check_final.py.
+  Export: out/final.export.json (version 10)
+  End: Sun Oct 11 21:51:27 +03 2026
+created on Freya: workflow id 1dacfa20-3cd4-4538-b0b6-8068f81e022a, agent id 2b3677b8-553a-42e0-a09a-8a3dd7bdd389, updated 2026-10-11T18:50:23.542Z
+steps: 9 (facts, setup, account, balance, contact, reading, service, exit_error, exit_nocard); tools: 11 (cards_balance, cards_list, contact_email_get, ekstre_gonder, end_call, hesap_kesim_bilgisi, hesap_kesim_degistir, hesap_kesim_onizleme, kart_borcu, no_eligible_card_main_menu, service_failure_agent)
+tool URLs: 8, all on the mock
+export: submission/final.workflow.json (copy submission/final-20261011-211721.workflow.json)
+end: 2026-10-11T21:51:46+03:00 (elapsed 34 min 24 s); result: OK

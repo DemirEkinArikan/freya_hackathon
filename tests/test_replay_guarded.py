@@ -162,12 +162,13 @@ class GuardedReplayTests(unittest.TestCase):
     def test_documented_string_comparison_and_case_insensitive_contains_route_normally(self):
         workflow, context, api, aliases = authored()
         node = context["plan"]["nodes"]["talk"]
-        node["transitions"].insert(0, {"target_node": "close", "description": "synthetic numeric or textual condition",
+        # One route per target (the kit merges same-target routes at an undocumented
+        # position), and no call-ending intent row moved ahead of the others.
+        node["transitions"] = [{"target_node": "close", "description": "synthetic numeric or textual condition",
             "condition": {"logic": "or", "conditions": [
                 {"variable": "amount", "operator": "equals", "operand": 20},
-                {"variable": "answer_text", "operator": "contains", "operand": "BANK"}]}})
-        # Keep same-target routes together: the kit merges them at an undocumented position.
-        node["transitions"].sort(key=lambda row: row["target_node"] != "close")
+                {"variable": "answer_text", "operator": "contains", "operand": "BANK"}]}}] + [
+            row for row in node["transitions"] if row["target_node"] != "close"]
         workflow = compile_guarded_workflow(openapi=api, **context)["workflow"]
         for values in ({"amount": "20"}, {"answer_text": "bank"}):
             script = {"version": 1, "initial_inputs": {"customer_id": "synthetic-session", "now": "2031-05-02"},

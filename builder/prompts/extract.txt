@@ -42,10 +42,43 @@ explicit when the source does not support an executable interpretation.
 Catalogue state-effects metadata describes deterministic controller capabilities,
 not bank rules, default permissions or authority for values. Use it to check
 representability and reachability; approved sources still authorize policy.
-Reconcile diagnostics without inventing values, erasing operative constraints or
-clearing unsupported declarations without resolving their reasons. Preserve
-literal witnesses and separately bound API qualifications. Requirements the
-current compiler cannot faithfully enforce remain explicit failures.
+A requirement that a typed kind or a stated controller effect enforces is
+supported: encode it there and do not declare it. Reconcile diagnostics without
+inventing values or erasing operative constraints. A fatal declaration leaves only
+when a typed rule that enforces its requirement replaces it. Change a category
+only when it was wrong, never to pass the build: a restriction the controller
+would allow stays protected_unenforceable and rejects the build.
+Preserve literal witnesses and separately bound API qualifications.
+
+Each unsupported_constraints entry is an object with category, requirement,
+rule_ids (the policy rules that keep the requirement) and justification.
+category is exactly one of:
+- dialogue_only: wording, ordering, required or forbidden utterances, dialogue
+  counters, and triggers that rest only on what the caller or agent says,
+  including which permitted action the conversation proposes next. Such duties
+  belong in descriptive extension rules that the workflow implements, normally
+  with no declaration. A dialogue_only entry cites only active descriptive rules,
+  and its requirement names no sealed action, API operation or field, typed kind
+  or close code. It does not reject the build.
+- controller_stricter: the sealed controller refuses something the source asks
+  for, such as a retry, a replay or a close it never performs. Add
+  controller_effect, an exact whole-word excerpt of the controller_state_effects
+  or rule_shapes text that states the refusal itself, not a permission or a
+  description. It does not reject the build; the
+  limitation is recorded in the frozen contract.
+- protected_unenforceable: a sourced restriction on a protected fact (a write, a
+  disclosure, identity or account evidence, or the bank close) that no typed kind
+  or controller effect enforces, so the controller would allow what the source
+  forbids. It rejects the build.
+- source_ambiguous: plausible readings that would authorize different protected
+  actions. It rejects the build unless fallback_rule names a typed rule, cited
+  from the same source statement, that encodes the source's own safe fallback.
+Source silence is not ambiguity: when the sources give no value for a case,
+encode only the supplied values; the controller refuses the dependent promise,
+note or close rather than invent one. Omission adds no gate: map a supplied
+selector code whose goal has no stated product-resolution requirement to false,
+since an omitted code quarantines every call that carries it. Retries happen only
+through attempt_scopes; the controller never replays close_call or an unscoped write.
 
 When supplied sources declare variables available at call start, retain their
 exact names in a source-backed call_variables array, including the declaration
@@ -76,7 +109,7 @@ Bind every supplied guarantee to the actual permitted operation and its API
 annotation, not a shared status from another operation. Quarantine uncertain
 persistence. When a sourced promise_failure_disposition is supported, also supply
 its sourced reason vocabulary. Interface shapes do not authorize invented values.
-Unsupported or contradictory requirements remain explicit failures.
+Unsupported or contradictory requirements remain categorised declarations.
 
 Every operative nonpersistent_failures matcher must include api_source with
 pointer and quote. The pointer is a local OpenAPI JSON pointer scoped through

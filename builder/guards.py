@@ -6,7 +6,9 @@ Speech interpretation and the Freya sandbox still require hosted verification.
 """
 from __future__ import annotations
 
+import ast
 import copy
+import functools
 import re
 from typing import Any, Mapping
 
@@ -21,7 +23,12 @@ from .validation import extraction_entry_errors, _router_judged
 PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
 CONTROLLED_ENTRY_LIMIT = 2048
-DEFAULT_CONVERSATION_TURNS = 10
+# Caller turns per stay in one node (the kit's `current_turns` resets on every
+# transition). The kit sizes a negotiating step at 20 and says to size caps from
+# real conversations; its caller styles split numbers over two turns and ask back.
+DEFAULT_CONVERSATION_TURNS = 20
+# Kernel-owned close with no proposal inputs: budget stops close from recorded facts.
+BUDGET_CLOSE = PREFIX + "budget_close"
 # Kit extraction confidence comes from token probabilities and a value below
 # min_confidence is discarded without trace. A clear spoken date scored 0.889
 # on the platform; 0.7 is the kit's lowest documented threshold. Free-value
@@ -1293,7 +1300,8 @@ def guard_refusal(state, action, inputs, message):
         try:
             if any(value is None or str(value).strip() == '' for value in inputs.values()):
                 raise ValueError('blank caller value')
-            guard_date(inputs.get('date', state['now']))
+            if guard_date(inputs.get('date', state['now'])) < guard_date(state['now']):
+                raise ValueError('proposed date precedes the call date')
             datetime.time.fromisoformat(str(inputs.get('time', '00:00')))
         except ValueError:
             reason = 'missing_input'
@@ -1985,6 +1993,31 @@ def guard_result(state, data, profile, catalog, expected_action):
 '''
 
 
+@functools.lru_cache(maxsize=32)
+def _kernel_for(kernel: str, roots: frozenset) -> str:
+    """The top-level kernel statements a code step can reach, without comment lines.
+
+    The platform refuses a code step whose code and runtime data exceed its
+    131072-byte sandbox limit, so no step carries kernel code it cannot call.
+    """
+    blocks = []
+    for statement in ast.parse(kernel).body:
+        defined = {getattr(statement, "name", None)} - {None}
+        defined |= {n.id for target in getattr(statement, "targets", []) for n in ast.walk(target) if isinstance(n, ast.Name)}
+        defined |= {alias.asname or alias.name for alias in getattr(statement, "names", [])}
+        blocks.append((defined, {n.id for n in ast.walk(statement) if isinstance(n, ast.Name)},
+                       ast.get_source_segment(kernel, statement)))
+    needed, pending = set(), set(roots)
+    while pending:
+        name = pending.pop()
+        needed.add(name)
+        pending |= {used for defined, uses, _ in blocks if name in defined for used in uses} - needed
+    kept = [line for defined, _, source in blocks if not defined or defined & needed
+            for line in source.split("\n") if not line.lstrip().startswith("#")]
+    # One space per four-space level; the kernel has no multi-line strings.
+    return "\n" + "\n".join(" " * ((len(line) - len(line.lstrip(" "))) // 4) + line.lstrip(" ") for line in kept) + "\n"
+
+
 def _literal(value: Any) -> str:
     # Freya source templating must never see adjacent braces, including nested
     # JSON endings. Python reconstructs them only at execution time.
@@ -1992,7 +2025,7 @@ def _literal(value: Any) -> str:
 
 
 def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
-          maps: dict, result_vars: dict) -> str:
+          maps: dict, result_vars: dict, bounded: bool = True) -> str:
     spec = {"phase": phase, "action": action, "inputs": inputs, "profile": profile,
             "catalog": {k: {n: v for n, v in op.items() if n != "tool"} for k, op in catalog.items()},
             "maps": maps, "result_vars": result_vars}
@@ -2009,7 +2042,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
             tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        entry_count = " + str(CONTROLLED_ENTRY_LIMIT + 1) + "\n    else:\n        entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
         else:
             tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry count is unavailable')\n    entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
-        if phase != "result":
+        # The budget close is the one terminal step after an exhausted budget.
+        if phase != "result" and bounded:
             tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry budget exhausted')\n"
         if phase == "prepare":
             tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
@@ -2054,7 +2088,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        guard_known_counts(retained)\n        if retained.get('quarantined') is True:\n            vars['bg_quarantined'] = 'yes'\n    except Exception:\n        vars['bg_quarantined'] = 'yes'\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
-    return _KERNEL + tail
+    roots = frozenset(n.id for n in ast.walk(ast.parse(tail)) if isinstance(n, ast.Name))
+    return _kernel_for(_KERNEL, roots) + tail
 
 
 def _transition(target: str, route: str | None = None) -> dict:
@@ -2088,39 +2123,61 @@ def _terminal() -> dict:
                     "message_mode": {"type": "string", "default": "none"}}}}}, "transitions": []}
 
 
-def _entry_budget_code(*, abort: bool = False) -> str:
-    """Small controller-only gate; never changes a permitted bank action."""
-    source = ("import json\nvars['bg_budget_route'] = 'stop'\ntry:\n"
-              "    count = vars.get('bg_control_entries')\n"
-              "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
-              "        raise ValueError('controller entry count is unavailable')\n"
-              "    count = int(count) + 1\n"
-              "    vars['bg_control_entries'] = str(count)\n")
-    source += ("    raise ValueError('conversation turn budget exhausted')\n" if abort else
-               "    if count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n"
-               "        raise ValueError('controller entry budget exhausted')\n"
-               "    vars['bg_budget_route'] = 'continue'\n")
-    source += ("except Exception:\n"
-               "    vars['bg_budget_route'] = 'stop'\n"
-               "    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n"
-               "    vars['bg_budget_exhausted'] = 'yes'\n"
-               "    vars['bg_quarantined'] = 'yes'\n"
-               "    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n"
-               "    vars['bg_consent'] = 'unclear'\n"
-               "    try:\n"
-               "        state = json.loads(str(vars.get('bg_state') or ''))\n"
-               "        state['quarantined'] = True\n"
-               "        vars['bg_state'] = json.dumps(state, allow_nan=False)\n"
-               "    except Exception:\n"
-               "        pass\n")
-    return source
+def _entry_budget_code() -> str:
+    """Small controller-only gate; never changes a permitted bank action.
+
+    A stop goes to the budget close, whose sealed checks refuse (and flag) an
+    unreadable count, an in-flight write or any close the recorded facts lack.
+    """
+    return ("vars['bg_budget_route'] = 'stop'\ntry:\n"
+            "    count = vars.get('bg_control_entries')\n"
+            "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
+            "        raise ValueError('controller entry count is unavailable')\n"
+            "    count = int(count) + 1\n"
+            "    vars['bg_control_entries'] = str(count)\n"
+            "    if count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n"
+            "        raise ValueError('controller entry budget exhausted')\n"
+            "    vars['bg_budget_route'] = 'continue'\n"
+            "except Exception:\n"
+            "    vars['bg_budget_route'] = 'stop'\n"
+            "    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n")
+
+
+def _ask_and_capture(nodes: dict) -> set:
+    """Capture each caller answer in the step that asked for it.
+
+    On the host a speaking LLM-entry step takes its offered completion only
+    after the caller's reply, so the reply arrives there. A silent answer step
+    behind that completion then answers the pending turn itself, asks a
+    question of its own and extracts the reply to that one instead, so an
+    identity answer reached the controller under another factor. The asking
+    step gets the answer step's extraction and its completion goes straight to
+    the answer step's single exit. Returns the asking steps changed.
+    """
+    asking = set()
+    for name, node in nodes.items():
+        if node.get("passthrough") or node.get("extraction_schema") or (node.get("on_enter") or {}).get("type", "llm") != "llm":
+            continue
+        routes = [route for route in node.get("transitions", []) if route.get("is_tool_call") is True]
+        answers = [target for target in {route["target_node"] for route in routes} if target in nodes
+                   and not nodes[target].get("passthrough") and nodes[target].get("extraction_schema")
+                   and (nodes[target].get("on_enter") or {}).get("type") == "silent"]
+        rows = nodes[answers[0]].get("transitions", []) if len(answers) == 1 else []
+        if (len(rows) != 1 or rows[0].get("is_tool_call") or rows[0]["target_node"] in (name, answers[0])
+                or rows[0]["condition"].get("operator") not in ("matches_intent", "always")):
+            continue
+        node["extraction_schema"] = copy.deepcopy(nodes[answers[0]]["extraction_schema"])
+        for route in routes:
+            if route["target_node"] == answers[0]:
+                route["target_node"] = rows[0]["target_node"]
+        asking.add(name)
+    return asking
 
 
 def _bound_entries(nodes: dict, public_names: list[str]) -> None:
     """Bound both unattended-node waits and cycles through multiple nodes."""
     gates = {name: PREFIX + "gate_" + str(index)
              for index, name in enumerate(sorted(public_names))}
-    needs_turn_stop = False
     for node in nodes.values():
         for transition in node.get("transitions", []):
             target = transition.get("target_node")
@@ -2132,21 +2189,17 @@ def _bound_entries(nodes: dict, public_names: list[str]) -> None:
         if node.get("node_type") == "conversation":
             if "max_node_turns" not in node:
                 node["max_node_turns"] = DEFAULT_CONVERSATION_TURNS
-            # Omitted source caps use the kit's documented default, with a
-            # definite abort rather than the engine's unbounded normal route.
+            # An omitted fallback ends through the facts-only budget close
+            # rather than the engine's unbounded normal route.
             if not node.get("max_turn_transition"):
-                node["max_turn_transition"] = "bg_turn_budget_stop"
-                needs_turn_stop = True
-    if needs_turn_stop:
-        nodes["bg_turn_budget_stop"] = _code_node(
-            "bg_turn_budget_stop", _entry_budget_code(abort=True), [_transition("bg_terminal")])
+                node["max_turn_transition"] = BUDGET_CLOSE
     for name, gate in gates.items():
         if gate in nodes:
             raise GuardCompileError(["controller entry-gate name collision"])
         continue_route = {"target_node": name, "description": "within controller budget",
                           "condition": {"logic": "or", "conditions": [
                               {"variable": "bg_budget_route", "operator": "equals", "operand": "continue"}]}}
-        nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition("bg_terminal")])
+        nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition(BUDGET_CLOSE)])
 
 
 _TOOL_RULES = ("No tool call is allowed in this turn.",
@@ -2158,7 +2211,7 @@ _COMPLETION_ONLY_RULE = (" Nothing in this step can capture a caller answer, so 
                          "State only account facts and action results that the runtime view shows.")
 
 
-def _node_discipline(nodes: dict) -> None:
+def _node_discipline(nodes: dict, asking: set = frozenset()) -> None:
     """Append the kit's per-node tool rules to every authored speaking node.
 
     A completion-only step (LLM entry, no extraction, only completions) captures
@@ -2174,7 +2227,8 @@ def _node_discipline(nodes: dict) -> None:
         if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
                 and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
             text += _COMPLETION_ONLY_RULE
-            answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
+            # A step that asks its own question answers a relayed pending reply with it (R3).
+            answers = {target for target in completions if target not in asking and nodes.get(target, {}).get("extraction_schema")
                        and not nodes[target].get("passthrough")
                        and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
             if len(answers) == 1:
@@ -2307,7 +2361,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         for entry in node.get("extraction_schema", []):
             if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
                 entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
-    _node_discipline(nodes)
+    _node_discipline(nodes, _ask_and_capture(nodes))
     # On the host a routing_prompt replaces the router's intent instruction and
     # every intent row then matched, so the first row won; without it the
     # default router chose correctly. Intent nodes never keep one.
@@ -2336,8 +2390,20 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",
                         "condition": {"logic": "or", "conditions": [{"variable": "bg_quarantined",
                             "operator": "equals", "operand": "yes"}]}}
+
+    def sealed(node, *extra):
+        # A code step the platform refuses (e.g. over its sandbox payload limit)
+        # leaves every earlier route value in place, a dispatch's allow too. Its
+        # documented failure counter routes to quarantine, never to a resend.
+        route = copy.deepcopy(quarantine_route)
+        route["condition"]["conditions"] += [{"variable": node + "_failure_count", "operator": "greater_than", "operand": 0}, *extra]
+        return route
     entries = []
-    for name, node in sorted(plan["nodes"].items()):
+    # Plan names never start with PREFIX, so the budget close's derived names
+    # (bg_bg_budget_close_api, ...) cannot collide with a plan node's.
+    budget = {"node_type": "guard_action", "action": "close_call", "inputs": {},
+              "success_node": BUDGET_CLOSE, "blocked_node": BUDGET_CLOSE, "failure_node": BUDGET_CLOSE}
+    for name, node in sorted(plan["nodes"].items()) + [(BUDGET_CLOSE, budget)]:
         if node["node_type"] != "guard_action":
             continue
         action = node["action"]
@@ -2357,7 +2423,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             result_vars['_types'] = PREFIX + name + '_result_types'
         needs_confirmation = (action == "commit_promises" and profile.get("require_confirmation") is True
                               or action in profile.get("confirmation_actions", []))
-        routes = [copy.deepcopy(quarantine_route), _transition(success, "done")]
+        routes = [sealed(name), _transition(success, "done")]
         if operation:
             routes += [_transition(api, "allow")]
             if needs_confirmation:
@@ -2368,9 +2434,10 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             # loop when no authorized bank disposition can be formed. A refused
             # close is quarantined above and ends at the quarantine terminal,
             # without fabricating a bank close or persistence claim.
-            routes = [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition("bg_terminal")]
-        nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
-        entries.append(name)
+            routes = [sealed(name), _transition(api, "allow"), _transition("bg_terminal")]
+        nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars,
+                                             bounded=name != BUDGET_CLOSE), routes)
+        entries += [name] if name != BUDGET_CLOSE else []
         if not operation:
             continue
         tool = copy.deepcopy(catalog[operation]["tool"])
@@ -2379,18 +2446,26 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             leaf["default"] = "{{bg_arg_" + key + "}}"
         # This hook only transports the already validated immutable JSON body.
         # It never decides whether an action is authorized or rewrites its URL.
-        tool["pre_process_code"] = "try:\n    config['body'] = str(vars.get('bg_body') or '')\nexcept Exception:\n    pass\n"
+        # It also consumes the one-shot allow that authorised this request, so
+        # only fresh reconciliation can authorise another one.
+        tool["pre_process_code"] = "try:\n    config['body'] = str(vars.get('bg_body') or '')\n    vars['bg_route'] = 'sent'\nexcept Exception:\n    pass\n"
         # Transport only the actual immutable HTTP envelope status and the raw
         # JSON type of each trusted result field, which the string mapping
         # erases. The kit documents hooks before response_mapping; API
         # pre_action automatic result-key naming is insufficiently explicit.
         names = [actual for _, actual in sorted(catalog[operation]["results"].items())]
-        tool["post_process_code"] = ("try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\n"
+        tool["post_process_code"] = ("try:\n    if isinstance(result, dict):\n        result.pop('header', None)\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\n"
             "        kinds = list()\n        for name in " + repr(names) + ":\n            value = result['data'].get(name)\n"
             "            kinds.append('absent' if name not in result['data'] else 'null' if value is None else 'boolean' if value is True or value is False"
             " else 'integer' if isinstance(value, int) else 'number' if isinstance(value, float) else 'string' if isinstance(value, str)"
             " else 'array' if isinstance(value, list) else 'object' if isinstance(value, dict) else 'other')\n"
-            "        result['data']['bg_result_types'] = ','.join(kinds)\nexcept Exception:\n    pass\n")
+            "        result['data']['bg_result_types'] = ','.join(kinds)\nexcept Exception:\n    pass\n"
+            # The hosted mapping turns a JSON array or object into an empty
+            # string (11 Oct, a 200 get_account with three products), so the
+            # kernel needs the container as JSON text. A separate block, so a
+            # failure here never erases the status and type evidence above.
+            "try:\n    import json\n    for name in " + repr(names) + ":\n        if isinstance(result['data'].get(name), (list, dict)):\n"
+            "            result['data'][name] = json.dumps(result['data'][name], allow_nan=False)\nexcept Exception:\n    pass\n")
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}
@@ -2405,10 +2480,11 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [
                     {"variable": "bg_consent", "operator": "equals", "operand": value} for value in ("yes", "no", "unclear")]}}]}
             nodes[accept] = _code_node(accept, _code("confirm", action, {}, profile, catalog, maps, result_vars),
-                [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition(blocked)])
+                [sealed(accept), _transition(api, "allow"), _transition(blocked)])
         nodes[reconcile] = _code_node(reconcile, _code("result", action, {}, profile, catalog, maps, result_vars),
             ([_transition("bg_terminal")] if action == "close_call" else
-             [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
+             [sealed(reconcile, {"variable": "bg_route", "operator": "equals", "operand": "sent"}),
+              _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
     # A lone intent row into an LLM-entry decision that can send the caller
     # back costs a routing-model call per answer that the decision judges
@@ -2427,6 +2503,16 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 and all(row.get("is_tool_call") is True for row in exits) and any(row.get("target_node") == name for row in exits)):
             rows[-1]["condition"] = {"operator": "always"}
             node.pop("routing_prompt", None)
+    # The kit date types anchor the extractor on the platform's real date; the
+    # kernel judges dates by the call's supplied now (hosted round 1, R8).
+    clocked = {value for node in plan["nodes"].values() if node["node_type"] == "guard_action"
+               for key, value in node.get("inputs", {}).items() if key in ("date", "time")}
+    for node in nodes.values():
+        for entry in node.get("extraction_schema", []):
+            if entry.get("type") in ("date", "datetime") or entry["name"] in clocked:
+                entry["description"] = (entry.get("description", "") + " This call's clock reads {{now}}. When that shows"
+                                        " a date, resolve today, tomorrow, weekdays and every other relative date or"
+                                        " time from it, never from any other current date.").strip()
     _bound_entries(nodes, list(plan["nodes"]))
     routing_changes += _one_route_per_target(nodes)
     workflow = {"initial_node": "bg_init", "nodes": nodes}

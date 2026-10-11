@@ -6,26 +6,45 @@ extraction check. This file adds the kit rules those two leave implicit and
 the records to fill in during the final window. It records no submission.
 Organizer instructions, when supplied, override this file.
 
+Plan B is primary tonight: [`planb/`](../planb/README.md), run by `tools/planb_attempts.py`. The big
+builder is the fallback for a brief without a Plan B export. The official submission is one
+`submission.json` ([official rules](T18-FINAL-WINDOW.md#official-rules)). The ZIP items below apply to
+fallback runs only.
+
 ## Kit rules that shape the final window
 
 From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
 
 - Per final brief, submit the exported phone agent and the trace of the run
-  that built it; also submit the builder code. One trace per brief.
+  that built it; also submit the builder code. One trace per brief. With Plan B:
+  - the workflow is `out/<brief>.workflow.json`;
+  - the trace is `out/<brief>.trace.jsonl`, plus the builder's notes in `out/<brief>.trace.txt`;
+  - the builder and its skill are `planb/agent_builder.py`, `planb/.claude/skills/build-phone-agent/SKILL.md`,
+    the kit files in `planb/` and `tools/planb_attempts.py`, at the submitted commit.
+- Official rules (18:30 Istanbul):
+  - One `submission.json` (team, members, repo, commit, run_command, workflow, trace, mock_url), e-mailed
+    before 23:00 Istanbul.
+  - The trace holds every model call (model and a one-line purpose), the start and end time, and what the run
+    created on Freya (workflow id, agent id, number of steps and tools), with keys removed.
 - A builder run on one brief may take 30 minutes, including any test it runs on
   its own agent. The builder may run more than once; submit one run's agent with
-  that run's trace, and no manual step inside a run. Tonight each brief gets the
-  [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix) from `tools/final_attempts.py launch`:
-  round 1 is two strict Claude attempts (`claude-opus-5-5`, `high`). Round 2, two
-  relaxed ones, runs only for a brief that round 1 left without a selected attempt, or with a
-  selected deterministic fallback export. `select` picks one by the order declared in
-  [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order), which
-  prefers a model-plan export, then a strict one. Every attempt stays on disk.
+  that run's trace, and no manual step inside a run.
+  - **Plan B.** Tonight each brief gets 2 Plan B attempts from `tools/planb_attempts.py`, started 60 s apart
+    and killed at 30 minutes. It picks the attempt that saved a workflow and has the highest final self-test
+    pass rate, then the shortest elapsed time.
+  - **Fallback.** Only a brief without a Plan B export gets the big builder's
+    [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix) from `tools/final_attempts.py launch`.
+    Its round 1 is two strict Claude attempts (`claude-opus-5-5`, `high`). Round 2, two
+    relaxed ones, runs only for a brief that round 1 left without a selected attempt, or with a
+    selected deterministic fallback export. `select` picks one by the order declared in
+    [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order), which
+    prefers a model-plan export, then a strict one. Every attempt stays on disk.
 - The kit exports with `freya.export_workflow(workflow_id, "<brief>.workflow.json")`.
-  The builder writes the same envelope to `<run>/submission.workflow.json`, and
-  the ZIP stores it as `workflows/hidden-N.workflow.json`. For upload, copy those
-  bytes unchanged to `<brief>.workflow.json`, using the organizer's name for that
-  brief, unless the organizer names files differently. Never re-serialize or edit.
+  `tools/planb_attempts.py` does exactly that, into `out/`. The big builder writes the
+  same envelope to `<run>/submission.workflow.json`, and the ZIP stores it as
+  `workflows/hidden-N.workflow.json`. For upload, copy those bytes unchanged to
+  `<brief>.workflow.json`, using the organizer's name for that brief, unless the
+  organizer names files differently. Never re-serialize or edit.
 - The organizer loads the exported file into its own workspace: the file is
   what gets scored, not the hosted slot.
 - Equal scores rank by total promised amount, then shorter build time, then
@@ -52,6 +71,21 @@ A field still empty at 19:15 UTC / 22:15 Istanbul: ask the organizer through
 the channel the instructions came from. Do not guess an address.
 
 ## Before sending (on the evidence HEAD)
+
+Plan B:
+
+- [ ] `out/planb-summary.json` names a `selected` attempt for every brief, and its `workflow` and `trace` files
+      exist. `planb/` and `tools/planb_attempts.py` at the commit named in `submission.json` are unchanged
+      from the summary's `source_commit`, which is what the run used.
+- [ ] Each trace has no key left. `trace_redactions` says how many were removed. Search it again for `fak_`
+      and `sk-ant-` before committing.
+- [ ] The workflow and trace that `submission.json` names are committed and pushed, byte-identical to the
+      `out/` files.
+- [ ] `submission.json` has every field: team, members, repo, commit, run_command, workflow, trace, mock_url.
+      The mock answers at `mock_url`.
+- [ ] Clock is before 19:40 UTC / 22:40 Istanbul.
+
+Fallback runs only:
 
 - [ ] `final_attempts.py select` exited 0. Both `artifacts/final/<label>/selection.json`
       records name the selected attempt k of N and its mode, and no attempt directory was
@@ -96,6 +130,14 @@ issue 19 without credentials or transcripts.
 
 ## Contingencies
 
+- **A brief has no Plan B export (`planb_attempts.py` exits 3).** Read that brief's attempts in
+  `out/planb-summary.json` and their `builder.log` files.
+  - If they failed on infrastructure (a lease wait, platform errors), start one more `planb_attempts` run for
+    that brief.
+  - Otherwise launch the big builder's `--round 1 --labels hidden-N`.
+
+  Any builder starts by 22:00 Istanbul. A later run replaces the selection only with a higher self-test pass
+  rate.
 - **A brief has no eligible attempt (`select` exits 3).** After round 1, launch
   `--round 2 --labels hidden-N` for that brief alone. If every strict attempt ended
   on a platform error (or a Claude API rate-limit or overload error), launch another

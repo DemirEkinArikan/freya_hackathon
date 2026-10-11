@@ -42,6 +42,8 @@ from .source_provenance import capture_source_provenance, verify_source_unchange
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 from .policy_patch import apply_policy_patch, repair_excerpt
+from .policy_demotion import demote_policy
+from .platform_lint import lint_workflow
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -124,7 +126,8 @@ def parser() -> argparse.ArgumentParser:
                      help="Fail instead of exporting the deterministic fallback plan when no model plan validates")
     out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
                      help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
-                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy")
+                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy; after bounded "
+                          "repairs, typed rules the sealed compiler still refuses are demoted the same way and recorded")
     return out
 
 
@@ -291,7 +294,41 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
 
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
-                    repair_mode="patch", declarations="strict"):
+                    repair_mode="patch", declarations="strict", demotions=None):
+    """Bounded extraction; a relaxed build that still fails, or has no time for a repair, demotes the last rejected policy."""
+    last = {}
+    try:
+        return _extract_policy_attempts(generator, sources, openapi, run_dir, trace, deadline, secrets, last,
+                                        workflow_pending=workflow_pending, repair_mode=repair_mode,
+                                        declarations=declarations)
+    except (DeadlineExceeded, GenerationError, ValueError) as exc:
+        if declarations != "relaxed" or "policy" not in last or deadline.remaining() <= EXPORT_RESERVE:
+            raise
+        original = f"{type(exc).__name__}: {exc}"
+        try:
+            policy, steps = demote_policy(last["policy"], sources, openapi)
+        except Exception as failure:  # a malformed policy that crashes demotion is a failed demotion too
+            errors = list(getattr(failure, "errors", None) or [f"{type(failure).__name__}: {failure}"])
+            trace.emit("policy_demotion", passed=False, attempt=last["attempt"], steps=getattr(failure, "demotions", []),
+                       errors=errors)
+            if not isinstance(exc, ValueError):
+                raise exc from failure  # a deadline or generation failure keeps its own type
+            raise ValueError(f"{exc}; relaxed demotion could not compile the policy: " + "; ".join(errors)) from exc
+    compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
+    requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
+    _write_json(run_dir / "policy.demoted.json", sanitize({"policy": policy, "demotions": steps}, secrets=secrets))
+    trace.emit("policy_demotion", passed=True, attempt=last["attempt"], steps=steps,
+               original_failure=original)
+    trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
+               selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
+               attempt=last["attempt"], repair_mode="demotion")
+    if demotions is not None:
+        demotions.extend(steps)
+    return copy.deepcopy(policy), compiled, requirements, last["attempt"] - 1
+
+
+def _extract_policy_attempts(generator, sources, openapi, run_dir, trace, deadline, secrets, last, *,
+                             workflow_pending=True, repair_mode="patch", declarations="strict"):
     repair = failure = rejected = retry = exhausted = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     # Injected generators without the patch call keep full repairs.
@@ -369,6 +406,8 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             policy, changes = normalise_policy(policy, {source["id"]: source["text"] for source in sources})
             if changes:
                 trace.emit("policy_normalisation", attempt=attempt + 1, changes=changes)
+            if isinstance(policy, dict):  # secret-free and normalised: the only kind relaxed demotion may use
+                last.update(policy=copy.deepcopy(policy), attempt=attempt + 1)
             compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
             # Execution-shape errors belong to bounded extraction repairs,
             # before the policy is frozen; plans cannot repair bank rules.
@@ -529,6 +568,21 @@ def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict],
     return contract["sha256"]
 
 
+def _platform_lint(run_dir: Path, trace: Trace, candidate: dict, attempt: int, secrets: tuple[str, ...]) -> dict:
+    """Record findings against verified platform behaviour; never a rejection or a change to the candidate.
+
+    Exact recompilation validates the guarded workflow, so fixes belong in the compiler, not here.
+    """
+    try:
+        report = lint_workflow(candidate["workflow"], candidate.get("policy"))
+        _write_json(run_dir / "platform-lint.json", sanitize(report, secrets=secrets))
+        summary = report["summary"]
+    except Exception as exc:  # a lint fault must never cost a build
+        summary = {"error": f"{type(exc).__name__}: {exc}"}
+    trace.emit("platform_lint", attempt=attempt, **summary)
+    return summary
+
+
 def _known_secrets() -> tuple[str, ...]:
     return tuple(v for k, v in os.environ.items() if v and
                  (k.endswith(("API_KEY", "ACCESS_TOKEN", "SECRET", "PASSWORD")) or
@@ -625,6 +679,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                 reasoning_effort=args.reasoning_effort)
         trace.emit("stage_started", stage="policy")
         stage_started = deadline.elapsed()
+        demotions = []
         if args.policy_file:
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
@@ -638,7 +693,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy, compiled, requirements, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
                 workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair,
-                declarations=declarations)
+                declarations=declarations, demotions=demotions)
             policy_origin = "extracted"
         _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
                          repairs=policy_repairs, origin=policy_origin)
@@ -655,6 +710,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             relaxed_record.update({"prompt_enforced_limitations": [
                 {"category": entry["category"], "rule_ids": entry["rule_ids"], "enforced_by": "dialogue_prompt"}
                 for entry in compiled["prompt_enforced_limitations"]], "unguarded_close_codes": unguarded})
+            if demotions:
+                relaxed_record["policy_demotions"] = demotions
             trace.emit("relaxed_declarations", **relaxed_record)
         elif unguarded:
             relaxed_record["unguarded_close_codes"] = unguarded
@@ -828,6 +885,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             _write_json(run_dir / "workflow.json", candidate["workflow"])
             trace.emit("action_guard_compilation", verified=True,
                        plan_sha256=digest(plan), guard_manifest_sha256=digest(guard_bundle["guard_manifest"]))
+            platform_lint = _platform_lint(run_dir, trace, candidate, attempt_number, secret_values)
             if mode == "generate-only":
                 deadline.require()
                 _attempt_status(attempt_dir, attempt_record, secret_values, status="generated_validated", phase="complete")
@@ -841,7 +899,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "execution_requirements_sha256": requirements["sha256"],
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
-                            "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
+                            "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None, "platform_lint": platform_lint,
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                             "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
@@ -944,7 +1002,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "execution_requirements_sha256": requirements["sha256"],
                     "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                     "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
-                    "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
+                    "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None, "platform_lint": platform_lint,
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "evaluator_input": evaluator_input,

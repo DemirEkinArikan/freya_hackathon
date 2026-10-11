@@ -2013,7 +2013,9 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
             # Reconcile a dispatched request before administrative termination.
             # Known recorded successes and uncertain persistence survive it.
             tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + " and state.get('closed') is not True:\n        state = guard_projection_quarantine(state)\n        route, body, readback = 'blocked', dict(), ''\n"
-    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    if state.get('quarantined') is True:\n        body, readback = dict(), ''\n        vars['bg_quarantined'] = 'yes'\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
+    # Consent resets write the declared enum value 'unclear', never '': the
+    # platform drops code writes that a variable's extraction schema refuses.
+    tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    if state.get('quarantined') is True:\n        body, readback = dict(), ''\n        vars['bg_quarantined'] = 'yes'\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = 'unclear'\n    vars['bg_facts'] = guard_json(facts)\n"
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
@@ -2021,7 +2023,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
         tail += "    if refusal and facts['call_status'] != 'quarantined':\n        facts['latest_action'] = dict(action=spec['action'], status='refused', reason=refusal)\n        vars['bg_facts'] = guard_json(facts)\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
-    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
+    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = 'unclear'\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
     # A refused close has no eligible close left to prove, so it is flagged, never a silent unflagged end.
@@ -2087,7 +2089,7 @@ def _entry_budget_code(*, abort: bool = False) -> str:
                "    vars['bg_budget_exhausted'] = 'yes'\n"
                "    vars['bg_quarantined'] = 'yes'\n"
                "    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n"
-               "    vars['bg_consent'] = ''\n"
+               "    vars['bg_consent'] = 'unclear'\n"
                "    try:\n"
                "        state = json.loads(str(vars.get('bg_state') or ''))\n"
                "        state['quarantined'] = True\n"

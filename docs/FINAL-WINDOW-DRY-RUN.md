@@ -303,10 +303,10 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    `python3.11 tools/final_attempts.py health --env-file "$MAIN/.env"; withenv tools/final_attempts.py select`.
    A failed attempt whose error names `HTTP 50x` hit a platform failure, not a
    builder fault (T18-FINAL-WINDOW.md).
-   It prints one JSON line per attempt (status, effort and the six criteria) and exits 2
+   It prints one JSON line per attempt (status, effort and the seven criteria) and exits 2
    while any attempt still runs. A brief whose attempts have all finished gets its
-   `selection.json` even then. When that record selects no attempt, start round 2 for
-   that brief alone: in the step 6 command, replace `--round 1` with
+   `selection.json` even then. When that record selects no attempt, or selects a
+   deterministic fallback export, start round 2 for that brief alone: in the step 6 command, replace `--round 1` with
    `--round 2 --labels hidden-N` and `launch.log` with `launch-hidden-N-round-2.log`.
    If every strict attempt of the brief ended on a
    platform error, repeat `--round 1 --labels hidden-N` instead. The new attempts

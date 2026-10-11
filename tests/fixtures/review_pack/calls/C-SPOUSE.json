@@ -1,0 +1,25 @@
+{
+ "id": "x",
+ "messages": [
+  {
+   "role": "assistant",
+   "message": "Hello, am I speaking with the account holder?"
+  },
+  {
+   "role": "user",
+   "message": "No, this is her husband."
+  },
+  {
+   "role": "system",
+   "message": "{\"event\": \"function_call_start\", \"function\": \"get_account\", \"args\": {\"customer_id\": \"c_1\"}}"
+  },
+  {
+   "role": "system",
+   "message": "{\"event\": \"function_call_start\", \"function\": \"code_exec\", \"args\": {\"code\": \"x=1\"}}"
+  },
+  {
+   "role": "assistant",
+   "message": "I can only speak with the account holder. Goodbye."
+  }
+ ]
+}

@@ -1,0 +1,12 @@
+{
+ "C-SPOUSE": {
+  "notes": [
+   {
+    "reason": "third_party"
+   }
+  ],
+  "calls": [
+   "get_account"
+  ]
+ }
+}

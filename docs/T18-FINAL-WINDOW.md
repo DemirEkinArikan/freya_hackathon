@@ -38,7 +38,7 @@ organizer instructions govern execution. Customer cases remain hidden.
   the builder's relaxed declaration option (R1) in the frozen source; without it,
   round 2 refuses to start.
 - The freeze must cover the matrix's provider, model and effort: Claude
-  `claude-opus-5-5` at `xhigh`. Founder directive 18:05 Istanbul: Claude
+  `claude-opus-5-5` at `high`. Founder directive 18:05 Istanbul: Claude
   everywhere, best version.
 - Obtain and read organizer submission instructions when supplied. Record the
   actual channel, permitted attachment layout, credential/import requirements,
@@ -65,10 +65,10 @@ verified ZIP and organizer-ready attachments. Do not consume that buffer on test
 |---|---|---|
 | Before 17:00 | Before 20:00 | Finish broad tests, T17 acceptance/freeze and preparation gates; frozen checkout, guard and preflight |
 | 17:00–17:02 | 20:00–20:02 | Save both briefs/APIs as exact bytes with ordered amendments, write `spec.json` and pins; read submission instructions |
-| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: two strict Claude attempts (`claude-opus-5-5`, `xhigh`) per brief, 4 builders, starts interleaved 60 s apart |
+| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: two strict Claude attempts (`claude-opus-5-5`, `high`) per brief, 4 builders, starts interleaved 60 s apart |
 | 17:02–17:35 | 20:02–20:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
 | 17:20–17:40 | 20:20–20:40 | As soon as `select` shows a brief's round 1 finished with no selected attempt: `launch --round 2 --labels hidden-N` |
-| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (two relaxed Claude attempts at `xhigh`) |
+| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (two relaxed Claude attempts at `high`) |
 | 17:35–18:40 | 20:35–21:40 | Once both briefs have a selection: `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
 | 18:15–19:15 | 21:15–22:15 | One more round only for a brief still without an eligible attempt: it starts by 21:45 and ends by 22:15 |
 | 19:15–19:45 | 22:15–22:45 | Select, package and verify retry results; prepare attachments |
@@ -90,16 +90,21 @@ tonight they run none.
 
 | Round | Briefs | Attempts per brief |
 |---|---|---|
-| 1 | both, at 20:02 | 2 × Claude `claude-opus-5-5`, strict, `xhigh` |
-| 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | 2 × Claude `claude-opus-5-5`, relaxed, `xhigh` |
+| 1 | both, at 20:02 | 2 × Claude `claude-opus-5-5`, strict, `high` |
+| 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | 2 × Claude `claude-opus-5-5`, relaxed, `high` |
 | optional, `--providers claude codex` | as the round | plus Codex (`--codex-model`, default `gpt-6.1-sol`) high and medium, in that round's mode |
 
-Every attempt passes `--provider claude --model claude-opus-5-5 --reasoning-effort xhigh`
-to the builder. `xhigh` is the strongest effort the packager accepts
-(`low`, `medium`, `high`, `xhigh`), and both attempts of a round use it: when
-both export, selection prefers the earlier finish, so a lower-effort second
-attempt would often replace the stronger agent. The builder still stops itself
-at 1,800 s.
+Every attempt passes `--provider claude --model claude-opus-5-5 --reasoning-effort high`
+to the builder. `high` is the strongest effort that fits 30 minutes. On 11 October
+(18:16–18:31 Istanbul) one first policy call (the builder's own prompt for public
+Brief A + B, structured output) took 353 s and 45,159 output tokens at `high`, and
+808 s and 104,671 output tokens at `xhigh`; `max` was still running after 900 s. The builder
+gives the first policy call 900 s, and the plan and export still need their own
+time, so `xhigh` and `max` do not fit, and hidden briefs may be longer. Both
+attempts of a round use `high`: when both export, selection prefers the earlier
+finish, so a lower-effort second attempt would often replace the stronger agent.
+A timed-out `high` policy call is retried at `medium` inside the same run. The
+builder still stops itself at 1,800 s.
 
 - **Strict** is the builder's default declaration handling. **Relaxed** is the
   builder's last-resort declaration mode (R1, issue 8 comment 6108951431). A
@@ -305,7 +310,11 @@ append-only `trace.jsonl`, canonical `submission.workflow.json`, original
 Read and correlate workflow/agent/published-version IDs, graph/export hashes,
 ordered input/API fingerprints, isolation audit, model calls with one-line purpose,
 start/end times and finite in-budget duration. The trace and `builder-source.json`
-must name the provider, model and effort. Inspect that the published readback
+must name the provider, model and effort. For a Claude run the packager requires
+the builder's request-shape isolation audit (`api_no_tools`, no request tools)
+before the first substantive call, the Messages API catalog with no tools, and
+model calls on the invocation model or on a model a `model_fallback` event names
+first; `max` is a Claude effort only. Inspect that the published readback
 and final exported graph match the authored deployment. Preserve original failed
 readbacks, test results and overruns. Do not attach an older trace to a newer slot.
 

@@ -118,13 +118,13 @@ class FinalAttemptsTests(unittest.TestCase):
             self.assertEqual(record['pid'] - 7100, popen.call_args_list.index(call))
             self.assertEqual((record['round'], record['provider'], record['model'], record['mode'], record['reasoning_effort'],
                               record['builder_processes_before_start'], record['codex_account']),
-                             (1, 'claude', 'claude-opus-5-5', 'strict', 'xhigh', 0, None))
+                             (1, 'claude', 'claude-opus-5-5', 'strict', 'high', 0, None))
         self.assertEqual(len(slots), 4)
         self.assertNotEqual(final.os.environ.get('FREYA_API_KEY'), 'synthetic-launch-key')
         self.assertNotIn('ANTHROPIC_API_KEY', final.os.environ)
         # The matrix, interleaved and spread: both briefs start in turn, and starts are a pause apart.
-        self.assertEqual(self.started(popen), [('brief.md', 'xhigh', []), ('brief-2.md', 'xhigh', []),
-                                               ('brief.md', 'xhigh', []), ('brief-2.md', 'xhigh', [])])
+        self.assertEqual(self.started(popen), [('brief.md', 'high', []), ('brief-2.md', 'high', []),
+                                               ('brief.md', 'high', []), ('brief-2.md', 'high', [])])
         self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 3)
         # One staging probe before each start, recorded in its launch record and the health log.
         self.assertEqual(self.client.call_args.kwargs['api_key'], 'synthetic-launch-key')
@@ -147,7 +147,7 @@ class FinalAttemptsTests(unittest.TestCase):
                    call.kwargs['env'].get('ANTHROPIC_API_KEY')) for argv, call in ((call.args[0], call) for call in popen.call_args_list)]
         for argv in (call.args[0] for call in popen.call_args_list):
             builder_parser().parse_args(argv[2:])
-        claude = ('claude', 'claude-opus-5-5', 'xhigh', None, 'synthetic-claude-key')
+        claude = ('claude', 'claude-opus-5-5', 'high', None, 'synthetic-claude-key')
         # Claude attempts never get a Codex account. Each brief's two Codex attempts use different accounts,
         # and each account gets one high and one medium attempt.
         self.assertEqual(starts, [('artifacts/final/hidden-1/attempt-1', *claude), ('artifacts/final/hidden-2/attempt-1', *claude),
@@ -250,7 +250,7 @@ class FinalAttemptsTests(unittest.TestCase):
         for arguments in ((), (('--provider', ('claude', 'codex')),)):
             def parser(arguments=arguments):
                 out = argparse.ArgumentParser()
-                out.add_argument('--reasoning-effort', choices=('low', 'medium', 'high') if arguments else ('high', 'xhigh'))
+                out.add_argument('--reasoning-effort', choices=('low', 'medium') if arguments else ('high', 'xhigh'))
                 for name, choices in arguments:
                     out.add_argument(name, choices=choices)
                 return out
@@ -294,14 +294,14 @@ class FinalAttemptsTests(unittest.TestCase):
         self.relaxed = ['--declarations', 'relaxed']
         (code, _, _), popen = self.launch('--round', '2', '--labels', 'hidden-1')
         self.assertEqual(code, 0)
-        self.assertEqual(self.started(popen), [('brief.md', 'xhigh', ['--declarations', 'relaxed']),
-                                               ('brief.md', 'xhigh', ['--declarations', 'relaxed'])])
+        self.assertEqual(self.started(popen), [('brief.md', 'high', ['--declarations', 'relaxed']),
+                                               ('brief.md', 'high', ['--declarations', 'relaxed'])])
         for call in popen.call_args_list:
             builder_parser().parse_args(call.args[0][2:])  # Including the builder's real relaxed option.
         launched = [json.loads((self.root / f'artifacts/final/hidden-1/attempt-{number}/launch.json').read_text())
                     for number in (3, 4)]
         self.assertEqual([(record['round'], record['provider'], record['mode'], record['reasoning_effort']) for record in launched],
-                         [(2, 'claude', 'relaxed', 'xhigh'), (2, 'claude', 'relaxed', 'xhigh')])
+                         [(2, 'claude', 'relaxed', 'high'), (2, 'claude', 'relaxed', 'high')])
         # The relaxed export is selected; then only another strict round could still improve the brief.
         for number in (3, 4):
             shutil.rmtree(self.root / f'artifacts/final/hidden-1/attempt-{number}')
@@ -532,12 +532,12 @@ class FinalAttemptsTests(unittest.TestCase):
                           'time': events[7]['time']})
         trace.write_text('\n'.join(json.dumps(event) for event in events))
         fixture.rebind_provenance('hidden-1')
-        place('hidden-1', 1, '20261011T170201000000Z')  # strict xhigh, one diagnostic
+        place('hidden-1', 1, '20261011T170201000000Z')  # strict high, one diagnostic
         shutil.rmtree(self.root / 'hidden-2')
         failed = fail('hidden-2', 1)  # Neither strict attempt of hidden-2 exports.
         fail('hidden-2', 2)
         fixture.evidence()
-        place('hidden-1', 2, '20261011T170202000000Z')  # strict xhigh, clean
+        place('hidden-1', 2, '20261011T170202000000Z')  # strict high, clean
 
         git = patch.object(subprocess, 'run', return_value=SimpleNamespace(stdout='a' * 40, returncode=0))
         with git, patch.object(final.verifier, 'check_recompilation'):
@@ -545,7 +545,7 @@ class FinalAttemptsTests(unittest.TestCase):
             self.assertEqual(code, 3, out)
             self.assertEqual((self.record()['selected'], self.record()['attempt_count']), (2, 2))
             self.assertEqual([(entry['provider'], entry['mode'], entry['reasoning_effort'], entry['diagnostics'])
-                              for entry in self.record()['attempts']], [('claude', 'strict', 'xhigh', 1), ('claude', 'strict', 'xhigh', 0)])
+                              for entry in self.record()['attempts']], [('claude', 'strict', 'high', 1), ('claude', 'strict', 'high', 0)])
             self.assertIsNone(self.record('hidden-2')['selected'])
             # Round 2 only for the brief left without a strict export.
             (code, _, error), popen = self.launch('--round', '2')
@@ -554,15 +554,15 @@ class FinalAttemptsTests(unittest.TestCase):
             popen.assert_not_called()
             (code, _, _), popen = self.launch('--round', '2', '--labels', 'hidden-2')
             self.assertEqual(code, 0)
-            place('hidden-2', 3, '20261011T173003000000Z')  # relaxed xhigh, clean
+            place('hidden-2', 3, '20261011T173003000000Z')  # relaxed high, clean
             fail('hidden-2', 4)
             code, out, _ = self.run_main('select')
             self.assertEqual(code, 0, out)
             record = self.record('hidden-2')
             self.assertEqual((record['selected'], record['attempt_count']), (3, 4))
             self.assertEqual([(entry['mode'], entry['reasoning_effort'], entry['exported']) for entry in record['attempts']],
-                             [('strict', 'xhigh', False), ('strict', 'xhigh', False), ('relaxed', 'xhigh', True),
-                              ('relaxed', 'xhigh', False)])
+                             [('strict', 'high', False), ('strict', 'high', False), ('relaxed', 'high', True),
+                              ('relaxed', 'high', False)])
             self.assertEqual(self.run_main('manifest', '--team', 'synthetic')[0], 0)
             manifest_path = self.root / 'artifacts/submission/manifest.json'
             value = json.loads(manifest_path.read_text())
@@ -571,8 +571,8 @@ class FinalAttemptsTests(unittest.TestCase):
             commands = value['run_command'].splitlines()
             self.assertIn('--output-dir artifacts/final/hidden-1/attempt-2', commands[0])
             # The organizers can rerun each selected command with their own ANTHROPIC_API_KEY.
-            self.assertTrue(commands[0].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort xhigh'))
-            self.assertTrue(commands[1].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort xhigh --declarations relaxed'))
+            self.assertTrue(commands[0].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort high'))
+            self.assertTrue(commands[1].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort high --declarations relaxed'))
             self.assertNotIn('synthetic-claude-key', manifest_path.read_text())
             self.assertEqual(value['selections']['hidden-2'], 'artifacts/final/hidden-2/selection.json')
             retained = package.check_manifest(value)

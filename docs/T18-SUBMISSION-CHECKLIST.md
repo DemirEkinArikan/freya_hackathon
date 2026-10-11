@@ -16,7 +16,7 @@ From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
   its own agent. The builder may run more than once; submit one run's agent with
   that run's trace, and no manual step inside a run. Tonight each brief gets the
   [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix) from `tools/final_attempts.py launch`:
-  round 1 is two strict Claude attempts (`claude-opus-5-5`, `xhigh`). Round 2, two
+  round 1 is two strict Claude attempts (`claude-opus-5-5`, `high`). Round 2, two
   relaxed ones, runs only for a brief that round 1 left without a selected attempt, or with a
   selected deterministic fallback export. `select` picks one by the order declared in
   [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order), which

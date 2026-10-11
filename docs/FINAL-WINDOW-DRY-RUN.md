@@ -289,7 +289,7 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 ### About 20:02 (17:02 UTC): start round 1, two strict Claude attempts per brief
 
 6. Start round 1 of the [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix). That is
-   four Claude builders (`--provider claude --model claude-opus-5-5 --reasoning-effort xhigh`),
+   four Claude builders (`--provider claude --model claude-opus-5-5 --reasoning-effort high`),
    each in its own `artifacts/final/<label>/attempt-<k>/` with its own new slot and
    `ANTHROPIC_API_KEY` from `~/.freya-anthropic-key`. Starts alternate between the
    briefs, 60 s apart, so the launcher runs for about 3 minutes; `nohup` keeps it
@@ -396,7 +396,7 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 ## Still open before tonight
 
 - The T17 freeze record: source commit and inventory SHA-256. The model and effort are
-  fixed: Claude `claude-opus-5-5` at `xhigh` (founder directive 18:05 Istanbul). The
+  fixed: Claude `claude-opus-5-5` at `high` (founder directive 18:05 Istanbul). The
   frozen commit needs the builder's Claude generator (`--provider`).
 - The organizer email: submission channel, attachment names, team identifier and any
   credential/import rule.

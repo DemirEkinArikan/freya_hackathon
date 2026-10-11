@@ -45,14 +45,15 @@ class PackageTests(unittest.TestCase):
             path = self.root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text('#!/bin/sh\n')
         self.assertEqual({path.relative_to(self.root).as_posix() for path in package.source_files()}, {'tools/diagnostic.sh'})
 
-    def evidence(self, status="exported", mode="live"):
+    def evidence(self, status="exported", mode="live", claude=False):
         # This is fabricated consistency evidence. It never establishes a live build.
         (self.root / 'builder').mkdir(exist_ok=True)
         (self.root / 'benchmarks').mkdir(exist_ok=True)
         (self.root / 'builder/build.py').write_text('# Synthetic runtime fixture\n')
-        config = {'mode': mode, 'model': 'synthetic-test-model', 'reasoning_effort': 'high',
+        model, effort = ('claude-opus-5-5', 'max') if claude else ('synthetic-test-model', 'high')
+        config = {'mode': mode, 'model': model, 'reasoning_effort': effort,
                   'codex_executable': 'codex', 'deadline_seconds': 1800, 'export_reserve_seconds': 300,
-                  'max_repairs': 2, 'controller_dependency_injection': False}
+                  'max_repairs': 2, 'controller_dependency_injection': False, **({'provider': 'claude'} if claude else {})}
         (self.root / 'api.json').write_text('{}')
         for name in ("hidden-1", "hidden-2"):
             brief_name = 'brief.md' if name == 'hidden-1' else 'brief-2.md'
@@ -82,12 +83,13 @@ class PackageTests(unittest.TestCase):
                       {'event': 'inputs', 'sources': sources, 'tool_api_sha256': digest({}), 'time': '2026-10-10T12:00:00Z'},
                       {'event': 'builder_source_snapshot', 'builder_source_sha256': source['builder_source_sha256'],
                        'builder_source_record_sha256': digest(source), 'resolved_config': source['resolved_config'], 'time': '2026-10-10T12:00:00Z'},
-                      {'event': 'model_call', 'model': config['model'], 'reasoning_effort': 'high',
-                       'purpose': 'Audit generation tools/context with synthetic isolation canaries', 'time': '2026-10-10T12:00:00Z'},
-                      self.audit_event(),
-                      {'event': 'generation_model_catalog', **self.catalog(), 'time': '2026-10-10T12:00:01Z'},
-                      {"event": "model_call", "model": "synthetic-test-model", "purpose": "Extract banking policy and source/API bindings",
-                       "prompt_characters": 100, 'reasoning_effort': 'high',
+                      # Claude's audit checks the request shape, with no model call of its own.
+                      *([] if claude else [{'event': 'model_call', 'model': config['model'], 'reasoning_effort': 'high',
+                       'purpose': 'Audit generation tools/context with synthetic isolation canaries', 'time': '2026-10-10T12:00:00Z'}]),
+                      self.audit_event(claude),
+                      {'event': 'generation_model_catalog', **self.catalog(claude), 'time': '2026-10-10T12:00:01Z'},
+                      {"event": "model_call", "model": model, "purpose": "Extract banking policy and source/API bindings",
+                       "prompt_characters": 100, 'reasoning_effort': effort, **({'provider': 'anthropic'} if claude else {}),
                        "time": "2026-10-10T12:00:01Z"},
                       {'event': 'stage_completed', 'stage': 'policy', 'origin': 'extracted', 'time': '2026-10-10T12:00:01Z'},
                       {'event': 'action_guard_compilation', 'verified': True, 'plan_sha256': digest(plan),
@@ -99,7 +101,7 @@ class PackageTests(unittest.TestCase):
                    'policy_contract_sha256': contract['sha256'], 'selected_attempt': 1, 'selected_attempt_directory': 'attempts/plan-001',
                    'deployment': deployment, 'export_sha256': digest(wf), 'elapsed_seconds': 3, 'tests': None,
                    'hosted_behavior_verified': False, 'policy_origin': 'extracted'}
-            run.update(model=config['model'], reasoning_effort='high', builder_source_sha256=source['builder_source_sha256'],
+            run.update(model=config['model'], reasoning_effort=effort, builder_source_sha256=source['builder_source_sha256'],
                        builder_source_record_sha256=digest(source))
             run.update(action_guard_compilation_verified=True, plan_sha256=digest(plan),
                        guard_manifest_sha256=digest(guards), authored_workflow_sha256=digest(wf['workflow']),
@@ -133,7 +135,12 @@ class PackageTests(unittest.TestCase):
                 'inputs': {n: {'briefs': ['brief.md' if n == 'hidden-1' else 'brief-2.md'], 'tool_api': 'api.json'} for n in ('hidden-1', 'hidden-2')}}
 
     @staticmethod
-    def audit_event():
+    def audit_event(claude=False):
+        if claude:  # The shape builder/runtime.ClaudeGenerator.check_isolation records.
+            return {'event': 'generation_isolation_audit', 'time': '2026-10-10T12:00:00Z', 'status': 'pass',
+                    'provider': 'anthropic', 'isolation_mode': 'api_no_tools', 'failures': [],
+                    'request_fields': ['extra_headers', 'max_tokens', 'messages', 'model', 'output_config', 'thinking'],
+                    'request_tools': [], 'model_catalog': PackageTests.catalog(True)}
         return {'event': 'generation_isolation_audit', 'time': '2026-10-10T12:00:00Z',
                 'status': 'pass', 'failures': [], 'canary_exposure': [], 'response_valid': True,
                 'model_reported_tools': [], 'model_reported_tool_count': 0, 'unrecognized_tool_name_count': 0,
@@ -141,7 +148,12 @@ class PackageTests(unittest.TestCase):
                 'observed_item_types': ['agent_message'], 'model_catalog': PackageTests.catalog()}
 
     @staticmethod
-    def catalog():
+    def catalog(claude=False):
+        if claude:
+            return {'source': 'anthropic_messages_api', 'provider': 'anthropic', 'api': 'messages', 'model': 'claude-opus-5-5',
+                    'fallback_model': 'claude-sonnet-5-5', 'sdk': 'anthropic-python', 'sdk_version': '0.71.0',
+                    'max_tokens': 128000, 'thinking': {'type': 'adaptive', 'display': 'summarized'}, 'tools': [],
+                    'refusal_fallback': 'server_default', 'isolation_mode': 'api_no_tools', 'generation_catalog_sha256': 'e' * 64}
         return {'source': 'installed_cli_bundled', 'model': 'synthetic-test-model',
                 'source_model_sha256': 'c' * 64, 'generation_catalog_sha256': 'd' * 64,
                 'restricted_capabilities': {'shell_type': 'disabled', 'apply_patch_tool_type': None,
@@ -165,6 +177,45 @@ class PackageTests(unittest.TestCase):
             data = self.evidence()
             (self.root / "hidden-1.json").write_text(json.dumps({"workflow_id": "changed", "agent_id": "a", "workflow": {"nodes": {}}}))
             with self.assertRaisesRegex(ValueError, "does not match"):
+                package.check_manifest(data)
+
+    def test_claude_runs_package_with_their_own_request_audit_and_catalog(self):
+        def mutated(change):
+            data = self.evidence(claude=True)
+            path = self.root / 'hidden-1.jsonl'
+            events = [json.loads(line) for line in path.read_text().splitlines()]
+            change(events)
+            path.write_text('\n'.join(json.dumps(event) for event in events))
+            self.rebind_provenance('hidden-1')
+            return data
+
+        def calls(**fields):
+            return lambda events: [event.update(fields) for event in events if event['event'] == 'model_call']
+
+        def fallback(events):  # Opus unavailable: the trace records the switch before the call it serves.
+            events.insert(4, {'event': 'model_fallback', 'from_model': 'claude-opus-5-5', 'to_model': 'claude-sonnet-5-5',
+                              'reason': 'overloaded', 'time': events[3]['time']})
+            calls(model='claude-sonnet-5-5')(events)
+        with patch.object(subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40)):
+            self.assertEqual(len(package.check_manifest(self.evidence(claude=True))), 42)
+            package.check_manifest(mutated(fallback))
+            for case, change in {
+                    'audit after the call': lambda events: events.insert(5, events.pop(3)),
+                    'audit failed': lambda events: events[3].update(status='fail', failures=['request_tools_or_context']),
+                    'request carries tools': lambda events: events[3].update(request_tools=['tools']),
+                    'Codex audit shape': lambda events: events[3].update(PackageTests.audit_event()),
+                    'catalog with tools': lambda events: [event.update(tools=[{'name': 'web_search'}]) for event in events
+                                                          if event['event'] == 'generation_model_catalog'],
+                    'undeclared model': calls(model='claude-sonnet-5-5'),
+                    'other effort': calls(reasoning_effort='low')}.items():
+                with self.subTest(case=case), self.assertRaises(ValueError):
+                    package.check_manifest(mutated(change))
+            # max is Claude's effort only.
+            data = self.evidence()
+            source = json.loads((self.root / 'hidden-1/builder-source.json').read_text())
+            source['resolved_config']['reasoning_effort'] = 'max'
+            (self.root / 'hidden-1/builder-source.json').write_text(json.dumps(source))
+            with self.assertRaisesRegex(ValueError, 'Invocation resolved configuration'):
                 package.check_manifest(data)
 
     def test_real_credential_like_value_is_rejected_without_echo(self):

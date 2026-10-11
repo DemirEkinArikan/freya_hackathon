@@ -200,7 +200,7 @@ class HostedCommandRecordingTests(unittest.TestCase):
             self.assertEqual(record["conditions"]["concurrency"], 2)
             self.assertEqual(record["conditions"]["budget_seconds"], 120)
             self.assertEqual(record["conditions"]["max_call_seconds"], 137)
-            self.assertEqual(record["conditions"]["platform_gateway_retries"], 5)
+            self.assertEqual(record["conditions"]["platform_get_retry"], {"max_retries": 5, "statuses": [500, 502, 503, 504]})
             self.assertEqual(record["conditions"]["platform_base_url"], STAGING)
             self.assertIsNone(record["conditions"]["builder_model"])
             self.assertEqual(len(backend.simulations), 1)

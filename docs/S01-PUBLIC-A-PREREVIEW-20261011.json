@@ -1,0 +1,1211 @@
+{
+  "schema_version": 1,
+  "review_id": "S01-public-a-prereview-claude-20261011",
+  "review_kind": "source_only_semantic_review",
+  "base_commit": "c3068d60a9f594c21bbb6491fa874a55e4ae3bc3",
+  "input_boundaries": "Kit v3 brief A, kit v3 brief B (public-B only), the kit OpenAPI and the candidate's original manifest, policy, execution-policy and workflow files only. No ledger, evaluator script or fixture, expected record, customer script, transcript, raw model event or holdout was read as an interpretation input. Acceptance results were used only to identify the candidate.",
+  "checker": "python3.11 tools/review_evidence_check.py docs/S01-PUBLIC-A-PREREVIEW-20261011.json",
+  "scope_decisions": [
+    {
+      "id": "F-02",
+      "decision": "out of scope (coordinator decision); the public briefs name no other language",
+      "url": "https://github.com/DemirEkinArikan/freya_hackathon/issues/8#issuecomment-6108651390"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "build-the-builder/briefs/brief-a.md",
+      "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+      "canonical_digest": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+    },
+    {
+      "path": "build-the-builder/tools/openapi.json",
+      "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+      "canonical_digest": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+    }
+  ],
+  "candidate": {
+    "run": "20261011T113924574303Z",
+    "source_commit": "42b1749d71082b776914f464bdafe3e29a1baa69",
+    "status": "generated_validated; acceptance driver 43/43 (issue 8 comment 6108917218)",
+    "evidence": [
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/manifest.json",
+        "raw_sha256": "9b50585cabf1482f59254bae86108a1892312bf38a12eb3a61d08054711fc8e3",
+        "pointer": "/status",
+        "value": "generated_validated"
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/manifest.json",
+        "raw_sha256": "9b50585cabf1482f59254bae86108a1892312bf38a12eb3a61d08054711fc8e3",
+        "pointer": "/selected_attempt_directory",
+        "value": "attempts/plan-001"
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/manifest.json",
+        "raw_sha256": "9b50585cabf1482f59254bae86108a1892312bf38a12eb3a61d08054711fc8e3",
+        "pointer": "/sources/0/sha256",
+        "value": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+      },
+      {
+        "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/manifest.json",
+        "raw_sha256": "9b50585cabf1482f59254bae86108a1892312bf38a12eb3a61d08054711fc8e3",
+        "pointer": "/tool_api_sha256",
+        "value": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+      }
+    ]
+  },
+  "verdict": {
+    "gate_ok": true,
+    "blocking": [],
+    "recorded_limitations": [
+      "A-01",
+      "A-02",
+      "A-03",
+      "A-04",
+      "A-05",
+      "A-06"
+    ],
+    "missing_source_requirements": [
+      "a closing disposition after a failed or uncertain verify_identity, get_account, schedule_callback or transfer_to_agent receipt (A-03)"
+    ],
+    "model_omissions": [],
+    "reason": "Every protected requirement is runtime-controlled or prompt-only. No source precondition is broken on an ordinary path; the six limitations sit on non-ideal, failure-injection or rare paths, or are fidelity choices."
+  },
+  "findings": [
+    {
+      "id": "A-01",
+      "classification": "policy_interpretation",
+      "t07_effect": "recorded_limitation",
+      "scope": "every promise read-back for a credit card",
+      "summary": "The protected read-back names the product by its type only, so a card is read back as \"credit card\" without its ending.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 88,
+          "quote": "Read the product, the amount and the date back and ask \"Do you confirm?\"."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 49,
+          "quote": "Name the product in words: \"credit card ending 4821\", \"personal loan\" or \"car loan\"."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 9,
+          "quote": "Freya Bank calls customers who are 1 to 45 days late on one product."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/rules/32/value",
+          "value": "product_type"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/rules/0/value",
+          "value": {
+            "products": "single"
+          }
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/promise_readback",
+          "value": "product_type"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/commit_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "\"promise_readback\":\\x7b\"product_fields\":[\"type\"]\\x7d"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "text = display.get('value_labels', dict()).get(field, dict()).get(str(value), str(value).replace('_', ' '))"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_commit_payment_confirm/on_enter/text",
+          "value": "{{bg_readback}}. Do you confirm?"
+        }
+      ],
+      "conclusion": "All three rule-34 elements (product, amount, date) are read back by the sealed controller before \"Do you confirm?\", so the consent precondition holds. Brief A has exactly one product, so \"credit card\" is unambiguous. Rule 17 names a card with its ending; the model chose the type-only label for rule 34 (the kernel can carry card_last4, as public-B r4 shows). Fidelity gap only; not blocking."
+    },
+    {
+      "id": "A-02",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "an early close whose language-derived outcome or reason the guard refuses",
+      "summary": "A refused early close ends the call at a silent end node with no close_call and no quarantine flag.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 106,
+          "quote": "Every call ends with exactly one `close_call`, with an outcome and, where the table lists one, a reason. It is the last tool call."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 33,
+          "quote": "If that is also outside it, do not schedule. Close as `not_reached` / `no_callback`."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/rules/53/value/required_close_attempts",
+          "value": 1
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/close_early/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "\"inputs\":\\x7b\"outcome\":\"proposed_exit_outcome\",\"reason\":\"proposed_exit_reason\"\\x7d"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/close_early/transitions/1/target_node",
+          "value": "bg_close_early_api"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/close_early/transitions/2/target_node",
+          "value": "bg_terminal"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/close_early/transitions/2/condition/operator",
+          "value": "always"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/callback_offer/extraction_schema/3/description",
+          "quote": "callback for an eligible proposed callback"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('identity closing proposal lacks one declared eligible choice')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('callback-success closing requires a recorded callback')"
+        }
+      ],
+      "conclusion": "Before account loading, the close reason is language-derived (extraction). The guard validates it against evidence and refuses an ineligible one, for example reason callback with no recorded callback. The refusal routes to bg_terminal, so the call ends with no close_call. Reachable only when an extraction is wrong or stale; no wrong write and no wrong close. Rule 46 is unmet on that path. Generic to the compiled close_early routing."
+    },
+    {
+      "id": "A-03",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "HTTP 500 or malformed receipts of verify_identity, get_account, schedule_callback and transfer_to_agent",
+      "summary": "Failure receipts of the non-promise tools end in a silent quarantine with no close_call.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 106,
+          "quote": "Every call ends with exactly one `close_call`, with an outcome and, where the table lists one, a reason. It is the last tool call."
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1verify_identity/post/responses/500/description",
+          "value": "The service failed. Nothing was recorded. The call may be repeated."
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1get_account/post/responses/500/description",
+          "value": "The service failed. Nothing was recorded. The call may be repeated."
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1schedule_callback/post/responses/500/description",
+          "value": "The service failed. Nothing was recorded. The call may be repeated."
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1transfer_to_agent/post/responses/500/description",
+          "value": "The service failed. Nothing was recorded. The call may be repeated."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/unsupported_constraints/0/category",
+          "value": "controller_stricter"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/unsupported_constraints/0/justification",
+          "quote": "The brief supplies no closing disposition for uncertain verification."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/nonpersistent_failures/create_promise/1/http_status",
+          "value": 500
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "return guard_identity_end(state, profile, 'uncertain')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "# Explicit failure is not successful evidence. Without an API-qualified"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_quarantine/node_type",
+          "value": "end_call"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_quarantine/on_enter/type",
+          "value": "silent"
+        }
+      ],
+      "conclusion": "Brief A gives a failure disposition only for create_promise (rule 37). The OpenAPI says every 500 recorded nothing and may be repeated, but the candidate declares only create_promise failures as nonpersistent, so other 500s are treated as uncertain and quarantine. The candidate declares this for verification (controller_stricter). Fails closed (no replay, no claim); rule 46 is unmet on those paths. Not blocking because the brief supplies no disposition."
+    },
+    {
+      "id": "A-04",
+      "classification": "unsupported_controller_representation",
+      "t07_effect": "recorded_limitation",
+      "scope": "a conversation node that exhausts its turn cap",
+      "summary": "The turn-budget stop ends the call without the ordinary close.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 106,
+          "quote": "Every call ends with exactly one `close_call`, with an outcome and, where the table lists one, a reason. It is the last tool call."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/rules/53/value/required_close_attempts",
+          "value": 1
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/contact_first/max_node_turns",
+          "value": 10
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/contact_first/max_turn_transition",
+          "value": "bg_turn_budget_stop"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_turn_budget_stop/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('conversation turn budget exhausted')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_turn_budget_stop/transitions/0/target_node",
+          "value": "bg_terminal"
+        }
+      ],
+      "conclusion": "Builder termination bound, as F-05 in the callback review. Needs ten turns in one node visit. Safe: no write and no claim."
+    },
+    {
+      "id": "A-05",
+      "classification": "policy_interpretation",
+      "t07_effect": "recorded_limitation",
+      "scope": "hardship mentioned and support declined before the account is loaded",
+      "summary": "A hardship decline before account loading cannot close as no_promise/hardship.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 83,
+          "quote": "If they decline, close as `no_promise` / `hardship`."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/system_prompt",
+          "quote": "Declined support yields hardship when products are loaded; an identity exit before loading instead uses the applicable sourced identity disposition without loading accounts or finalizing products."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('action requires trusted identity and account results')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/identity_close_choices/incomplete",
+          "value": [
+            {
+              "outcome": "not_verified",
+              "reason": "declined",
+              "requires": "none"
+            }
+          ]
+        }
+      ],
+      "conclusion": "Rule 32 states no phase. The candidate stages a hardship disposition only after loading; before it, only the identity rows (not_reached/*, not_verified/declined) can close. A pre-verification hardship decline therefore closes with an identity disposition, or not at all if the proposal names hardship. Rare (the purpose is not disclosed before verification) and explicit in the candidate; recorded as an interpretation choice."
+    },
+    {
+      "id": "A-06",
+      "classification": "policy_interpretation",
+      "t07_effect": "recorded_limitation",
+      "scope": "a create_promise success receipt without promise_id",
+      "summary": "A positive create_promise receipt counts only with a non-empty promise_id; brief A asks only for ok: true.",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 91,
+          "quote": "Say the promise is recorded only after `create_promise` returns `ok: true`."
+        }
+      ],
+      "policy_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/rules/36/value/recording_claim",
+          "quote": "Only after create_promise returns validated ok=true with its required persisted promise identity"
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1create_promise/post/responses/200/content/application~1json/schema/properties/promise_id/type",
+          "value": "string"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if action == 'commit_promises' and guard_true(ok) and (not isinstance(data.get('promise_id'), str) or not data['promise_id'].strip()):"
+        }
+      ],
+      "conclusion": "The OpenAPI lists promise_id in the 200 schema but declares no required fields. If the bank answers ok: true without promise_id, the kernel quarantines and the call ends with no close. Stricter than the brief; hosted T14 evidence must show that the bank returns promise_id on success."
+    }
+  ],
+  "satisfied_runtime_controlled": [
+    {
+      "id": "S-A01",
+      "item": "Identity: factor order, three wrong answers in total from the bank counter, swapped-month hint not charged, failed close deterministic, account only after both factors",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 40,
+          "quote": "Ask two security questions, one at a time: first the date of birth, then the last four digits of the phone number on file."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 41,
+          "quote": "Three wrong answers in total end the check, whichever question they were on."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 42,
+          "quote": "That retry does not count as a wrong answer."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 43,
+          "quote": "After three wrong answers, do not state the debt. Tell the customer to use the mobile app or a branch. Close as `not_verified` / `failed`."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 48,
+          "quote": "After both questions pass, call `get_account`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "expected = next(f for f in fields if f not in state['verified_fields'])"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('identity factors must follow policy order')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['wrong_answers'] = min(limit, max(state['wrong_answers'], budget - remaining))"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['identity_status'] = 'failed' if state['wrong_answers'] >= limit or remaining == 0 else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if state['identity_status'] != 'verified' or state['account_loaded'] or state['account_failed']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if state['identity_status'] == 'failed' and not state['account_loaded']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/identity_fields",
+          "value": [
+            "date_of_birth",
+            "phone_last4"
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/identity_wrong_limit",
+          "value": 3
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/identity_hint_exemptions",
+          "value": [
+            "day_month_swapped"
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/identity_close/failed",
+          "value": {
+            "outcome": "not_verified",
+            "reason": "failed"
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/failed_identity_goodbye/on_enter/text",
+          "value": "You can use the mobile app or a branch. Thank you. Goodbye."
+        }
+      ]
+    },
+    {
+      "id": "S-A02",
+      "item": "Calendar and deadlines: Monday-Friday less the five holidays; 12/7 business days strictly after today; promise date today..deadline on a business day; callback today or next business day, 10:00-19:00 inclusive, strictly after now",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 53,
+          "quote": "Business days are Monday to Friday, except Freya Bank holidays: 2026-10-26, 2026-11-11, 2026-11-26, 2026-12-25, 2027-01-01."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 59,
+          "quote": "| 1 to 7 | early | the 12th business day after today | 1 |"
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 60,
+          "quote": "| 8 to 45 | late | the 7th business day after today | 2 |"
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 62,
+          "quote": "A promise date must be today or later, a business day, and not after the deadline."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 32,
+          "quote": "A callback is for today or the next business day, from 10:00 to 19:00, both included, and later than `now`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/business_weekdays",
+          "value": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/holidays",
+          "value": [
+            "2026-10-26",
+            "2026-11-11",
+            "2026-11-26",
+            "2026-12-25",
+            "2027-01-01"
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/deadline_days",
+          "value": {
+            "early": 12,
+            "late": 7
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/band_ranges",
+          "value": [
+            {
+              "name": "early",
+              "min": 1,
+              "max": 7
+            },
+            {
+              "name": "late",
+              "min": 8,
+              "max": 45
+            }
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "def guard_deadline(now, days, profile):"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "day += datetime.timedelta(days=1)"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if day < today or day > deadline or not guard_business(day, profile):"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/callback_window",
+          "value": {
+            "start": "10:00",
+            "end": "19:00",
+            "allow_today": true,
+            "next_business_days": 1
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if not re.fullmatch(r'[0-9]{2}:[0-9]{2}', at) or not window['start'] <= at <= window['end']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if day == today and (not state['now_time'] or at <= state['now_time']):"
+        }
+      ]
+    },
+    {
+      "id": "S-A03",
+      "item": "Amounts: floor by product type; floor <= amount <= past_due, positive, whole cents",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 71,
+          "quote": "The **floor** is `minimum_payment` for a credit card and `instalment_amount` for a personal loan or a car loan."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 73,
+          "quote": "If the customer proposes an amount from the floor up to the full amount, both included, accept it."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/floor_fields",
+          "value": {
+            "credit_card": "minimum_payment",
+            "personal_loan": "instalment_amount",
+            "car_loan": "instalment_amount"
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "floor_field = profile['floor_fields'][product['type']]"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if cents <= 0 or cents < floor or cents > past_due:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('amount must have at most two decimal places')"
+        }
+      ]
+    },
+    {
+      "id": "S-A04",
+      "item": "Confirmation: controller read-back of product, amount and date with the literal \"Do you confirm?\"; fresh yes bound to the frozen request; a changed term restages and is read back again",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 88,
+          "quote": "Read the product, the amount and the date back and ask \"Do you confirm?\". Call `create_promise` only after a clear yes."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 89,
+          "quote": "If the customer changes the date or the amount at this step, check the new value against sections 7 and 8 and read it back again."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/confirmation_question",
+          "value": "Do you confirm?"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/require_confirmation",
+          "value": true
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "return '; '.join('Payment for ' + guard_display(guard_product(state, item['product_id']), profile) + ': ' + format(item['amount'], '.2f') + ' on ' + item['date'] for item in items)"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if consent != 'yes':"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if any(snapshot[key] != batch[key] for key in ('action', 'operation', 'items')):"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['pending_promises'][pid] = dict(amount_cents=cents, date=day.isoformat())"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/confirmation_scope",
+          "value": "each"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_commit_payment_confirm/on_enter/type",
+          "value": "tts"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/bg_commit_payment_confirm/extraction_schema/0/enum_values",
+          "value": [
+            "yes",
+            "no",
+            "unclear"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S-A05",
+      "item": "Recording: one immutable promise per product; at most two create_promise dispatches; 200 ok=false and 500 retried once; second failure becomes the service_error disposition; claims only after a recorded result",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 90,
+          "quote": "One promise per product. A recorded promise cannot be changed or cancelled in the same call."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 91,
+          "quote": "Say the promise is recorded only after `create_promise` returns `ok: true`. If it fails, try once more. If it fails again, say you could not record it and close as `no_promise` / `service_error`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('product is already recorded')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/promise_failure_limit",
+          "value": 2
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/attempt_scopes",
+          "value": {
+            "commit_promises": "product"
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/promise_failure_disposition",
+          "value": {
+            "reason": "service_error",
+            "clear_pending": true
+          }
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1create_promise/post/responses/500/description",
+          "value": "The service failed. Nothing was recorded. The call may be repeated."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if failures < profile['promise_failure_limit']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['pending_notes'][pid] = disposition['reason']"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['recorded_promises'][pid] = state['pending_promises'].pop(pid)"
+        }
+      ]
+    },
+    {
+      "id": "S-A06",
+      "item": "Transfers: support/restructuring/general to support/restructuring/human; allowed before and after verification; staging drops unrecorded terms; transferred outranks promise",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 83,
+          "quote": "If they accept, call `transfer_to_agent` with queue `support` and close as `transferred` / `support`."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 98,
+          "quote": "Call `transfer_to_agent` with queue `restructuring` and close as `transferred` / `restructuring`."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 99,
+          "quote": "If they insist, call `transfer_to_agent` with queue `general` and close as `transferred` / `human`."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 102,
+          "quote": "Rule 42 applies before and after verification."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 117,
+          "quote": "If a transfer follows a recorded promise, close as `transferred` with that transfer's reason."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/transfer_reasons",
+          "value": {
+            "support": "support",
+            "restructuring": "restructuring",
+            "general": "human"
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/transfer_prerequisites",
+          "value": {
+            "support": "unstated",
+            "restructuring": "unstated",
+            "general": "unstated"
+          }
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1transfer_to_agent/post/requestBody/content/application~1json/schema/properties/queue/enum",
+          "value": [
+            "restructuring",
+            "general",
+            "support"
+          ]
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "state['transfer'] = dict(queue=queue, reason=profile['transfer_reasons'][queue], status='pending')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('a staged or recorded transfer permits only handoff and final close')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "facts['transferred'] = dict(outcome='transferred', reason=transfer['reason'])"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/close_precedence",
+          "value": [
+            "transferred",
+            "promise"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S-A07",
+      "item": "Outcome table and closing: exact outcome/reason vocabulary, no reason for promise and paid, callback only with a recorded callback, no_callback never hides one, one close attempt and every close result terminal",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 106,
+          "quote": "Every call ends with exactly one `close_call`, with an outcome and, where the table lists one, a reason. It is the last tool call."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 110,
+          "quote": "| `promise` | none | at least one promise was recorded |"
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 113,
+          "quote": "| `no_promise` | `refused`, `hardship`, `dispute`, `service_error` | rules 31 and 45, 32, 40, 37 |"
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 115,
+          "quote": "| `not_reached` | `callback`, `no_callback`, `wrong_number`, `deceased`, `unclear` | rules 6, 7, 8, 9, 3 |"
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 33,
+          "quote": "If that is also outside it, do not schedule. Close as `not_reached` / `no_callback`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/close_reasons",
+          "value": {
+            "promise": [],
+            "paid": [],
+            "transferred": [
+              "restructuring",
+              "human",
+              "support"
+            ],
+            "no_promise": [
+              "refused",
+              "hardship",
+              "dispute",
+              "service_error"
+            ],
+            "not_verified": [
+              "failed",
+              "declined"
+            ],
+            "not_reached": [
+              "callback",
+              "no_callback",
+              "wrong_number",
+              "deceased",
+              "unclear"
+            ]
+          }
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if (allowed and proposal.get('reason') not in allowed) or (not allowed and proposal.get('reason')):"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "proposal = next((facts[outcome] for outcome in profile['close_precedence'] if outcome in facts), None)"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if proposal.get('reason') == 'callback' and not state['callbacks']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if proposal.get('reason') == 'no_callback' and state['callbacks']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "# Every close result is terminal, including malformed or negative evidence."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if state['closed'] or state.get('close_attempted') or state['quarantined'] or state['inflight']:"
+        },
+        {
+          "path": "build-the-builder/tools/openapi.json",
+          "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+          "pointer": "/paths/~1close_call/post/summary",
+          "value": "End the call. Always the last tool call. Nothing is accepted after it."
+        }
+      ]
+    },
+    {
+      "id": "S-A08",
+      "item": "Notes: add_note is never compiled (record_notes false); dispositions stay local",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 119,
+          "quote": "Brief A never uses `add_note`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/execution-policy.json",
+          "raw_sha256": "8bb34916dab7c754352eb14eba60c3804673f1cf7dadb4ade50e33cbc1c509e8",
+          "pointer": "/profile/record_notes",
+          "value": false
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/policy.json",
+          "raw_sha256": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "pointer": "/allowed_actions",
+          "value": [
+            "verify_identity",
+            "get_account",
+            "create_promise",
+            "schedule_callback",
+            "transfer_to_agent",
+            "close_call"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S-A09",
+      "item": "Fixed literal lines: the condolence sentence and the mobile-app-or-branch advice are fixed speech",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 35,
+          "quote": "If the person says the customer has died, say \"I am sorry for your loss.\", ask nothing else, and close as `not_reached` / `deceased`."
+        },
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 43,
+          "quote": "After three wrong answers, do not state the debt. Tell the customer to use the mobile app or a branch. Close as `not_verified` / `failed`."
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/deceased_goodbye/on_enter/text",
+          "value": "I am sorry for your loss. Thank you. Goodbye."
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/failed_identity_goodbye/on_enter/text",
+          "value": "You can use the mobile app or a branch. Thank you. Goodbye."
+        }
+      ]
+    },
+    {
+      "id": "S-A10",
+      "item": "Bindings: customer_id comes from the controller into every request; request fields and enums come from the OpenAPI",
+      "source_evidence": [
+        {
+          "path": "build-the-builder/briefs/brief-a.md",
+          "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "line": 17,
+          "quote": "| `customer_id` | `c_4f2a...` | Pass it to every tool call. |"
+        }
+      ],
+      "export_evidence": [
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "if name not in spec['fields']:"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "raise ValueError('request value outside supplied enum')"
+        },
+        {
+          "path": "/private/tmp/claude-501/-Users-demirekinarikan-VsCode/e5f2ad49-b709-4f78-b853-ec55469fa2b1/scratchpad/wt/t07-publicA-42b1749/artifacts/t07-public-a-generation/20261011T113924574303Z/workflow.json",
+          "raw_sha256": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "pointer": "/nodes/stage_payment/pre_actions/0/function/parameters/properties/code/default",
+          "quote": "semantic = dict(customer_id=state['customer_id'], field=field, answer=str(inputs['answer']))"
+        }
+      ]
+    }
+  ],
+  "prompt_only_unproven_dialogue": [
+    "opening sentence, and no collections/debt/payment/product words before verification (also to relatives)",
+    "the literal contact question \"Am I speaking with {title} {last_name}?\", the accepted confirmations and the second ask",
+    "AI, scam and unanswerable-question replies",
+    "date-of-birth normalisation (numbers read day, month, year) and asking for the month as a word after the hint",
+    "one explanation before a second security decline closes not_verified/declined; refusing to talk twice",
+    "the debt statement, including \"credit card ending NNNN\", and the literal \"Can you make this payment today?\"",
+    "full amount first, never \"how much can you pay?\", floor offered once with \"the rest stays overdue\", below-floor statement",
+    "vague period asked once then the deadline; next/this weekday; weekend or holiday to the next business day; after-deadline to the deadline",
+    "persuasion attempts (count per band, attempt 1 date, attempt 2 floor on the deadline) and no repeated refused offer (the kernel does not count attempts)",
+    "hardship sympathy sentence, support offer and its priority over persuasion and restructuring; no discount, waiver or plan",
+    "the SMS sentence after a recorded promise, \"could not record\" after the second failure, mobile-app advice for a change request",
+    "paid statement, dispute without argument, the human-request question asked once",
+    "third parties: nothing beyond the opening, no security answers from relatives; thank and goodbye before close_call"
+  ]
+}

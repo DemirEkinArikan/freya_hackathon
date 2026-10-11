@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 from .policy import rule_value, validate_policy
 from .safety import assert_no_secrets
 from .call_variables import CallVariablesError, declared_call_variables
+from .contract import PolicyContractError, _resolve_schema_refs
+from .toolbindings import resolve_refs
 
 NODE_TYPES = {"conversation", "api_request", "code", "end_call", "transfer_call",
               "integration", "knowledge_base", "reschedule_call", "invoke_agent", "exit"}
@@ -605,7 +607,14 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         errors.append("workflow.agent_config must be omitted for this event")
     if not isinstance(openapi, Mapping):
         return errors + ["openapi must be an object"]
-    operations = _operations(openapi)
+    try:
+        # Read schemas as the contract catalogue binds them: strict local refs, then compatible allOf.
+        checked = _resolve_schema_refs(openapi, openapi)
+        operations = _operations(resolve_refs(checked, checked))
+    except PolicyContractError as exc:
+        return errors + ["openapi: " + message for message in exc.errors]
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        return errors + ["openapi: unsupported schema reference or allOf composition"]
     nodes = workflow.get("nodes")
     globals_ = workflow.get("global_nodes", {})
     if not isinstance(nodes, dict) or not nodes:

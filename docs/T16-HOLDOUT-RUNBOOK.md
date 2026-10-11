@@ -31,6 +31,11 @@ resolved configuration is reported as `config_supplied: false`; the observed
 Python version alone is not the accepted build configuration. Add
 `--config-file <nonsecret-original-config.json>` only for an actually recorded
 configuration. Inventory inspection is not a claim that a run used these files.
+Reservations accept only scalar descriptive metadata and the hosted seed/style
+reservation fields. Readiness rejects policy/oracle payloads in reserved rows,
+already authored profiles referenced by reserved local rows, and blank scripts
+marked materialized. These checks classify content; they do not establish
+independent authoring or accepted evaluation.
 
 The generic candidate digest covers visible source/config extensions recursively
 under the supplied root. `builder/` alone omits benchmark runtime hooks. The
@@ -39,6 +44,17 @@ top-level `benchmarks/*.py`, excluding fixture/customer/oracle directories.
 Neither inventory includes every host dependency or authenticates local files.
 
 ## Freeze evidence after T15
+
+T15 hands over its accepted source/configuration and actual development comparison
+evidence, including the original A and B build manifests, exports and published
+deployment pins. Retain those original artifacts and hashes; a later manifest or
+republished version cannot stand in for the accepted deployment. T16 freezes
+that accepted candidate before independent authoring. Give S06 the freeze and
+authored pack hashes, the separate original A/B deployment manifests and IDs,
+recorded evaluation settings, and unique result/evidence paths for scheduling.
+S06 reconciles the shared lease with current server status before each launch
+and returns the original trial paths and simulation/iteration/call identifiers.
+This is a technical resource handoff; any authorized worker can perform it.
 
 Record the exact checked/pushed Git head and merged T15 PR; original source
 snapshot, trace and manifest; ordered approved source/API fingerprints;
@@ -189,16 +205,52 @@ actual server status with the sole shared lease:
 /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.json
 ```
 
-Current `benchmarks.hosted` CLI derives a lease from its checkout and the builder
-hook derives it from its output directory. Do not launch those defaults from a
-separate worktree. A coordinated runner must construct `FreyaClient` with the
-absolute shared `lease_path`, use `verify_holdout_manifest`, `load_deployment`,
-`check_holdout_config`, `load_cases(..., split="holdout", brief="A" or "B")`
-and `evaluate(..., reps=3, deployment=...)`, and preserve sanitized results.
-Otherwise run the pinned hosted CLI only from the primary checkout after its
-source/config is verified and its default resolves to that exact shared lease.
-An absent local lock alone is not proof that no server simulation is running.
-Never replace an active/unknown lease or automatically retry a slow simulation.
+`benchmarks.hosted --execute` requires explicit `--simulation-lease`; use the
+canonical absolute path above from every checkout. It verifies the held-out
+freeze/configuration, uses the original deployment manifest to verify its export
+and published pin, and reads back the published
+deployment before and after evaluation, and records sanitized trial evidence.
+The builder hook uses its supplied client's lease; do not substitute a worktree
+or output-local lease. An absent local lock alone is not proof that no server
+simulation is running. Never replace an active/unknown lease or automatically
+retry a slow simulation.
+
+After T15 acceptance, freeze and independent authoring, schedule separate A/B
+invocations with their own accepted original pins. Replace every placeholder with
+the handed-over paths, IDs and frozen settings before invoking these templates;
+use a new `<evaluation-id>` for every attempt. Execute from the verified source
+checkout, keeping referenced manifests/exports and outputs within that project:
+
+```sh
+python3.11 -m benchmarks.hosted --execute \
+  --cases benchmarks/holdout/t16-candidate-1/hosted.json --split holdout --brief A \
+  --agent-id <accepted-A-agent-id> \
+  --deployment-manifest <original-accepted-A-build-directory>/manifest.json \
+  --reps 3 --concurrency <recorded-concurrency> \
+  --budget-seconds <recorded-evaluation-budget> --max-call-seconds <recorded-max-call-seconds> \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --out artifacts/t16/hosted/<evaluation-id>/A/results.json \
+  --evidence-dir artifacts/t16/hosted/<evaluation-id>/A/evidence
+python3.11 -m benchmarks.hosted --execute \
+  --cases benchmarks/holdout/t16-candidate-1/hosted.json --split holdout --brief B \
+  --agent-id <accepted-B-agent-id> \
+  --deployment-manifest <original-accepted-B-build-directory>/manifest.json \
+  --reps 3 --concurrency <recorded-concurrency> \
+  --budget-seconds <recorded-evaluation-budget> --max-call-seconds <recorded-max-call-seconds> \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --out artifacts/t16/hosted/<evaluation-id>/B/results.json \
+  --evidence-dir artifacts/t16/hosted/<evaluation-id>/B/evidence
+```
+
+The CLI refuses an existing `--out` and creates an exclusive attempt directory
+under `--evidence-dir`, printing its `trial.json` path. Preserve that record
+and any available result, including interrupted attempts and lease identifiers; do
+not overwrite failures or reconstruct missing invocation evidence. Record actual
+A/B selections and repetitions against the 60 distinct hosted cases: splitting
+by brief or running three repetitions does not add cases. The local target is
+60 distinct authored cases with clean/raw pairs, also counted once per case.
+Keep compilation, observed local behavior and hosted dialogue/wording results
+separate. Evaluation budgets do not extend the builder's 1,800-second deadline.
 
 ## Consume and preserve validation evidence
 

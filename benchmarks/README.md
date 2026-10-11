@@ -32,7 +32,7 @@ To evaluate compilation without exposing the benchmark, export only bank source 
 
 ## Candidate freeze and holdout lifecycle
 
-The independent T16 authoring and evidence gates are recorded in
+The independent T16 authoring and evidence protocol is recorded in
 [the held-out runbook](../docs/T16-HOLDOUT-RUNBOOK.md). While T15 remains open,
 inspect inventories only; do not author or execute real holdouts. Readiness
 reports actual reservations/materialized rows without writing a freeze:
@@ -51,12 +51,46 @@ Freeze captures source/config files under the candidate root, excluding credenti
 
 ## Hosted evaluation: explicit execution only
 
+Staging and simulations are authorized through the shared scheduling protocol.
+Preparation and dry runs do not authorize premature holdout use: T15 acceptance
+and the accepted candidate freeze must precede fresh independent authoring and
+held-out execution. T15 supplies the original accepted A/B source/configuration,
+build manifests, exports and deployment pins; S06 schedules their unchanged
+published versions under the shared lease. Any authorized worker may perform
+the handoff; no person/account-identity gate applies. The runbook has separate
+A/B held-out templates and the complete evidence protocol.
+
+Replace placeholders and use a fresh attempt ID before executing:
+
 ```sh
-python3 -m benchmarks.hosted --execute --agent-id <id> --brief A --split train --reps 3
-python3 -m benchmarks.hosted --execute --agent-id <id> --deployment-manifest artifacts/<run>/manifest.json --brief B --split holdout --reps 3
+python3.11 -m benchmarks.hosted --execute --agent-id <A-agent-id> \
+  --deployment-manifest <original-A-build-directory>/manifest.json \
+  --cases benchmarks/fixtures/hosted.json --brief A --split train --reps 3 \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --out artifacts/evaluations/<attempt-id>/A-results.json \
+  --evidence-dir artifacts/evaluations/<attempt-id>/A-evidence
+python3.11 -m benchmarks.hosted --execute --agent-id <accepted-B-agent-id> \
+  --deployment-manifest <original-accepted-B-build-directory>/manifest.json \
+  --cases benchmarks/holdout/t16-candidate-1/hosted.json --brief B --split holdout --reps 3 \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --out artifacts/t16/hosted/<attempt-id>/B-results.json \
+  --evidence-dir artifacts/t16/hosted/<attempt-id>/B-evidence
 ```
 
-Do not run execution commands under the current no-spend boundary. The default is dry-run; it does not initialize a client or require credentials. Live execution needs a Freya API key and a team bank key of at least 16 characters. Each agent evaluates one brief; use the A/B subset files or `--brief` to avoid incompatible note semantics. Optional baseline and mandatory holdout `--deployment-manifest` pin the exported graph, agent and published version ID/number; real-client read-back verifies them before and after evaluation. Every pinned call also requires a positive integer `agentVersionNumber` from its judge or transcript matching that deployment. Conflicting or malformed versions fail; absent per-call attribution is incomplete evidence. Unpinned development runs record unavailable attribution explicitly. Read-back publication proves the stored deployment, while per-call metadata attributes the executed call. A changed/missing graph or evidence is an infrastructure failure, not a conversation pass. Output paths remain inside the project and cannot traverse symlinks. Bank HTTP redirects are blocked so team credentials cannot be forwarded to another host.
+The default is dry-run; it does not initialize a client or require credentials. Live execution requires explicit `--simulation-lease`, a Freya API key and a team bank key of at least 16 characters. Coordinate current server status with S06 before every launch; an absent lock does not prove an idle server. Each agent evaluates one brief; use the A/B subset files or `--brief` to avoid incompatible note semantics. Optional baseline and mandatory holdout `--deployment-manifest` pin the exported graph, agent and published version ID/number; real-client read-back verifies them before and after evaluation. Retain the original accepted A/B pins instead of republishing or reconstructing them. Every pinned call also requires a positive integer `agentVersionNumber` from its judge or transcript matching that deployment. Conflicting or malformed versions fail; absent per-call attribution is incomplete evidence. Unpinned development runs record unavailable attribution explicitly. Read-back publication proves the stored deployment, while per-call metadata attributes the executed call. A changed/missing graph or evidence is an infrastructure failure, not a conversation pass. Output paths remain inside the project and cannot traverse symlinks. Bank HTTP redirects are blocked so team credentials cannot be forwarded to another host.
+
+Execution automatically records sanitized selected rows/hash, resolved settings,
+session calendars, operation timings, reports and interruption identifiers in an
+exclusive directory under `--evidence-dir`; the CLI prints its `trial.json` path.
+Use unique `--out` and `--evidence-dir` paths for each brief/attempt; an existing
+result path is rejected. Preserve failed and incomplete attempts. Defaults are
+five concurrent calls, a 1,800-second evaluation budget and 420 seconds per call;
+set `--concurrency`, `--budget-seconds` and `--max-call-seconds` explicitly when
+the accepted frozen configuration differs. These budgets do not extend a
+builder's deadline. T16 requires 60 new local cases and 60 new hosted cases;
+report actual authored, executed and passing counts separately. Reservations,
+clean/raw pairs, A/B subsets and repetitions add no cases. Compilation, observed
+behavior and dialogue/wording remain separate claims.
 
 Every variant has a unique `fixture_id` and a separate known `bank_case_id`. The latter alone is sent to `/v1/practice/sessions`. Server-returned variables are preserved unchanged, with fresh sessions for every case and repetition. The adapter rejects reused customer/session IDs, duplicate persona IDs and unknown bank seeds. One workspace simulation runs at a time through the platform client's shared lease; per-simulation call concurrency defaults to the kit's five. Three repetitions require every repetition to pass. No automatic slow-run retries spend additional credits.
 

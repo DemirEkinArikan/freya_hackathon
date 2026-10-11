@@ -116,8 +116,11 @@ class GoalTerminalCloseTests(unittest.TestCase):
         session.action("get_account")
         session.result("get_account", {"ok": True, "products": [PRODUCT]})
         self.assertTrue(session.state["account_loaded"])
+        before = session.variables["bg_state"]
         session.action("close_call", outcome="not_reached", reason="")
         self.assert_refused(session)
+        self.assertTrue(session.state["quarantined"])  # a refused close ends its call with the flag
+        session.variables["bg_state"] = before  # resume the state before it
         session.action("close_call", outcome="INFO_DONE", reason="")
         self.assertEqual(session.variables["bg_route"], "allow")
         self.assertEqual(session.body["outcome"], "INFO_DONE")

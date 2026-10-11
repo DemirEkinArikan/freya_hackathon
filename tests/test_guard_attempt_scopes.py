@@ -344,8 +344,10 @@ class OtherWriteReceiptTests(unittest.TestCase):
         self.assertFalse(state['transfer'])
         self.assertEqual(state['recorded_promises'], previous)
         self.assertEqual(state['attempt_counts'], {'commit_transfer:call': 2})
+        before = h.variables['bg_state']
         h.code('close')
         self.assertFalse(h.variables['bg_body'])  # Remaining product resolution is not waived by resume.
+        h.variables['bg_state'] = before  # a refused close ends its call; resume the state before it
         h.variables.update(product='internal-product-A', note_reason='NOTE_R')
         h.code('note')
         h.code('finish')

@@ -53,6 +53,19 @@ class AskAndCaptureTests(unittest.TestCase):
         self.assertEqual(enters(nodes["listen"]["transitions"][0]["target_node"]), "decide")
         self.assertNotIn("extraction_schema", context["plan"]["nodes"]["ask"])
 
+    def test_no_reply_relay_into_a_step_that_asks_its_own_question(self):
+        for authored, relayed in ((False, False), (True, True)):
+            with self.subTest(authored_answer_step=authored):
+                context = decide_shaped()
+                nodes = context["plan"]["nodes"]
+                if authored:
+                    nodes["ask"]["extraction_schema"] = copy.deepcopy(nodes["listen"]["extraction_schema"])
+                nodes["explain"] = {"name": "explain", "node_type": "conversation", "task_message": "Explain the batch.",
+                                    "transitions": [tool("commit"), tool("ask")]}
+                nodes["decide"]["transitions"].append(tool("explain"))
+                compiled, _ = self.compile(context)
+                self.assertEqual("bg_explain_reply" in compiled, relayed)
+
     def test_other_shapes_are_left_alone(self):
         def silent_answer_with_two_exits(nodes):
             nodes["listen"]["transitions"].insert(0, {"target_node": "close", "description": "stop", "condition": {

@@ -2099,7 +2099,7 @@ def _entry_budget_code(*, abort: bool = False) -> str:
     return source
 
 
-def _ask_and_capture(nodes: dict) -> None:
+def _ask_and_capture(nodes: dict) -> set:
     """Capture each caller answer in the step that asked for it.
 
     On the host a speaking LLM-entry step takes its offered completion only
@@ -2108,8 +2108,9 @@ def _ask_and_capture(nodes: dict) -> None:
     question of its own and extracts the reply to that one instead, so an
     identity answer reached the controller under another factor. The asking
     step gets the answer step's extraction and its completion goes straight to
-    the answer step's single exit.
+    the answer step's single exit. Returns the asking steps changed.
     """
+    asking = set()
     for name, node in nodes.items():
         if node.get("passthrough") or node.get("extraction_schema") or (node.get("on_enter") or {}).get("type", "llm") != "llm":
             continue
@@ -2125,6 +2126,8 @@ def _ask_and_capture(nodes: dict) -> None:
         for route in routes:
             if route["target_node"] == answers[0]:
                 route["target_node"] = rows[0]["target_node"]
+        asking.add(name)
+    return asking
 
 
 def _bound_entries(nodes: dict, public_names: list[str]) -> None:
@@ -2169,7 +2172,7 @@ _COMPLETION_ONLY_RULE = (" Nothing in this step can capture a caller answer, so 
                          "State only account facts and action results that the runtime view shows.")
 
 
-def _node_discipline(nodes: dict) -> None:
+def _node_discipline(nodes: dict, asking: set = frozenset()) -> None:
     """Append the kit's per-node tool rules to every authored speaking node.
 
     A completion-only step (LLM entry, no extraction, only completions) captures
@@ -2185,7 +2188,8 @@ def _node_discipline(nodes: dict) -> None:
         if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
                 and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
             text += _COMPLETION_ONLY_RULE
-            answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
+            # A step that asks its own question answers a relayed pending reply with it (R3).
+            answers = {target for target in completions if target not in asking and nodes.get(target, {}).get("extraction_schema")
                        and not nodes[target].get("passthrough")
                        and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
             if len(answers) == 1:
@@ -2271,8 +2275,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
-    _ask_and_capture(nodes)
-    _node_discipline(nodes)
+    _node_discipline(nodes, _ask_and_capture(nodes))
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.

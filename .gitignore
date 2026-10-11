@@ -36,3 +36,6 @@ build-the-builder/out/
 .simulation-lease.json
 benchmarks/generated/
 benchmarks/holdout/
+
+# Wrangler local state and bundles of the bank mock
+.wrangler/

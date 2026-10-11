@@ -92,23 +92,24 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str,
                                      " rule shape; a code whose source meaning is not listed there is never a key")
         if len(set(mapping.values())) != len(mapping):
             raise ActionBindingError("ambiguous semantic mapping for " + category)
-        named = {_name(n) for n in CANONICAL[category] | (GUARDED if category != "queues" else set())}
-        if any(_name(wire) in named and _name(wire) != _name(meaning) for meaning, wire in mapping.items()):
-            raise ActionBindingError("canonical API values cannot be assigned conflicting meanings; a code spelled like"
-                                     " a builder meaning in any case or separators, or an outcome, reason or note code"
-                                     " spelled like an outcome meaning, callback or no_callback, binds only to that meaning")
+        guarded = {_name(n) for n in GUARDED} if category != "queues" else set()
+        if any(wire in CANONICAL[category] and wire != meaning or _name(wire) in guarded and _name(wire) != _name(meaning)
+               for meaning, wire in mapping.items()):
+            raise ActionBindingError("canonical API values cannot be assigned conflicting meanings; an outcome, reason or"
+                                     " note code spelled like an outcome meaning, callback or no_callback in any case or"
+                                     " separators binds only to that meaning")
         # A declared semantic key resolves to its unique wire code; the check
         # above makes that resolution unambiguous. Anything else is unbound.
         loose = {mapping.get(value, value) for value in values} - set(mapping.values())
         if loose and (canonical_only or category not in ("outcomes", "reasons")
-                      or {_name(v) for v in loose} & {_name(n) for n in set().union(*CANONICAL.values())}
+                      or loose & set().union(*CANONICAL.values()) or {_name(v) for v in loose} & guarded
                       or not _unbound_permitted(policy)):
             raise ActionBindingError(
                 "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
                 + " API value nor one of its declared meanings; only a close_call outcome or reason code whose source"
-                " meaning is not a builder meaning, and which is not itself a builder meaning name in any case or"
-                " separators, may stay unbound, and only in a goal whose roles are limited to verify_identity,"
-                " get_account and close_call")
+                " meaning is not a builder meaning, and which is neither itself a builder meaning name nor spelled like"
+                " an outcome meaning, callback or no_callback in any case or separators, may stay unbound, and only in"
+                " a goal whose roles are limited to verify_identity, get_account and close_call")
         if canonical_only and any(meaning != wire for meaning, wire in mapping.items()):
             raise ActionBindingError("opaque values require API-validated bindings")
         maps[category] = deepcopy(mapping)

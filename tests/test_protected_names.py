@@ -123,6 +123,7 @@ class SpelledProtectedNameTests(unittest.TestCase):
         self.assertEqual(len(session.state["callbacks"]), 1)
 
         compile_execution_requirements(*refused_note_code("NOTE_REFUSED"))
+        compile_execution_requirements(*verified_row("DECLINED"))  # no recorded-fact rule: exact match only
 
 
 if __name__ == "__main__":

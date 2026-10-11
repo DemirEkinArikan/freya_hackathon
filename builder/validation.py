@@ -179,7 +179,7 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
         tree = ast.parse(code)
     except (SyntaxError, RecursionError):
         return errors + [path + ": Python syntax is invalid"]
-    if len(list(ast.walk(tree))) > 12000:
+    if len(list(ast.walk(tree))) > 16000:
         errors.append(path + ": code exceeds local validation complexity limit")
     parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
     functions = {node.name: node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}

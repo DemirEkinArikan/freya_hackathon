@@ -103,6 +103,13 @@ defines that concept. They are interface names, not predetermined banking rules:
   and after a recorded callback only recorded_callback rows apply. One row is
   fixed; several rows need a matching closing proposal.
 
+- goal_close per goal: when other goals of the source select promise, note or
+  transfer roles, add selector (a source-declared call input) and goals (its
+  supplied codes). Rows then close only calls whose sealed value is listed, and
+  the controller refuses promise, note and transfer roles in those calls. A
+  listed goal must have product resolution false; other goals keep
+  evidence-only closes.
+
 - identity_close_choices: optional unreached/incomplete arrays of
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.
   Use when the supplied policy has several language-derived dispositions in an

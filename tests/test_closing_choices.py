@@ -122,8 +122,8 @@ class ClosingChoiceTests(unittest.TestCase):
 
     def test_callback_success_requires_and_uses_actual_recorded_callback(self):
         self.setup_context()
-        with self.assertRaisesRegex(ValueError, "callback evidence"):
-            self.close("not_reached", "callback")
+        # Without a recorded callback the evidence decides the claim: its no_recorded_callback row.
+        self.assertEqual(self.close("not_reached", "callback")[2]["reason"], "no_callback")
         self.book_callback()
         _, route, body, _ = self.close("not_reached", "callback")
         self.assertEqual(route, "allow")
@@ -171,9 +171,9 @@ class ClosingChoiceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "declared eligible choice"):
             self.close("not_reached", "wrong_number")
 
-    def test_selected_choice_scope_rejects_missing_invalid_and_wrong_scope_proposals(self):
+    def test_selected_choice_scope_rejects_partial_invalid_and_wrong_scope_proposals(self):
         self.setup_context()
-        for inputs in ({}, {"outcome": "not_reached"}, {"reason": "unclear"},
+        for inputs in ({"outcome": "not_reached"}, {"reason": "unclear"},
                        {"outcome": "not_reached", "reason": "declined"},
                        {"outcome": "not_verified", "reason": "wrong_number"},
                        {"outcome": "promise", "reason": "callback"}):
@@ -182,6 +182,50 @@ class ClosingChoiceTests(unittest.TestCase):
         for inputs in ({"outcome": None, "reason": "unclear"}, {"outcome": "not_reached", "reason": []}):
             with self.subTest(inputs=inputs), self.assertRaises(ValueError):
                 self.step("prepare", self.state, "close_call", inputs)
+
+    def verify(self, verified, remaining=3):
+        field = self.profile["identity_fields"][0]
+        state = self.step("prepare", self.state, "verify_identity", {"field": field, "answer": "invented answer"})[0]
+        self.state = self.step("result", state, "verify_identity",
+                               result={"ok": True, "verified": verified, "wrong_answers_left": remaining})[0]
+
+    def test_absent_proposal_closes_as_the_recorded_identity_phase_row(self):
+        # Hosted records: the platform extracted no proposal, or the close step took none.
+        for opaque in (False, True):
+            with self.subTest(opaque=opaque):
+                self.setup_context(opaque=opaque)
+                start = self.state
+                for inputs in ({}, {"outcome": "", "reason": ""}):
+                    _, route, body, _ = self.step("prepare", start, "close_call", inputs)
+                    self.assertEqual(route, "allow")
+                    self.assertEqual((body["outcome"], body["reason"]), (self.outcomes["not_reached"], self.reasons["unclear"]))
+                for verified in (True, False):
+                    self.state = start
+                    self.verify(verified, 3 if verified else 2)
+                    _, route, body, _ = self.step("prepare", self.state, "close_call", {})
+                    self.assertEqual((route, body["outcome"], body["reason"]),
+                                     ("allow", self.outcomes["not_verified"], self.reasons["declined"]))
+                self.state = start
+                self.book_callback()
+                self.assertEqual(self.step("prepare", self.state, "close_call", {})[2]["reason"], self.reasons["callback"])
+                self.state = start
+                for remaining in (2, 1, 0):
+                    self.verify(False, remaining)
+                self.assertEqual(self.step("prepare", self.state, "close_call", {})[2]["reason"], self.reasons["failed"])
+
+    def test_absent_proposal_refuses_without_one_eligible_phase_row_or_after_verification(self):
+        missing = {"unreached": [row for row in CHOICES["unreached"] if row["reason"] != "unclear"], "incomplete": CHOICES["incomplete"]}
+        for choices, changes in ((missing, None), ({"unreached": CHOICES["unreached"]}, {"identity_close": REASONLESS})):
+            with self.subTest(choices=choices), self.assertRaisesRegex(ValueError, "declared eligible choice"):
+                self.setup_context(choices, changes=changes)
+                self.step("prepare", self.state, "close_call", {})
+        self.setup_context()
+        for field in self.profile["identity_fields"]:
+            state = self.step("prepare", self.state, "verify_identity", {"field": field, "answer": "invented answer"})[0]
+            self.state = self.step("result", state, "verify_identity", result={"ok": True, "verified": True, "wrong_answers_left": 3})[0]
+        self.assertEqual(self.state["identity_status"], "verified")
+        with self.assertRaises(ValueError):
+            self.step("prepare", self.state, "close_call", {})
 
     def test_nonempty_subset_of_supported_scopes_keeps_other_explicit_fixed_record(self):
         self.setup_context({"unreached": CHOICES["unreached"]})
@@ -256,8 +300,7 @@ class ClosingChoiceTests(unittest.TestCase):
         for reason in ("no_callback", "wrong_number", "deceased", "unclear"):
             body = self.close(self.outcomes["not_reached"], self.reasons[reason])[2]
             self.assertEqual((body["outcome"], body["reason"]), (self.outcomes["not_reached"], self.reasons[reason]))
-        with self.assertRaises(ValueError):
-            self.close(self.outcomes["not_reached"], self.reasons["callback"])
+        self.assertEqual(self.close(self.outcomes["not_reached"], self.reasons["callback"])[2]["reason"], self.reasons["no_callback"])
         self.book_callback()
         self.assertEqual(self.close(self.outcomes["not_reached"], self.reasons["callback"])[2]["reason"], self.reasons["callback"])
 
@@ -275,10 +318,10 @@ class ClosingChoiceTests(unittest.TestCase):
                 for reason in ("no_callback", "wrong_number", "deceased", "unclear"):
                     self.assertEqual(self.close(outcome, reasons[reason])[2], {"customer_id": "invented-session",
                                      "outcome": outcome, "reason": reasons[reason]})
-                for inputs in ({"outcome": outcome}, {"outcome": outcome, "reason": reasons["callback"]},
-                               {"outcome": outcome, "reason": reasons["declined"]}):
+                for inputs in ({"outcome": outcome}, {"outcome": outcome, "reason": reasons["declined"]}):
                     with self.assertRaisesRegex(ValueError, "declared eligible choice|callback evidence"):
                         self.step("prepare", self.state, "close_call", inputs)
+                self.assertEqual(self.close(outcome, reasons["callback"])[2]["reason"], reasons["no_callback"])
                 self.assertEqual(self.close(self.outcomes["not_verified"], reasons["unclear"])[2]["reason"], reasons["declined"])
                 self.book_callback()
                 self.assertEqual(self.close(outcome, reasons["no_callback"])[2]["reason"], reasons["callback"])

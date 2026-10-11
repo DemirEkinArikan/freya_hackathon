@@ -2,7 +2,9 @@
 
 A generated plan may bind no closing proposal. When the absent callback alone leaves one declared
 choice in every identity scope a proposal could reach, the sealed kernel sends it; several
-eligible choices, or a lone language-derived (`none`) row, still need a matching proposal.
+eligible choices, or a lone language-derived (`none`) row, still need a matching proposal. Only an
+absent proposal (empty outcome and reason) selects the recorded identity phase's own identity_close
+row, and only when that row is one eligible choice of the phase.
 """
 import os
 import unittest
@@ -110,9 +112,12 @@ class EvidenceCloseChoiceTests(unittest.TestCase):
         state, profile, catalog, maps = kernel_context()
         profile["identity_close_choices"]["incomplete"] = [
             {"outcome": "not_verified", "reason": reason, "requires": "none"} for reason in ("declined", "failed")]
-        for proposal in ({}, {"outcome": "Z_REACH"}, {"outcome": "Z_REACH", "reason": "Q_BOOKED"}):
-            with self.subTest(proposal=proposal), self.assertRaisesRegex(ValueError, "callback evidence|declared eligible choice"):
-                self.close(state, profile, catalog, maps, proposal)
+        with self.assertRaisesRegex(ValueError, "callback evidence|declared eligible choice"):
+            self.close(state, profile, catalog, maps, {"outcome": "Z_REACH"})
+        # No proposal at all: the unreached phase's own fixed row, never another eligible choice.
+        self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_UNKNOWN")
+        # A callback claim is decided by the absent callback: the one no_recorded_callback row.
+        self.assertEqual(self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_BOOKED"})[2]["cause_wire"], "Q_UNBOOKED")
         self.assertEqual(self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_UNKNOWN"})[2]["cause_wire"], "Q_UNKNOWN")
 
     def test_a_scope_without_an_eligible_choice_never_borrows_another_scopes_choice(self):
@@ -124,7 +129,9 @@ class EvidenceCloseChoiceTests(unittest.TestCase):
             self.close(state, profile, catalog, maps)
         state["verified_fields"] = ["member_factor"]  # only the incomplete scope remains reachable
         with self.assertRaisesRegex(ValueError, "declared eligible choice"):  # a lone `none` row needs its proposal
-            self.close(state, profile, catalog, maps)
+            self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_UNKNOWN"})
+        # An absent proposal selects only the incomplete phase's own fixed row.
+        self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_STOP")
         profile["identity_close_choices"]["incomplete"][0]["requires"] = "no_recorded_callback"
         self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_STOP")
         # A row needing other protected evidence is never selected by evidence alone here.
@@ -139,7 +146,13 @@ class EvidenceCloseChoiceTests(unittest.TestCase):
             row, {"outcome": "not_reached", "reason": "callback", "requires": "recorded_callback"}]}
         for passed in ([], ["member_factor"]):
             state["verified_fields"] = passed
-            for proposal in ({}, {"outcome": "Z_REACH", "reason": "Q_UNBOOKED"}, {"outcome": "Z_ID", "reason": "Q_STOP"}):
+            # An absent proposal takes the phase's fixed row only where that row is the lone choice.
+            if passed:
+                with self.assertRaisesRegex(ValueError, "declared eligible choice"):
+                    self.close(state, profile, catalog, maps)
+            else:
+                self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_UNKNOWN")
+            for proposal in ({"outcome": "Z_REACH"}, {"outcome": "Z_REACH", "reason": "Q_UNBOOKED"}, {"outcome": "Z_ID", "reason": "Q_STOP"}):
                 with self.subTest(passed=passed, proposal=proposal), self.assertRaisesRegex(ValueError, "declared eligible choice"):
                     self.close(state, profile, catalog, maps, proposal)
             self.assertEqual(self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_UNKNOWN"})[2]["cause_wire"], "Q_UNKNOWN")

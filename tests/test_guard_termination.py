@@ -72,11 +72,11 @@ class CompiledTerminationTests(unittest.TestCase):
         close = self.target(gate)
         self.assertEqual(close, "close")
         self.harness.code(close)
-        self.assertFalse(self.state["quarantined"])
+        self.assertTrue(self.state["quarantined"])  # a refused close is flagged, never an unflagged end
         self.assertFalse(self.state["close_attempted"])
         self.assertFalse(self.state["attempts"])
         self.assertFalse(self.state["closed"])
-        self.assert_terminal(close, "bg_terminal")
+        self.assert_terminal(close, "bg_quarantine")
 
     def test_preexisting_quarantine_overrides_prepare_confirm_and_result_recovery(self):
         self.harness.account()

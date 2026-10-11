@@ -92,7 +92,8 @@ class IdentityLifecycleTests(unittest.TestCase):
         session.action(action, **inputs)
         self.assertEqual(session.variables["bg_route"], "blocked")
         self.assertFalse(session.variables["bg_body"])
-        self.assertEqual(session.state, before)
+        # A refused close ends the call with the quarantine flag; other refusals keep the state.
+        self.assertEqual(session.state, dict(before, quarantined=True) if action == "close_call" else before)
 
     # (a) latest-check factor state
     def test_latest_check_withdraws_a_corrected_pass_and_repairs_in_policy_order(self):
@@ -250,7 +251,7 @@ class IdentityLifecycleTests(unittest.TestCase):
                 self.assert_refused(session, "verify_identity", field=F1, answer="invented-answer")
                 self.assert_refused(session, "close_call", outcome="not_verified", reason="ID_FAULT")
                 self.assertFalse(session.state["close_attempted"])
-                self.assert_silent_terminal(session, session.entries["close_call"])
+                self.assert_silent_terminal(session, session.entries["close_call"], "bg_quarantine")
         _, _, session = self.session(values(identity_failure_classes=CLASSES))
         session.action("verify_identity", field=F1, answer="invented-answer")
         self.assertEqual(receipt(session, {}, 500), "allow")
@@ -260,8 +261,10 @@ class IdentityLifecycleTests(unittest.TestCase):
     # (f) evidence-qualified choices
     def test_verification_rows_are_never_proposed_and_fix_the_close(self):
         _, _, session = self.session(values(identity_failure_classes=CLASSES))
+        start = session.variables["bg_state"]
         for reason in ("ID_UNSURE", "ID_FAULT"):
             self.assert_refused(session, "close_call", outcome="not_verified", reason=reason)
+            session.variables["bg_state"] = start  # a refused close ends its call; resume the state before it
         self.assertEqual(self.check(session, F1, {"ok": False, "error": "DENIED"}), "failure")
         self.assert_close(session, "ID_FAULT", proposal=("not_verified", "identity_failed"))
         _, _, session = self.session(values())

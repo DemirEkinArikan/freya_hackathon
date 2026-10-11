@@ -113,8 +113,10 @@ class PerGoalCloseTests(unittest.TestCase):
         session = call(packed, COLLECT)
         verify(session)
         self.account(session)
+        before = session.variables["bg_state"]
         session.action("close_call", outcome="not_reached", reason="no_callback")
         self.assert_refused(session)  # the product must still be resolved
+        session.variables["bg_state"] = before  # a refused close ends its call; resume the state before it
         session.action("stage_promise", product_id="GOAL-PRODUCT", amount="37.25", date="2031-05-06")
         session.action("commit_promises")
         session.variables["bg_consent"] = "yes"

@@ -227,9 +227,16 @@ def assemble_bundle(manifest, workflow, trace, provenance, train, validation):
         # Include both splits' observed per-fixture/per-repetition calendars.
         conditions["calendar_sha256"] = digest({"train": train["calendar"], "validation": validation["calendar"]})
         validate_generation_audit(trace, provenance["source_snapshot"]["resolved_config"])
-        require(all(call.get("model") == manifest.get("model")
-                    and call.get("reasoning_effort") == manifest.get("reasoning_effort") for call in trace
-                    if call.get("event") == "model_call"), "build_trace_model_mismatch")
+        retry_effort = None  # A recorded policy retry names the effort of the next model call only.
+        for event in trace:
+            if event.get("event") == "policy_generation_retry":
+                retry_effort = event.get("reasoning_effort")
+            elif event.get("event") == "model_call":
+                require(event.get("model") == manifest.get("model") and (
+                    event.get("reasoning_effort") == manifest.get("reasoning_effort")
+                    or (retry_effort is not None and event.get("reasoning_effort") == retry_effort)),
+                    "build_trace_model_mismatch")
+                retry_effort = None
         result = {"version": 1, "brief": briefs.pop(),
                   "source_sha256": digest({"brief_sha256": [s["sha256"] for s in manifest["sources"]],
                                            "tool_api_sha256": manifest["tool_api_sha256"]}),

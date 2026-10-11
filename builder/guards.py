@@ -72,7 +72,8 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
         "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, budget - returned wrong_answers_left), capped at the call-date-selected identity_wrong_limit, where budget is the API's declared wrong_answers_left maximum when declared, otherwise that limit; reaching the limit, or zero remaining, exhausts identity; ok=true alone does not verify a factor.",
                                "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged, except that under identity_factor_state latest_check a re-check of a passed factor withdraws its pass before sending and only verified=true restores it.",
-                               "Under identity_counter_movement exact, any returned wrong_answers_left other than the expected remaining (unchanged on a match, one less on a mismatch) is uncertain verification, checked before exhaustion and success."],
+                               "Under identity_counter_movement exact, any returned wrong_answers_left other than the expected remaining (unchanged on a match, one less on a mismatch) is uncertain verification, checked before exhaustion and success.",
+                               "Under identity_counter_movement own_count, each validated mismatch uses one wrong answer by the controller's own count: cumulative wrong answers become max(existing wrong_answers + 1, budget - returned wrong_answers_left) on a mismatch and max(existing wrong_answers, budget - returned wrong_answers_left) on a match, capped at the limit, so a stricter returned count is kept, a looser one, including one above the budget when the API declares no maximum, is ignored rather than uncertain, and the counter never decreases; without identity_factor_state latest_check at most identity_wrong_limit + len(identity_fields) - 1 ok=true answers are processed per call."],
         "rejections": ["Uncertain verification evidence, or an identity_failure_classes fault or failed exact repeat, ends verification: only the identity_close_choices row requiring that evidence can close, otherwise the call is quarantined.",
                        "An identity_failure_classes sealed receipt forbids every later bank call, including close_call; no disposition is recorded."]},
     "get_account": {
@@ -423,6 +424,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
+    if profile.get("identity_counter_movement") == "own_count" and profile.get("identity_hint_exemptions"):
+        errors.append("identity_counter_movement own_count requires empty identity_hint_exemptions: the controller reads no hints")
     wording = profile.get("confirmation_readback")
     if "confirmation_readback" in profile and not _profile_errors("confirmation_readback", wording):
         provenance = contract.get("active_rules", {}).get("confirmation_readback", {}).get("provenance", [])
@@ -1812,7 +1815,11 @@ def guard_result(state, data, profile, catalog, expected_action):
             # A declared API maximum is the counter's own budget, above or below
             # the policy limit; zero remaining also exhausts identity.
             budget = catalog['verify_identity'].get('wrong_answers_budget', limit)
-            if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or not 0 <= remaining <= budget:
+            own = profile.get('identity_counter_movement') == 'own_count'
+            # Under own_count a remaining above the budget when the API declares
+            # no maximum only implies fewer wrong answers: it is ignored below.
+            above_ok = own and 'wrong_answers_budget' not in catalog['verify_identity']
+            if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or remaining < 0 or remaining > budget and not above_ok:
                 return guard_identity_end(state, profile, 'uncertain')
             # Exact movement is checked before exhaustion and success.
             if profile.get('identity_counter_movement') == 'exact' and remaining != budget - state['wrong_answers'] - (0 if guard_true(verified) else 1):
@@ -1821,8 +1828,9 @@ def guard_result(state, data, profile, catalog, expected_action):
                 state['verified_fields'].append(tx['semantic']['field'])
             # Use the engine counter, not guessed answer/hint interpretation.
             # It includes errors on all factors and excludes API-qualified
-            # noncounting retries such as unreadable answers or hints.
-            state['wrong_answers'] = min(limit, max(state['wrong_answers'], budget - remaining))
+            # noncounting retries such as unreadable answers or hints. Under
+            # own_count each validated mismatch also uses one unit by itself.
+            state['wrong_answers'] = min(limit, max(state['wrong_answers'] + (1 if own and not guard_true(verified) else 0), budget - remaining))
             state['identity_status'] = 'failed' if state['wrong_answers'] >= limit or remaining == 0 else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':

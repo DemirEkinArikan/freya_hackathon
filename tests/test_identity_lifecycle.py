@@ -7,12 +7,12 @@ from pathlib import Path
 
 from builder.contract import PolicyContractError, compile_policy_contract
 from builder.execution_requirements import ExecutionRequirementsError, compile_execution_requirements
-from builder.guards import run_guard_step
+from builder.guards import GuardCompileError, _profile, execution_action_catalogue, run_guard_step
 from builder.policy import execution_rule_guidance
 from builder.safety import digest, read_json
 from test_execution_requirements import add_rule, rule
 import test_goal_requirements as goal_requirements
-from test_goal_requirements import witness
+from test_goal_requirements import rehash, witness
 from test_goal_terminal_close import goal
 
 F1, F2 = "postal_code", "memorable_word"
@@ -309,6 +309,95 @@ class IdentityLifecycleTests(unittest.TestCase):
         self.assertIn("uncertain_verification", guidance["identity_close_choices"])
         self.assertIn("this is not an unsupported constraint", guidance["identity_close_choices"])
 
+    # (g) own-count counter movement
+    def own(self, maximum=None, **kinds):
+        """identity_wrong_limit 4; the invented API declares no counter maximum unless asked."""
+        policy, sources, api = values(identity_counter_movement="own_count", **kinds)
+        if maximum is not None:
+            response = api["paths"]["/verify_identity"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+            response["properties"]["wrong_answers_left"]["maximum"] = maximum
+        return self.session((policy, sources, api))[2]
+
+    def counter(self, session):
+        return session.state["wrong_answers"], session.state["identity_status"], session.state["verified_fields"]
+
+    def test_own_count_uses_one_unit_per_unmoved_mismatch_and_adopts_a_stricter_count(self):
+        session = self.own()
+        self.assertEqual(self.check(session, F1, self.miss(4)), "done")
+        self.assertEqual(self.counter(session), (1, "pending", []))
+        self.assertEqual(self.check(session, F1, self.miss(1)), "done")  # stricter: 4 - 1 = 3 beats the own count 2
+        self.assertEqual(self.counter(session), (3, "pending", []))
+        self.assertEqual(self.facts(session)["wrong_answers_left"], 1)
+        session = self.own()
+        self.assertEqual(self.check(session, F1, self.match(2)), "done")  # a stricter count on a match
+        self.assertEqual(self.counter(session), (2, "pending", [F1]))
+
+    def test_own_count_ignores_looser_counts_and_a_match_keeps_the_count(self):
+        session = self.own()
+        self.assertEqual(self.check(session, F1, self.miss(2)), "done")
+        self.assertEqual(self.check(session, F1, self.miss(4)), "done")  # looser than the own count
+        self.assertEqual(self.counter(session), (3, "pending", []))
+        self.assertEqual(self.check(session, F1, self.match(9)), "done")  # above the undeclared budget
+        self.assertEqual(self.counter(session), (3, "pending", [F1]))
+        self.assertEqual(self.check(session, F2, self.miss(9)), "done")
+        self.assertEqual(self.counter(session), (4, "failed", [F1]))
+        session = self.own(maximum=5)
+        self.assertEqual(self.check(session, F1, self.miss(5)), "done")
+        self.assertEqual(self.counter(session), (1, "pending", []))
+
+    def test_own_count_keeps_uncertain_counts_and_zero_remaining_exhaustion(self):
+        for maximum, data in ((None, self.miss(-1)), (None, self.miss("x")), (None, self.match(True)), (5, self.miss(6))):
+            with self.subTest(maximum=maximum, data=data):
+                session = self.own(maximum)
+                self.assertEqual(self.check(session, F1, data), "failure")
+                self.assertEqual(self.counter(session), (0, "uncertain", []))
+                self.assert_close(session, "ID_UNSURE")
+        session = self.own(maximum=2)  # a declared budget below the limit: zero remaining still exhausts
+        self.assertEqual(self.check(session, F1, self.match(0)), "done")
+        self.assertEqual(self.counter(session), (2, "failed", [F1]))
+
+    def test_own_count_refuses_the_check_after_the_limit_before_sending(self):
+        session = self.own()
+        for field, data in ((F1, self.miss(4)), (F1, self.miss(4)), (F1, self.miss(4)), (F1, self.match(4)), (F2, self.miss(4))):
+            self.assertEqual(self.check(session, field, data), "done")
+        # identity_wrong_limit + len(identity_fields) - 1 = 5 ok=true answers were processed
+        self.assertEqual(self.counter(session), (4, "failed", [F1]))
+        self.assert_refused(session, "verify_identity", field=F2, answer="invented-answer")
+        self.assert_close(session, "identity_failed")
+
+    def test_own_count_with_hint_exemptions_is_refused(self):
+        compile_execution_requirements(*values(identity_counter_movement="own_count", identity_hint_exemptions=[]))
+        message = "own_count requires empty identity_hint_exemptions"
+        with self.assertRaisesRegex(ExecutionRequirementsError, message):
+            compile_execution_requirements(*values(identity_counter_movement="own_count", identity_hint_exemptions=["invented_hint"]))
+        policy, sources, api = values(identity_counter_movement="own_count", identity_hint_exemptions=[])
+        _, context, _ = goal_requirements.compiled(policy, sources, api)
+        rule(policy, "identity_hint_exemptions")["value"] = ["invented_hint"]
+        witness(policy, sources)
+        frozen = copy.deepcopy(context["execution_policy"])  # a profile that bypassed the policy check
+        frozen["profile"]["identity_hint_exemptions"] = ["invented_hint"]
+        rehash(frozen)
+        with self.assertRaisesRegex(GuardCompileError, message):
+            _profile(compile_policy_contract(policy, sources, api), frozen, context["plan"], context["bindings"])
+
+    def test_exact_and_absent_counters_keep_their_movement(self):
+        for kinds, expected in (({}, (0, "pending", [])), ({"identity_counter_movement": "exact"}, (0, "uncertain", [])),
+                                ({"identity_counter_movement": "own_count"}, (1, "pending", []))):
+            with self.subTest(kinds=kinds):
+                _, _, session = self.session(values(**kinds))
+                self.check(session, F1, self.miss(4))
+                self.assertEqual(self.counter(session), expected)
+        for kinds in ({}, {"identity_counter_movement": "exact"}):  # above an undeclared budget stays uncertain
+            with self.subTest(kinds=kinds, above=True):
+                _, _, session = self.session(values(**kinds))
+                self.assertEqual(self.check(session, F1, self.match(5)), "failure")
+                self.assertEqual(session.state["identity_status"], "uncertain")
+
+    def test_own_count_shape_and_controller_effect_are_stated(self):
+        self.assertIn('"own_count"', execution_rule_guidance()["identity_counter_movement"])
+        effects = execution_action_catalogue()["verify_identity"]["controller_state_effects"]["positive_recording"]
+        self.assertIn("at most identity_wrong_limit + len(identity_fields) - 1 ok=true answers are processed per call", effects[-1])
+
 
 RUN, INPUTS = os.environ.get("FREYA_IDENTITY_REPLAY_RUN"), os.environ.get("FREYA_IDENTITY_REPLAY_INPUTS")
 
@@ -445,6 +534,45 @@ class RetainedIdentityRunReplayTests(unittest.TestCase):
         for field in (first, second):
             self.assertEqual(check(s, field, {"ok": True, "verified": True, "wrong_answers_left": full}), "done")
         self.assertEqual(s.state["identity_status"], "verified")
+
+
+OWN_RUNS, OWN_INPUTS = os.environ.get("FREYA_OWN_COUNT_REPLAY_RUNS"), os.environ.get("FREYA_OWN_COUNT_REPLAY_INPUTS")
+
+
+@unittest.skipUnless(OWN_RUNS and OWN_INPUTS, "set FREYA_OWN_COUNT_REPLAY_RUNS (run directories joined by os.pathsep) "
+                                              "and FREYA_OWN_COUNT_REPLAY_INPUTS to replay retained counter declarations")
+class RetainedOwnCountReplayTests(unittest.TestCase):
+    """No-model replay of retained runs whose fatal declaration asks for the controller's own count.
+
+    Artifacts are read, never written. Each fatal entry must still reproduce; it
+    is then replaced in memory by identity_counter_movement own_count, cited from
+    the descriptive rule the entry names, and the contract must compile.
+    """
+
+    def test_own_count_replaces_each_retained_fatal_counter_declaration(self):
+        inputs = Path(OWN_INPUTS)
+        for run in map(Path, OWN_RUNS.split(os.pathsep)):
+            events = map(json.loads, (run / "trace.jsonl").read_text(encoding="utf-8").splitlines())
+            recorded = next(event for event in events if event.get("event") == "inputs")
+            sources = [{**item, "text": next(inputs.rglob(item["file"])).read_text(encoding="utf-8")} for item in recorded["sources"]]
+            self.assertEqual([digest(item["text"]) for item in sources], [item["sha256"] for item in sources])
+            api = next(value for value in map(read_json, sorted(inputs.rglob("*.json"))) if digest(value) == recorded["tool_api_sha256"])
+            rejected = sorted(run.glob("policy.rejected-*.json"))
+            self.assertTrue(rejected)
+            for path in rejected:
+                with self.subTest(run=run.name, policy=path.name):
+                    raw = path.read_bytes()
+                    policy = json.loads(raw)["policy"]
+                    with self.assertRaisesRegex(PolicyContractError, "policy contains unsupported constraints"):
+                        compile_policy_contract(policy, sources, api)
+                    [fatal] = [entry for entry in policy["unsupported_constraints"] if entry["category"] == "protected_unenforceable"]
+                    rules = {item["id"]: item for item in policy["rules"]}
+                    cited = next(rules[ident] for ident in fatal["rule_ids"] if rules[ident]["kind"] not in execution_rule_guidance())
+                    policy["unsupported_constraints"].remove(fatal)
+                    policy["rules"].append({"id": "replay-own-count", "kind": "identity_counter_movement",
+                                            "value": "own_count", "source": copy.deepcopy(cited["source"])})
+                    compile_policy_contract(policy, sources, api)
+                    self.assertEqual(path.read_bytes(), raw)
 
 
 if __name__ == "__main__":

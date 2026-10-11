@@ -23,6 +23,40 @@ The wording supplies no confirmation permission. It does not change consent
 extraction, fresh-answer clearing, immutable terms, write ordering or API bodies.
 Unclear/refused/missing answers still send no request.
 
+## Read-back clauses and conversation language
+
+An optional typed `confirmation_readback` rule is
+`{actions, clauses?, language?}`, with clauses and/or language. `actions` is
+an explicit scope over the same three write roles. Each clause and the language
+text is copied verbatim from the rule's own source quotation. `validate_policy`
+checks this, and so does the sealed compiler. The texts contain no digits,
+braces, control characters or engine/credential prefixes, so they cannot add a
+date, time, amount, number, template or field. Requests keep only their sealed
+fields. If the plan selects an action the rule names, that action must require
+confirmation; otherwise compilation fails rather than dropping the wording.
+
+- Clauses are spoken verbatim after the protected terms, in the same fixed line:
+  `Please confirm these exact terms: {{bg_readback}}; <clause>. Do you agree?`.
+  With a scoped `confirmation_question` the line is
+  `{{bg_readback}}; <clause>. <question>`.
+- A fixed line cannot be spoken in a language for which the source gives no
+  words. With `language`, the sealed confirm node therefore uses the `llm` entry.
+  Its compiler-owned task text carries:
+  - the sourced language wording;
+  - `{{bg_readback}}` and the clauses, verbatim;
+  - the question: the sourced one, or whether the caller agrees to exactly
+    these terms;
+  - the unchanged wait/no-tools instruction.
+
+  In this mode the dialogue model speaks the line, and word-for-word speech is
+  not proven. The consent extraction, fresh-answer clearing, frozen request
+  snapshot and refusal paths are unchanged.
+
+Without the rule, every compiled confirmation is byte-identical to before.
+`validation.py` lets only a `bg_*_confirm` node whose text equals the compiler's
+output read `bg_readback`, and only after byte-exact recompilation. The sealed
+kernel code is unchanged, so validator code-size headroom is unchanged.
+
 Tests use independently quoted English and Turkish questions and exact compiled
 consent transitions. These checks establish transport and guard invariants, not
 speech interpretation or multilingual conversation quality. Existing generated

@@ -391,6 +391,16 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
+    wording = profile.get("confirmation_readback")
+    if isinstance(wording, dict) and not _profile_errors("confirmation_readback", wording):
+        texts = wording.get("clauses", []) + ([wording["language"]] if "language" in wording else [])
+        provenance = contract.get("active_rules", {}).get("confirmation_readback", {}).get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or any(item not in source["quote"] for item in texts)
+                                 for source in provenance):
+            errors.append("confirmation_readback wording must occur literally in its own sourced quotation")
+        confirmed = set(profile.get("confirmation_actions", [])) | ({"commit_promises"} if profile.get("require_confirmation") is True else set())
+        if selected_actions & set(wording["actions"]) - confirmed:
+            errors.append("confirmation_readback names a selected action that requires no confirmation")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1818,6 +1828,26 @@ def _code_node(name: str, code: str, transitions: list[dict]) -> dict:
                     "timeout_ms": {"type": "number", "default": 10000}}}}}], "transitions": transitions}
 
 
+def _confirmation_speech(profile: dict, action: str) -> dict:
+    """Compiler-owned confirmation entry; sourced wording is used verbatim."""
+    wait = ("Wait for a clear yes or no about the exact terms just read. "
+            "Do not change terms, call tools, or treat another topic as agreement.")
+    wording = profile.get("confirmation_readback", {})
+    scoped = action in wording.get("actions", [])
+    terms = "{{bg_readback}}" + "".join("; " + clause for clause in (wording.get("clauses", []) if scoped else []))
+    question = profile.get("confirmation_question") if action in profile.get("confirmation_question_actions", []) else None
+    if scoped and "language" in wording:
+        # A fixed line cannot be spoken in a language the source gives no
+        # words in; the dialogue model renders the same protected terms.
+        return {"on_enter": {"type": "llm"}, "task_message": (
+            'Speak the conversation language the source sets: "' + wording["language"] + '". In this one turn, read back '
+            "exactly these protected terms, keeping every date, time and amount unchanged and adding no other term: "
+            + terms + ". Then ask " + ('this question: "' + question + '"' if question else
+                                       "whether the caller agrees to exactly these terms") + ". " + wait)}
+    text = terms + ". " + question if question else "Please confirm these exact terms: " + terms + ". Do you agree?"
+    return {"on_enter": {"type": "tts", "text": text}, "task_message": wait}
+
+
 def _terminal() -> dict:
     return {"name": "bg_terminal", "node_type": "end_call", "on_enter": {"type": "silent"},
             "disable_inactivity_monitor": True, "terminal": {"type": "function", "function": {
@@ -1987,10 +2017,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                  + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
-            question = ("{{bg_readback}}. " + profile["confirmation_question"] if action in profile.get("confirmation_question_actions", [])
-                        else "Please confirm these exact terms: {{bg_readback}}. Do you agree?")
-            nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": question},
-                "task_message": "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement.",
+            nodes[confirm] = {"name": confirm, "node_type": "conversation", **_confirmation_speech(profile, action),
                 "extraction_schema": [{"name": "bg_consent", "type": "string", "enum_values": ["yes", "no", "unclear"], "description": "Only a fresh unconditional affirmative answer to all exact terms just read is yes. A refusal is no. Any changed term, condition, question or other topic is unclear.", "min_confidence": 0.95, "max_retries": 0}],
                 "max_node_turns": 1, "max_turn_transition": accept,
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [

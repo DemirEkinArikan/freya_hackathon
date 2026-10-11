@@ -578,7 +578,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     if errors:
         return errors
     if guard_context is not None:
-        from .guards import validate_guarded_workflow
+        from .guards import _confirmation_speech, validate_guarded_workflow
         if not isinstance(guard_context, Mapping):
             errors.append("guard_context must be controller-owned compilation inputs")
         else:
@@ -679,13 +679,12 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                     # Custom wording gains the compiler's protected readback
                     # only after byte-exact controller recompilation above.
                     # An authored copy or a node prefix alone proves nothing.
-                    question = (guard_context.get("execution_policy", {}).get("profile", {}).get("confirmation_question")
-                                if guard_context is not None else None)
-                    compiled_question = (isinstance(question, str) and isinstance(name, str)
-                                         and name.startswith("bg_") and name.endswith("_confirm")
-                                         and node[field] == {"type": "tts", "text": "{{bg_readback}}. " + question})
-                    readback = (field == "on_enter" and (compiled_question or node[field] == {
-                        "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"}))
+                    speech = ([_confirmation_speech(guard_context.get("execution_policy", {}).get("profile", {}), action)
+                               for action in ("commit_promises", "commit_transfer", "schedule_callback")]
+                              if guard_context is not None and isinstance(name, str)
+                              and name.startswith("bg_") and name.endswith("_confirm") else [])
+                    readback = (any(node[field] == entry.get(field) for entry in speech) or field == "on_enter" and node[field] == {
+                        "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"})
                     text_bindings(node[field], "node." + str(name) + "." + field, readback=readback)
     initial = workflow.get("initial_node")
     if not isinstance(initial, str) or initial not in nodes:

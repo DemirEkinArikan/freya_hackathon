@@ -67,7 +67,7 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
 _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_bounds"})
-_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
+_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "confirmation_readback", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
                          "promise_readback", "account_disclosure_fields", "identity_close_choices", "goal_close", "call_variables", "call_input_formats",
@@ -104,6 +104,7 @@ _SHAPE_GUIDANCE = {
     "confirmation_scope": 'the string "each" or "batch"',
     "confirmation_question": "optional nonempty literal text containing the exact question prescribed by the source, present verbatim in its cited source quotation; preserve spelling/language/punctuation; no variable templates, control characters or private engine/credential prefixes (the compiler prepends its protected readback). Requires source-backed confirmation_question_actions to state exactly where the wording applies, never infer a global scope. Omit both when no wording is prescribed. This changes text only, not confirmation requirements or guarded consent semantics; different questions for different actions are not representable by this scalar interface",
     "confirmation_question_actions": "paired with confirmation_question: a nonempty unique array containing only commit_promises, commit_transfer, schedule_callback, with literal source provenance establishing the question's action scope. No default/inferred scope. A common source question can explicitly include multiple roles. This grants neither actions nor confirmation requirements; other confirmation nodes retain their generic fallback",
+    "confirmation_readback": "optional exactly {actions: nonempty unique array of commit_promises/commit_transfer/schedule_callback, clauses?: nonempty unique array of texts the source requires the confirmation read-back to state, language?: the conversation language as the source words it}, with clauses and/or language. Each text is copied verbatim from this rule's own source quotation and contains no digits, braces, control characters or private engine/credential prefixes, so it adds no value; requests keep only their sealed fields. Clauses are spoken after the protected terms; with language the sealed confirmation speaks the same protected terms, clauses and question in that language. A selected named action must require confirmation. Use confirmation_question for a prescribed literal question; omit this rule when the source prescribes neither",
     "note_failure_limit": "a positive integer; booleans are not integers",
     "callback_failure_limit": "a positive integer; booleans are not integers",
     "transfer_failure_limit": "a positive integer; booleans are not integers",
@@ -292,6 +293,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = strings(value, empty=True) and len(set(value)) == len(value)
     elif kind == "confirmation_scope":
         valid = isinstance(value, str) and value in {"each", "batch"}
+    elif kind == "confirmation_readback":
+        return _execution_errors(kind, value)
     elif kind in {"action_fields", "result_fields", "product_fields"}:
         valid = isinstance(value, dict) and all(isinstance(k, str) and k and
                     ((isinstance(v, str) and bool(v)) or (isinstance(v, dict) and bool(v) and
@@ -347,6 +350,20 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, list) and bool(value) and all(text(item) for item in value)
                  and len(set(value)) == len(value)
                  and not set(value) - {"commit_promises", "commit_transfer", "schedule_callback"})
+    elif kind == "confirmation_readback":
+        # Fixed sourced words only: no digits, templates or engine names can
+        # add a date, time, amount, number or field the request does not hold.
+        def wording(item: Any) -> bool:
+            return (text(item) and bool(item.strip())
+                    and not any(char in "{}" or char.isdigit() or ord(char) < 32 or ord(char) == 127 for char in item)
+                    and not any(prefix in item.casefold() for prefix in ("bg_", "auth_", "bank_token")))
+        valid = (isinstance(value, dict) and "actions" in value and len(value) > 1
+                 and set(value) <= {"actions", "clauses", "language"}
+                 and not _execution_errors("confirmation_question_actions", value["actions"])
+                 and ("language" not in value or wording(value["language"]))
+                 and ("clauses" not in value or isinstance(value["clauses"], list) and bool(value["clauses"])
+                      and all(wording(clause) for clause in value["clauses"])
+                      and len(set(value["clauses"])) == len(value["clauses"])))
     elif kind == "account_disclosure_fields":
         def fields(items):
             return (isinstance(items, list) and all(text(item) for item in items)
@@ -543,6 +560,10 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                 question = rule.get("value")
                 if rule.get("kind") == "confirmation_question" and isinstance(question, str) and question not in quote:
                     errors.append(prefix + " confirmation_question must appear literally in its cited source quote")
+                if rule.get("kind") == "confirmation_readback" and isinstance(question, dict):
+                    texts = [question.get("language")] + (question["clauses"] if isinstance(question.get("clauses"), list) else [])
+                    if any(isinstance(item, str) and item not in quote for item in texts):
+                        errors.append(prefix + " confirmation_readback wording must appear literally in its cited source quote")
                 if rule.get("kind") == "resolve_all_products" and isinstance(question, dict):
                     selector = question.get("selector")
                     if isinstance(selector, str) and not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", quote):

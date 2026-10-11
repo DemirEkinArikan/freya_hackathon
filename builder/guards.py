@@ -2182,18 +2182,25 @@ _TOOL_RULES = ("No tool call is allowed in this turn.",
                "The only tool call allowed in this turn is one offered completion. Call at most one tool per message and "
                "speak after every tool result; never end a turn with neither words nor a tool call.")
 _SPEECH_RULE = " Say only words meant for the caller, never a tool call, a variable name or your reasoning."
-_COMPLETION_ONLY_RULE = (" Nothing in this step can capture a caller answer, so never ask a question and wait here: when the "
-                         "caller must be asked something, invoke in this same message the completion to the step that asks it. "
-                         "State only account facts and action results that the runtime view shows.")
+# A completion-only step leaves on its completion, so the kit's speak-after-tool
+# line only licensed asking and waiting, against a decision's "say nothing" (K3).
+_COMPLETION_ONLY_RULE = ("The only tool call allowed in this turn is one offered completion. Invoke exactly one in every "
+                         "message of this step." + _SPEECH_RULE + " Never ask a question and wait here: when the caller must "
+                         "be asked something, invoke in this same message the completion to the step that asks it. State "
+                         "only account facts and action results that the runtime view shows.")
 
 
-def _node_discipline(nodes: dict) -> None:
+def _node_discipline(nodes: dict) -> set:
     """Append the kit's per-node tool rules to every authored speaking node.
 
-    A completion-only step (LLM entry, no extraction, only completions) captures
-    no answer; when exactly one completion target is a speaking caller-answer
-    step, a silent relay sends a caller reply that arrives here to that step.
+    A completion-only step (LLM entry, no extraction, only completions) must
+    take a completion in every message. When exactly one completion target is
+    a speaking caller-answer step, a caller reply that still arrives in the
+    step is extracted there with that answer step's schema, and the step then
+    decides on it. Relayed back unextracted, such a reply was lost on the host
+    (hosted readiness round 1, K3). Returns the steps given that capture.
     """
+    captures = {}
     for name, node in list(nodes.items()):
         if node.get("passthrough"):
             continue
@@ -2202,18 +2209,17 @@ def _node_discipline(nodes: dict) -> None:
         text = _TOOL_RULES[bool(completions)] + _SPEECH_RULE
         if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
                 and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
-            text += _COMPLETION_ONLY_RULE
+            text = _COMPLETION_ONLY_RULE
             answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
                        and not nodes[target].get("passthrough")
                        and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
             if len(answers) == 1:
-                target, relay = answers.pop(), PREFIX + name + "_reply"
-                nodes[relay] = {"name": relay, "node_type": "conversation", "on_enter": {"type": "silent"},
-                                "task_message": "Say nothing.", "passthrough": True,
-                                "passthrough_default_transition": target, "transitions": [_transition(target)]}
-                routes.append({"target_node": relay, "description": "caller replied in a step that captures no answer",
-                               "condition": {"operator": "always"}})
+                captures[name] = answers.pop()
         node["task_message"] = (node.get("task_message", "") + "\n\n" + text).lstrip()
+    # After the loop, so only authored extraction marks an answer step.
+    for name, target in captures.items():
+        nodes[name]["extraction_schema"] = copy.deepcopy(nodes[target]["extraction_schema"])
+    return set(captures)
 
 
 def _exclusive(first: dict, second: dict) -> bool:
@@ -2336,7 +2342,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         for entry in node.get("extraction_schema", []):
             if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
                 entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
-    _node_discipline(nodes)
+    captured = _node_discipline(nodes)
     # On the host a routing_prompt replaces the router's intent instruction and
     # every intent row then matched, so the first row won; without it the
     # default router chose correctly. Intent nodes never keep one.
@@ -2463,13 +2469,13 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     for name, node in nodes.items():
         rows = node.get("transitions", [])
         target = nodes.get(rows[-1].get("target_node"), {}) if rows and not node.get("passthrough") else {}
-        # The node-discipline reply relay row runs only after a caller turn in the decision itself.
-        exits = [row for row in target.get("transitions", []) if row["target_node"] != PREFIX + rows[-1]["target_node"] + "_reply"]
+        exits = target.get("transitions", [])
+        # A decision's node-discipline reply capture does not make it an answer step.
         if (rows[-1:] and rows[-1]["condition"].get("operator") == "matches_intent" and exits
                 and not any(row.get("is_tool_call") or row.get("target_node") == rows[-1]["target_node"]
                             or "matches_intent" in canonical_json(row["condition"]) for row in rows[:-1])
                 and not rows[-1].get("is_tool_call") and (target.get("on_enter") or {}).get("type") == "llm"
-                and not target.get("extraction_schema") and not target.get("passthrough")
+                and (not target.get("extraction_schema") or rows[-1]["target_node"] in captured) and not target.get("passthrough")
                 and all(row.get("is_tool_call") is True for row in exits) and any(row.get("target_node") == name for row in exits)):
             rows[-1]["condition"] = {"operator": "always"}
             node.pop("routing_prompt", None)

@@ -70,7 +70,10 @@ _CONTROLLER_STATE_EFFECTS = {
     "verify_identity": {
         "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
         "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, budget - returned wrong_answers_left), capped at the call-date-selected identity_wrong_limit, where budget is the API's declared wrong_answers_left maximum when declared, otherwise that limit; reaching the limit, or zero remaining, exhausts identity; ok=true alone does not verify a factor.",
-                               "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
+                               "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged, except that under identity_factor_state latest_check a re-check of a passed factor withdraws its pass before sending and only verified=true restores it.",
+                               "Under identity_counter_movement exact, any returned wrong_answers_left other than the expected remaining (unchanged on a match, one less on a mismatch) is uncertain verification, checked before exhaustion and success."],
+        "rejections": ["Uncertain verification evidence, or an identity_failure_classes fault or failed exact repeat, ends verification: only the identity_close_choices row requiring that evidence can close, otherwise the call is quarantined.",
+                       "An identity_failure_classes sealed receipt forbids every later bank call, including close_call; no disposition is recorded."]},
     "get_account": {
         "accepted_staging": ["Sending the account request does not establish loaded products."],
         "positive_recording": ["Validated positive account evidence loads the returned products once."]},
@@ -78,26 +81,38 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
                              "Clears the pending confirmation snapshot; staging does not record a bank promise."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "An amount that is not positive, is below the product's floor_fields amount or exceeds its past_due amount is refused.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_promises": {
         "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
-        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
+        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "stage_note": {
         "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
                              "Clears the pending confirmation snapshot; staging does not record a bank note."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "finalize_notes": {
         "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise; an empty set with no staged disposition is refused.",
                              "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
-        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "stage_transfer": {
         "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
-                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
-        "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory."]},
+                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer.",
+                             "Afterwards only commit_transfer and close_call are accepted."],
+        "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_transfer": {
         "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
-        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."]},
+        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."],
+        "rejections": ["A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "schedule_callback": {
         "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
         "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
@@ -360,9 +375,14 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     for choice in choices:
                         if (not isinstance(choice, dict) or set(choice) - {"outcome", "reason", "requires"}
                                 or not isinstance(choice.get("outcome"), str) or not choice["outcome"]
-                                or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback")
+                                or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback",
+                                                                  "uncertain_verification", "definite_verification_failure")
                                 or "reason" in choice and (not isinstance(choice["reason"], str) or not choice["reason"])):
                             errors.append("identity_close_choices require outcome, optional nonempty reason and supported evidence")
+                evidence = [choice.get("requires") for choices in value.values() if isinstance(choices, list)
+                            for choice in choices if isinstance(choice, dict)]
+                if any(evidence.count(name) > 1 for name in ("uncertain_verification", "definite_verification_failure")):
+                    errors.append("identity_close_choices allow at most one row per verification evidence")
         elif kind == "goal_close":
             errors.extend(_execution_errors(kind, value))
         elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account", "unstated"} for k, v in value.items())):
@@ -454,6 +474,30 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if len(normalized) != len(selected):
             raise GuardCompileError(["product-resolution selector keys collide through frozen code bindings"])
         resolution["by_value"] = normalized
+    scope = result.get("goal_close", {})
+    if "selector" in scope:
+        # Rows close only calls whose sealed initial goal code is listed; the
+        # kernel keeps those calls from every promise, note and transfer role.
+        selector = scope["selector"]
+        provenance = contract["active_rules"]["goal_close"].get("provenance", [])
+        if selector not in declared_call_variables(contract) or not provenance or any(
+                not isinstance(source.get("quote"), str)
+                or not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", source["quote"]) for source in provenance):
+            raise GuardCompileError(["per-goal close selector must be a source-declared read-only call input named literally in its own sourced rule"])
+        codes = result.get("wire_codes", {}).get(selector, {})
+        if any(key in codes.values() and codes.get(key, key) != key for key in scope["goals"]):
+            raise GuardCompileError(["per-goal close code is ambiguous between semantic and wire selector codes"])
+        scope["goals"] = [codes.get(key, key) for key in scope["goals"]]
+        if len(set(scope["goals"])) != len(scope["goals"]):
+            raise GuardCompileError(["per-goal close codes collide through frozen code bindings"])
+        if codes and set(scope["goals"]) - set(codes.values()):
+            raise GuardCompileError(["per-goal close goals must be keys or codes of the wire_codes category named by selector"])
+        # A goal that must resolve products is a collecting goal: it closes on
+        # its protected fact, never on a goal row.
+        rule = result.get("resolve_all_products", False) if loads_account else False
+        if rule is not False and not (isinstance(rule, dict) and rule.get("selector") == selector
+                                      and all(rule["by_value"].get(code) is False for code in scope["goals"])):
+            raise GuardCompileError(["per-goal close goals must map to false in the same-selector resolve_all_products rule"])
     # Decode controller-verified wire categories only for internal semantics.
     categories = (bindings or {}).get("categories", {})
     def decode(group: str, value: str) -> str:
@@ -477,7 +521,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
              if key in {"outcome", "reason"} else value for key, value in choice.items()}
             for choice in choices] for scope, choices in result["identity_close_choices"].items()}
     if "goal_close" in result:
-        result["goal_close"] = {phase: [
+        result["goal_close"] = {phase: rows if phase in ("selector", "goals") else [
             {key: decode("outcomes" if key == "outcome" else "reasons", value)
              if key in {"outcome", "reason"} else value for key, value in row.items()}
             for row in rows] for phase, rows in result["goal_close"].items()}
@@ -535,13 +579,24 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
             if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
                 raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
+    # A protected outcome is a recorded fact; no sourced identity row stands in
+    # for it. Rows are decoded above, so a code bound to that meaning counts.
+    # Checked after the row loops, so shapes they refuse keep their messages.
+    identity_rows = [*result.get("identity_close", {}).values(),
+                     *(row for rows in result.get("identity_close_choices", {}).values() for row in rows)]
+    if any(row["outcome"] in {"transferred", "promise", "paid", "no_promise"} for row in identity_rows):
+        raise GuardCompileError(["identity closing rows cannot use a protected-fact outcome (promise, paid, transferred, "
+                                 "no_promise or a code bound to one): only its recorded fact closes with it; a source "
+                                 "requiring otherwise is an unsupported constraint"])
     # Goal rows close only phases with no protected collections fact. Payment,
     # note and transfer goals keep their evidence-only closing semantics.
-    if result.get("goal_close") and selected_actions & COLLECTION_ROLES:
-        raise GuardCompileError(["goal_close cannot be combined with promise, note or transfer roles"])
-    for rows in result.get("goal_close", {}).values():
+    goal_close = result.get("goal_close", {})
+    if goal_close and "selector" not in goal_close and selected_actions & COLLECTION_ROLES:
+        raise GuardCompileError(["goal_close cannot be combined with promise, note or transfer roles "
+                                 "unless selector and goals scope it to goals that use none of them"])
+    for phase in set(goal_close) - {"selector", "goals"}:
         seen = set()
-        for row in rows:
+        for row in goal_close[phase]:
             allowed = result.get("close_reasons", {}).get(row["outcome"])
             reason = row.get("reason", "")
             if (row["outcome"] in {"transferred", "promise", "paid", "no_promise"} or allowed is None
@@ -809,6 +864,19 @@ def guard_dated(state, profile, kind):
         raise ValueError('dated policy variants are malformed')
     return dated['on_or_after'] if guard_date(state['now']) >= guard_date(dated['date']) else dated['before']
 
+GUARD_IDENTITY_EVIDENCE = dict(uncertain='uncertain_verification', fault='definite_verification_failure')
+
+def guard_identity_end(state, profile, status):
+    # A protected verification terminal latches identity; only its sourced
+    # evidence row can close. Without that row the call stays quarantined.
+    evidence = GUARD_IDENTITY_EVIDENCE.get(status)
+    if evidence is not None and not any(choice.get('requires') == evidence for choices in profile.get('identity_close_choices', dict()).values() for choice in choices):
+        state['quarantined'] = True
+    else:
+        state['inflight'] = dict()
+        state['identity_status'] = status
+    return state, 'failure', dict(), ''
+
 def guard_business(day, profile):
     return day.weekday() in profile['business_weekdays'] and day.isoformat() not in profile['holidays']
 
@@ -993,6 +1061,13 @@ def guard_resolve_all_products(state, profile, finalizing=False):
         return [p for p in state['products'] if p['days_late'] >= 1]
     return list(state['products'])
 
+def guard_goal_close(state, profile):
+    # Per-goal rows serve only calls whose sealed initial goal code is listed.
+    table = profile.get('goal_close', dict())
+    if 'selector' in table and state['call_inputs'][table['selector']] not in table['goals']:
+        return dict()
+    return table
+
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
     facts = dict()
@@ -1019,6 +1094,13 @@ def guard_close(state, proposed, profile, maps):
         table = profile['identity_close']
         if state['identity_status'] == 'failed' and not state['account_loaded']:
             proposal = dict(table['failed'])
+        elif state['identity_status'] in GUARD_IDENTITY_EVIDENCE:
+            evidence = GUARD_IDENTITY_EVIDENCE[state['identity_status']]
+            matching = [choice for choices in profile.get('identity_close_choices', dict()).values() for choice in choices if choice['requires'] == evidence]
+            # A recorded callback is separate protected evidence with no sourced rank here.
+            if len(matching) != 1 or state['callbacks']:
+                raise ValueError('verification evidence lacks one declared closing choice')
+            proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
         elif state['identity_status'] != 'verified' and not state['account_loaded']:
             # A recorded callback is protected evidence, independent of free
             # dialogue proposals. Only the actual identity phase determines
@@ -1065,6 +1147,8 @@ def guard_close(state, proposed, profile, maps):
                         raise ValueError('identity closing proposal lacks one declared eligible choice')
                     choice = matching[0]
                     requirement = choice['requires']
+                    if requirement in GUARD_IDENTITY_EVIDENCE.values():
+                        raise ValueError('identity closing proposal lacks required verification evidence')
                     if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
                         raise ValueError('identity closing proposal lacks required callback evidence')
                     proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
@@ -1075,7 +1159,7 @@ def guard_close(state, proposed, profile, maps):
             # alone apply, whatever is said later.
             phase = 'account_loaded' if state['account_loaded'] else 'account_failed' if state['account_failed'] else 'verified'
             # A recorded callback closes only through a recorded_callback row.
-            rows = [row for row in profile.get('goal_close', dict()).get(phase, list())
+            rows = [row for row in guard_goal_close(state, profile).get(phase, list())
                     if (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
             if not rows:
                 raise ValueError('closing lacks protected evidence')
@@ -1098,6 +1182,9 @@ def guard_close(state, proposed, profile, maps):
         raise ValueError('callback-success closing requires a recorded callback')
     if proposal.get('reason') == 'no_callback' and state['callbacks']:
         raise ValueError('no_callback closing cannot hide a recorded callback')
+    # Whatever row selected it, a protected outcome closes only as its recorded fact.
+    if proposal['outcome'] in ('transferred', 'promise', 'paid', 'no_promise') and facts.get(proposal['outcome']) != proposal:
+        raise ValueError('protected closing outcome lacks its recorded fact')
     return proposal
 
 def guard_known_counts(state):
@@ -1260,6 +1347,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
     if state['closed'] or state.get('close_attempted') or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
+    # Recorded verification evidence leaves only its sourced close; a bank
+    # session reported sealed leaves no bank call at all.
+    if state['identity_status'] == 'sealed' or state['identity_status'] in GUARD_IDENTITY_EVIDENCE and action != 'close_call':
+        raise ValueError('identity verification has ended')
     if any(type(key) is not str or not key or type(count) is not int or count < 0
            for key, count in state['attempt_counts'].items()):
         state['quarantined'] = True
@@ -1275,8 +1366,13 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             raise ValueError('identity is complete or exhausted')
         field = inputs['field']
         expected = next(f for f in fields if f not in state['verified_fields'])
-        if field != expected or not str(inputs['answer']).strip():
+        # The latest completed check controls a factor: a correction of a
+        # passed factor is checked again after its pass is withdrawn.
+        recheck = profile.get('identity_factor_state') == 'latest_check' and field in state['verified_fields']
+        if field != expected and not recheck or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
+        if recheck:
+            state['verified_fields'].remove(field)
         operation = action
         semantic = dict(customer_id=state['customer_id'], field=field, answer=str(inputs['answer']))
     elif action == 'get_account':
@@ -1287,6 +1383,8 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     else:
         if action not in ('close_call', 'schedule_callback', 'stage_transfer', 'commit_transfer') and (state['identity_status'] != 'verified' or not state['account_loaded']):
             raise ValueError('action requires trusted identity and account results')
+        if action not in ('close_call', 'schedule_callback') and guard_goal_close(state, profile):
+            raise ValueError('a goal closed by goal rows uses no promise, note or transfer role')
         if state['transfer'] and action in ('stage_promise', 'commit_promises', 'stage_note', 'finalize_notes'):
             raise ValueError('transfer takes precedence over commitments and notes')
         if action == 'stage_promise':
@@ -1547,6 +1645,8 @@ def guard_result(state, data, profile, catalog, expected_action):
     # pending request and every earlier record; this never grants a replay.
     contradictory_error = guard_true(ok) and 'error' in data and data['error'] != ''
     if not status_valid or guard_true(ok) and not success_status or contradictory_error:
+        if action == 'verify_identity':
+            return guard_identity_end(state, profile, 'uncertain')
         state['quarantined'] = True
         if tx.get('key'):
             state['attempts'][tx['key']]['status'] = 'unknown_persistence'
@@ -1586,6 +1686,24 @@ def guard_result(state, data, profile, catalog, expected_action):
             sourced_failure = True
     bodyless_failure = (type(status) is int and 400 <= status <= 599 and sourced_failure
                         and (ok is None or type(ok) is str and ok == ''))
+    classes = profile.get('identity_failure_classes')
+    if action == 'verify_identity' and classes is not None and not guard_true(ok):
+        definite = sourced_failure and (negative_ok or bodyless_failure)
+        def matched(name):
+            return definite and any(status == case['http_status'] and ('error' not in case or data.get('error') == case['error'])
+                                    for case in classes.get(name, list()))
+        if matched('sealed'):
+            return guard_identity_end(state, profile, 'sealed')
+        if matched('fault') or definite and tx.get('repeat'):
+            return guard_identity_end(state, profile, 'fault')
+        if matched('repeat_once'):
+            # One immediate exact repeat, so no new answer can intervene.
+            state['inflight'] = dict(tx, repeat=True)
+            return state, 'allow', tx['body'], ''
+        if not definite:
+            return guard_identity_end(state, profile, 'uncertain')
+        state['inflight'] = dict()
+        return state, 'failure', dict(), ''
     # Every close result is terminal, including malformed or negative evidence.
     # Attempting a close does not establish that the bank recorded it.
     if action == 'close_call':
@@ -1652,6 +1770,8 @@ def guard_result(state, data, profile, catalog, expected_action):
             return state, 'failure', dict(), ''
         return guard_continue(state, catalog)
     if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):
+        if action == 'verify_identity':
+            return guard_identity_end(state, profile, 'uncertain')
         state['quarantined'] = True
         return state, 'failure', dict(), ''
     if action == 'commit_promises' and guard_true(ok) and (not isinstance(data.get('promise_id'), str) or not data['promise_id'].strip()):
@@ -1672,8 +1792,10 @@ def guard_result(state, data, profile, catalog, expected_action):
             # the policy limit; zero remaining also exhausts identity.
             budget = catalog['verify_identity'].get('wrong_answers_budget', limit)
             if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or not 0 <= remaining <= budget:
-                state['quarantined'] = True
-                return state, 'failure', dict(), ''
+                return guard_identity_end(state, profile, 'uncertain')
+            # Exact movement is checked before exhaustion and success.
+            if profile.get('identity_counter_movement') == 'exact' and remaining != budget - state['wrong_answers'] - (0 if guard_true(verified) else 1):
+                return guard_identity_end(state, profile, 'uncertain')
             if guard_true(verified):
                 state['verified_fields'].append(tx['semantic']['field'])
             # Use the engine counter, not guessed answer/hint interpretation.
@@ -1684,7 +1806,7 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):
-            if 'account_failed' in profile.get('goal_close', dict()):
+            if 'account_failed' in guard_goal_close(state, profile):
                 # Only an exact declared non-2xx receipt valid for that status
                 # schema is definite; any other negative receipt raises, and
                 # the result handler quarantines it.
@@ -1911,6 +2033,11 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             if op["name"] in failure_rules}
     if "account_failed" in profile.get("goal_close", {}) and not catalog.get("get_account", {}).get("failure_receipts"):
         raise GuardCompileError(["goal_close account_failed needs get_account with a declared non-2xx response whose success flag can be false"])
+    # A failure class only narrows a witnessed definite no-processing receipt.
+    witnessed = [case for case in profile.get("nonpersistent_failures", {}).get("verify_identity", []) if case.get("api_source")]
+    if any(not any(case["http_status"] == matcher["http_status"] and case.get("error") == matcher.get("error") for case in witnessed)
+           for matchers in profile.get("identity_failure_classes", {}).values() for matcher in matchers):
+        raise GuardCompileError(["identity_failure_classes matchers require an equal witnessed verify_identity nonpersistent_failures entry"])
     disclosure = _disclosure_schema(contract, profile, catalog)
     if "get_account" in catalog:
         catalog["get_account"]["disclosure_fields"] = disclosure

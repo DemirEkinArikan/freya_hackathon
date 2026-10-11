@@ -383,7 +383,8 @@ def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict],
     _write_json(run_dir / "policy.json", policy)
     _write_json(run_dir / "policy.contract.json", contract)
     trace.emit("policy_contract", sha256=contract["sha256"], sources=len(contract["sources"]),
-               active_rules=len(contract["active_rules"]), permitted_operations=len(contract["permitted_operations"]))
+               active_rules=len(contract["active_rules"]), permitted_operations=len(contract["permitted_operations"]),
+               declared_limitations=[entry["category"] for entry in contract.get("declared_limitations", [])])
     return contract["sha256"]
 
 

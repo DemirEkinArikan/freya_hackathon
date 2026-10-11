@@ -28,7 +28,7 @@ organizer instructions govern execution. Customer cases remain hidden.
   workflow: an export fails if its workflow changed after publication. Tonight
   needs at most 2 × (3 + retries) workflows, well under the workspace limit of 200.
 - The frozen commit must contain `tools/final_attempts.py` and the packager's
-  `selections` support (the T18 multi-attempt PR). Both are tools, not runtime
+  `selections` support ([PR 167](https://github.com/DemirEkinArikan/freya_hackathon/pull/167)). Both are tools, not runtime
   source, so they do not change the builder source fingerprint.
 - Obtain and read organizer submission instructions when supplied. Record the
   actual channel, permitted attachment layout, credential/import requirements,

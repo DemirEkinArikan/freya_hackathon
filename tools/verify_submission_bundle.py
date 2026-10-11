@@ -309,7 +309,7 @@ def _verify_validator_source(hashes: dict[str, str]) -> None:
             raise ValueError("validator_source")
 
 
-def _final_evidence(payload: dict[str, bytes], index: dict, commit: str, source_root: Path) -> None:
+def _final_evidence(payload: dict[str, bytes], index: dict, commit: str, source_root: Path) -> dict | None:
     manifest = index.get("submission")
     if not isinstance(manifest, dict) or manifest.get("commit") != commit:
         raise ValueError("final_manifest")

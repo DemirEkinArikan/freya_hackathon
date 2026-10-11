@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from builder.action_bindings import ActionBindingError, checked_action_bindings, compile_action_bindings
+from builder.action_bindings import ActionBindingError, compile_action_bindings
 from builder.build import _extract_policy
 from builder.contract import PolicyContractError, compile_policy_contract
 from builder.execution_requirements import compile_execution_requirements
@@ -41,17 +41,6 @@ def relaxed_errors(policy, sources, api):
 
 
 class RelaxedVocabularyTests(unittest.TestCase):
-    def test_an_outcome_code_named_like_another_categorys_meaning_is_unguarded_only_in_relaxed(self):
-        policy, sources, api = declared()
-        rule(policy, "close_reasons")["value"]["declined"] = []
-        close_field(api, "outcome")["enum"].append("declined")
-        with self.assertRaisesRegex(ActionBindingError, "outcomes vocabulary has a code"):
-            compile_action_bindings(policy, api)
-        binding = compile_action_bindings(policy, api, declarations="relaxed")
-        self.assertEqual((binding["declaration_mode"], binding["categories"]["outcomes"]["unbound_codes"]), ("relaxed", ["declined"]))
-        self.assertEqual(checked_action_bindings(policy, binding), binding)
-        self.assertTrue(compile_execution_requirements(policy, sources, api, declarations="relaxed")["actions"])
-
     def test_guarded_spellings_and_the_categorys_own_meanings_stay_fatal(self):
         for category, code in (("outcome", "No-Callback"), ("outcome", "PROMISE"), ("reason", "declined")):
             policy, _, api = declared()

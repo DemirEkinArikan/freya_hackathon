@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import copy
 import datetime as dt
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -250,6 +251,60 @@ def _write_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _prepare_evaluator_input(args, run_dir: Path, secrets: tuple[str, ...]) -> dict | None:
+    """Freeze evaluator-only criteria; neither their content nor binding enters generation."""
+    if not args.test_cases:
+        return None
+    source = _within_project(args.test_cases)
+    original = source.read_bytes()
+    value = read_json(source)
+    if source.read_bytes() != original:
+        raise HostedTestInfrastructureError("Evaluator input changed while it was being loaded")
+    assert_no_secrets(value, forbidden_values=secrets)
+    # Autonomous development repair must not silently consume reserved blind
+    # feedback. The separate frozen-candidate evaluator owns holdout lifecycle.
+    rows = value.get("cases", []) if isinstance(value, dict) else value if isinstance(value, list) else []
+    if isinstance(rows, list) and any(
+        isinstance(row, dict) and row.get("split") == "holdout"
+        and (not args.test_brief or row.get("brief") == args.test_brief)
+        for row in rows
+    ):
+        raise ValueError("Autonomous repair refuses holdout cases; use frozen-candidate evaluation with consumption tracking")
+    snapshot = run_dir / "evaluator-cases.json"
+    _write_json(snapshot, value)
+    return {"source_file": str(source.relative_to(PROJECT)),
+            "source_sha256": hashlib.sha256(original).hexdigest(),
+            "canonical_sha256": digest(value), "snapshot_file": snapshot.name,
+            "snapshot_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest(),
+            "selection": {"brief": args.test_brief}}
+
+
+def _verify_evaluator_input(binding: dict, run_dir: Path) -> Path:
+    """Reject changed criteria before they can justify repair or an accepted export."""
+    try:
+        source = _within_project(Path(binding["source_file"]))
+        snapshot = _within_project(run_dir / binding["snapshot_file"])
+        unchanged = (hashlib.sha256(source.read_bytes()).hexdigest() == binding["source_sha256"]
+                     and hashlib.sha256(snapshot.read_bytes()).hexdigest() == binding["snapshot_sha256"])
+    except (OSError, ValueError):
+        unchanged = False
+    if not unchanged:
+        raise HostedTestInfrastructureError("Evaluator input changed; the candidate and original evidence were preserved without repair")
+    return snapshot
+
+
+def _test_deployment_matches(result: dict, deployment: dict) -> bool:
+    """Bind supplied evaluator pins to this attempt, beyond internal consistency."""
+    pin = result.get("deployment_pin")
+    if pin is None:
+        return True  # Legacy injected local runners do not report hosted pins.
+    expected = {key: deployment.get(key) for key in (
+        "workflow_id", "agent_id", "version_id", "version_number", "published", "model", "reasoning_effort")}
+    expected["graph_sha256"] = digest(deployment["workflow"])
+    return all(all(value == expected[key] for key, value in pin[side].items() if key in expected)
+               for side in ("before", "after"))
+
+
 def _complete_run(run_dir: Path, manifest: dict, trace: Trace, source_record: dict,
                   secrets: tuple[str, ...], deadline: Deadline, **end_fields: Any) -> dict:
     verify_source_unchanged(PROJECT, source_record)
@@ -315,6 +370,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     attempt_open = False
     attempt_number = 0
     source_record = None
+    evaluator_input = None
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -335,6 +391,10 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             assert_live_contract(openapi)
         source_manifest = [{k: v for k, v in source.items() if k != "text"} for source in sources]
         trace.emit("inputs", sources=source_manifest, tool_api_sha256=digest(openapi))
+        evaluator_input = _prepare_evaluator_input(args, run_dir, secret_values)
+        if evaluator_input is not None:
+            _write_json(run_dir / "evaluator-input.json", evaluator_input)
+            trace.emit("evaluator_input_frozen", **evaluator_input)
         source_record = capture_source_provenance(PROJECT, {
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
             "codex_executable": args.codex, "deadline_seconds": deadline.duration_seconds,
@@ -344,6 +404,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                    "first_workflow_reserve_seconds": FIRST_WORKFLOW_RESERVE,
                                    "workflow_cap_seconds": 900},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
+            "evaluator_input": evaluator_input,
         })
         _write_json(run_dir / "builder-source.json", source_record)
         trace.emit("builder_source_snapshot", builder_source_sha256=source_record["builder_source_sha256"],
@@ -418,7 +479,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             attempt_record = {"number": attempt_number, "directory": str(attempt_dir.relative_to(run_dir)),
                               "status": "running", "phase": "generation",
                               "policy_contract_sha256": contract_sha256, "policy_sha256": policy_sha256,
-                              "tool_api_sha256": digest(openapi)}
+                              "tool_api_sha256": digest(openapi), "evaluator_input": evaluator_input}
             attempt_open = True
             _attempt_status(attempt_dir, attempt_record, secret_values)
             trace.emit("stage_started", stage="workflow", attempt=workflow_repairs + 1,
@@ -540,8 +601,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             deployment = client.save_workflow(args.slot or args.brief[0].stem, runtime_workflow, output_dir / ".freya-slots.json")
             deployment["model"] = args.model
             deployment["reasoning_effort"] = args.reasoning_effort
-            if args.test_brief:
-                deployment["brief"] = args.test_brief
+            if evaluator_input and evaluator_input["selection"]["brief"]:
+                deployment["brief"] = evaluator_input["selection"]["brief"]
             _attempt_snapshot(attempt_dir, "deployment.json", deployment, secret_values)
             # Revalidate the actual stored workflow, before optional tests.
             deployed_definition = {k: v for k, v in deployment["workflow"].items() if k != "agent_config"}
@@ -559,21 +620,23 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             trace.emit("deployment", **{k: v for k, v in deployment.items() if k != "workflow"},
                        steps=len(deployment["workflow"]["nodes"]), tools=len(operations(openapi)), attempt=attempt_number)
             _attempt_status(attempt_dir, attempt_record, secret_values, status="published", phase="deployment")
-            if not args.test_cases:
+            if evaluator_input is None:
                 break
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             if test_runner is None:
                 from benchmarks.hosted import run_builder_tests
                 test_runner = run_builder_tests
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="testing")
-            tests = test_runner(client, deployment, _within_project(args.test_cases), attempt_dir, deadline)
+            cases_path = _verify_evaluator_input(evaluator_input, run_dir)
+            tests = test_runner(client, deployment, cases_path, attempt_dir, deadline)
             _attempt_snapshot(attempt_dir, "tests.json", tests, secret_values)
             # Canonical convenience result remains the selected/latest tested
             # candidate; every authoritative attempt snapshot is retained above.
             _attempt_snapshot(run_dir, "benchmark-results.json", tests, secret_values)
             trace.emit("tests", result=tests, attempt=attempt_number,
                        attempt_directory=attempt_record["directory"])
-            if _test_infrastructure_failed(tests):
+            _verify_evaluator_input(evaluator_input, run_dir)
+            if _test_infrastructure_failed(tests) or not _test_deployment_matches(tests, deployment):
                 trace.emit("test_infrastructure_failure", candidate_preserved=True, model_repair_attempted=False)
                 raise HostedTestInfrastructureError(
                     "Hosted test infrastructure or evidence failed; the existing candidate was preserved and was not regenerated")
@@ -590,12 +653,16 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
 
         client.reserve = 0
         deadline.require()
+        if evaluator_input is not None:
+            _verify_evaluator_input(evaluator_input, run_dir)
         _attempt_status(attempt_dir, attempt_record, secret_values, phase="export")
         exported = client.export_workflow(deployment, run_dir / "submission.workflow.json")
         _attempt_snapshot(attempt_dir, "export.json", exported, secret_values)
         # An export response can arrive after its allocation. Preserve it as
         # evidence, but never report a build exceeding the global limit as done.
         deadline.require()
+        if evaluator_input is not None:
+            _verify_evaluator_input(evaluator_input, run_dir)
         _attempt_status(attempt_dir, attempt_record, secret_values, status="exported", phase="complete",
                         export_sha256=digest(exported))
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
@@ -610,6 +677,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
+                    "evaluator_input": evaluator_input,
                     "run_directory": str(run_dir.relative_to(PROJECT))}
         return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                              status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
@@ -626,6 +694,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                          "builder_source_record_sha256": digest(source_record) if source_record else None,
                                                          "last_attempt": attempt_number or None,
                                                          "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
+                                                         "evaluator_input": evaluator_input,
                                                          "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
         trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining())
         raise

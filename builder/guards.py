@@ -2145,6 +2145,37 @@ def _entry_budget_code(*, abort: bool = False) -> str:
     return source
 
 
+def _ask_and_capture(nodes: dict) -> set:
+    """Capture each caller answer in the step that asked for it.
+
+    On the host a speaking LLM-entry step takes its offered completion only
+    after the caller's reply, so the reply arrives there. A silent answer step
+    behind that completion then answers the pending turn itself, asks a
+    question of its own and extracts the reply to that one instead, so an
+    identity answer reached the controller under another factor. The asking
+    step gets the answer step's extraction and its completion goes straight to
+    the answer step's single exit. Returns the asking steps changed.
+    """
+    asking = set()
+    for name, node in nodes.items():
+        if node.get("passthrough") or node.get("extraction_schema") or (node.get("on_enter") or {}).get("type", "llm") != "llm":
+            continue
+        routes = [route for route in node.get("transitions", []) if route.get("is_tool_call") is True]
+        answers = [target for target in {route["target_node"] for route in routes} if target in nodes
+                   and not nodes[target].get("passthrough") and nodes[target].get("extraction_schema")
+                   and (nodes[target].get("on_enter") or {}).get("type") == "silent"]
+        rows = nodes[answers[0]].get("transitions", []) if len(answers) == 1 else []
+        if (len(rows) != 1 or rows[0].get("is_tool_call") or rows[0]["target_node"] in (name, answers[0])
+                or rows[0]["condition"].get("operator") not in ("matches_intent", "always")):
+            continue
+        node["extraction_schema"] = copy.deepcopy(nodes[answers[0]]["extraction_schema"])
+        for route in routes:
+            if route["target_node"] == answers[0]:
+                route["target_node"] = rows[0]["target_node"]
+        asking.add(name)
+    return asking
+
+
 def _bound_entries(nodes: dict, public_names: list[str]) -> None:
     """Bound both unattended-node waits and cycles through multiple nodes."""
     gates = {name: PREFIX + "gate_" + str(index)
@@ -2190,7 +2221,7 @@ _COMPLETION_ONLY_RULE = ("The only tool call allowed in this turn is one offered
                          "only account facts and action results that the runtime view shows.")
 
 
-def _node_discipline(nodes: dict) -> set:
+def _node_discipline(nodes: dict, asking: set = frozenset()) -> set:
     """Append the kit's per-node tool rules to every authored speaking node.
 
     A completion-only step (LLM entry, no extraction, only completions) must
@@ -2210,13 +2241,14 @@ def _node_discipline(nodes: dict) -> set:
         if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
                 and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
             text = _COMPLETION_ONLY_RULE
-            answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
+            # An asking step (R3) captures the answer to its own question, so it is no answer step here.
+            answers = {target for target in completions if target not in asking and nodes.get(target, {}).get("extraction_schema")
                        and not nodes[target].get("passthrough")
                        and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
             if len(answers) == 1:
                 captures[name] = answers.pop()
         node["task_message"] = (node.get("task_message", "") + "\n\n" + text).lstrip()
-    # After the loop, so only authored extraction marks an answer step.
+    # After the loop, so no capture copy makes its step an answer step for another.
     for name, target in captures.items():
         nodes[name]["extraction_schema"] = copy.deepcopy(nodes[target]["extraction_schema"])
     return set(captures)
@@ -2342,7 +2374,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         for entry in node.get("extraction_schema", []):
             if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
                 entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
-    captured = _node_discipline(nodes)
+    captured = _node_discipline(nodes, _ask_and_capture(nodes))
     # On the host a routing_prompt replaces the router's intent instruction and
     # every intent row then matched, so the first row won; without it the
     # default router chose correctly. Intent nodes never keep one.

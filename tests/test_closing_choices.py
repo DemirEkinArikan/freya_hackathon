@@ -4,14 +4,21 @@ No customer/evaluator scripts or model/platform calls are used. The synthetic
 API declares enums deliberately; it does not rewrite the organizer's real API.
 """
 import copy
+import json
+import os
 import unittest
+from pathlib import Path
 
 from test_guards import fixture
 from builder.action_bindings import compile_action_bindings
 from builder.contract import compile_policy_contract
+from builder.execution_requirements import compile_execution_requirements
 from builder.guards import (GuardCompileError, _catalogue, _profile,
                             compile_guarded_workflow, run_guard_step)
-from builder.safety import digest
+from builder.safety import digest, read_json
+
+ROOT = Path(__file__).resolve().parents[1]
+RETAINED_RUN = os.environ.get("FREYA_RETAINED_POLICY_RUN", "")
 
 
 CHOICES = {
@@ -24,6 +31,10 @@ CHOICES = {
     ],
     "incomplete": [{"outcome": "not_verified", "reason": "declined", "requires": "none"}],
 }
+# A source may list several reasons for one identity phase without ranking one.
+REASONLESS = {"failed": {"outcome": "not_verified", "reason": "failed"},
+              "incomplete": {"outcome": "not_verified", "reason": "declined"},
+              "unreached": {"outcome": "not_reached"}}
 
 
 def context(choices=CHOICES, *, opaque=False, changes=None):
@@ -254,6 +265,82 @@ class ClosingChoiceTests(unittest.TestCase):
         choices = {"unreached": [{"outcome": "not_reached", "reason": "callback", "requires": "none"}]}
         with self.assertRaisesRegex(GuardCompileError, "recorded_callback evidence"):
             compile_guarded_workflow(**context(choices, opaque=True)[0])
+
+    def test_reasonless_phase_row_refined_by_sourced_choices_closes_only_through_a_choice(self):
+        for opaque in (False, True):
+            with self.subTest(opaque=opaque):
+                self.setup_context({"unreached": CHOICES["unreached"]}, opaque=opaque, changes={"identity_close": REASONLESS})
+                compile_guarded_workflow(**self.context)
+                outcome, reasons = self.outcomes["not_reached"], self.reasons
+                for reason in ("no_callback", "wrong_number", "deceased", "unclear"):
+                    self.assertEqual(self.close(outcome, reasons[reason])[2], {"customer_id": "invented-session",
+                                     "outcome": outcome, "reason": reasons[reason]})
+                for inputs in ({"outcome": outcome}, {"outcome": outcome, "reason": reasons["callback"]},
+                               {"outcome": outcome, "reason": reasons["declined"]}):
+                    with self.assertRaisesRegex(ValueError, "declared eligible choice|callback evidence"):
+                        self.step("prepare", self.state, "close_call", inputs)
+                self.assertEqual(self.close(self.outcomes["not_verified"], reasons["unclear"])[2]["reason"], reasons["declined"])
+                self.book_callback()
+                self.assertEqual(self.close(outcome, reasons["no_callback"])[2]["reason"], reasons["callback"])
+
+    def test_reasonless_phase_row_keeps_failed_partial_and_unknown_callback_guards(self):
+        self.setup_context(changes={"identity_close": REASONLESS})
+        start, field = self.state, self.profile["identity_fields"][0]
+        state = self.step("prepare", start, "verify_identity", {"field": field, "answer": "invented correct answer"})[0]
+        self.state = self.step("result", state, "verify_identity", result={"ok": True, "verified": True, "wrong_answers_left": 3})[0]
+        with self.assertRaisesRegex(ValueError, "declared eligible choice"):
+            self.close("not_reached", "wrong_number")
+        self.state = start
+        for remaining in (2, 1, 0):
+            state = self.step("prepare", self.state, "verify_identity", {"field": field, "answer": "invented incorrect answer"})[0]
+            self.state = self.step("result", state, "verify_identity", result={"ok": True, "verified": False, "wrong_answers_left": remaining})[0]
+        self.assertEqual(self.close("not_reached", "unclear")[2]["reason"], "failed")
+        for result in ({"ok": False, "error": "synthetic_failure"}, {}):
+            state = self.step("prepare", start, "schedule_callback", {"date": "2031-05-06", "time": "12:00"})[0]
+            self.state = self.step("result", state, "schedule_callback", result=result)[0]
+            for reason in ("callback", "no_callback"):
+                with self.subTest(result=result, reason=reason), self.assertRaises(ValueError):
+                    self.close("not_reached", reason)
+
+    def test_reasonless_phase_row_without_valid_refining_choices_fails_compilation(self):
+        for choices, fixed in ((None, REASONLESS), ({"incomplete": CHOICES["incomplete"]}, REASONLESS),
+                               (CHOICES, dict(REASONLESS, failed={"outcome": "not_verified"})),
+                               ({"unreached": CHOICES["unreached"]}, dict(REASONLESS, incomplete={"outcome": "not_verified"}))):
+            for opaque in (False, True):
+                with self.subTest(choices=choices, fixed=fixed, opaque=opaque), \
+                        self.assertRaisesRegex(GuardCompileError, "omits the reason its outcome requires"):
+                    compile_guarded_workflow(**context(choices, opaque=opaque, changes={"identity_close": fixed})[0])
+        for choice in ({"outcome": "not_reached", "requires": "none"},
+                       {"outcome": "not_reached", "reason": "declined", "requires": "none"},
+                       {"outcome": "not_verified", "reason": "declined", "requires": "none"},
+                       {"outcome": "not_reached", "reason": "callback", "requires": "none"},
+                       {"outcome": "not_reached", "reason": "no_callback", "requires": "recorded_callback"}):
+            with self.subTest(choice=choice), self.assertRaises(GuardCompileError):
+                compile_guarded_workflow(**context({"unreached": [choice]}, changes={"identity_close": REASONLESS})[0])
+
+
+@unittest.skipUnless(RETAINED_RUN, "set FREYA_RETAINED_POLICY_RUN to a retained kit-input build run directory")
+class RetainedRejectedPolicyReplayTests(unittest.TestCase):
+    """No-model replay of a retained failed build's rejected policies; artifacts stay untracked."""
+
+    def test_retained_rejected_policies_pass_the_policy_stage_on_their_exact_inputs(self):
+        run = Path(RETAINED_RUN)
+        lines = (run / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+        inputs = next(event for event in map(json.loads, lines) if event.get("event") == "inputs")
+        sources = []
+        for source in inputs["sources"]:
+            text = (ROOT / "build-the-builder" / "briefs" / source["file"]).read_text(encoding="utf-8")
+            self.assertEqual(digest(text), source["sha256"])
+            sources.append(dict(source, text=text))
+        openapi = read_json(ROOT / "build-the-builder" / "tools" / "openapi.json")
+        self.assertEqual(digest(openapi), inputs["tool_api_sha256"])
+        rejected = sorted(run.glob("policy.rejected-*.json"))
+        self.assertTrue(rejected)
+        for path in rejected:
+            with self.subTest(policy=path.name):
+                policy = read_json(path)["policy"]
+                compile_policy_contract(policy, sources, openapi)
+                self.assertTrue(compile_execution_requirements(policy, sources, openapi)["actions"])
 
 
 if __name__ == "__main__":

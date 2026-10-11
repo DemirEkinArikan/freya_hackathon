@@ -1009,11 +1009,11 @@ def guard_close(state, proposed, profile, maps):
             unreached = (state['identity_status'] == 'pending' and not state['verified_fields']
                          and state['wrong_answers'] == 0)
             # Without a recorded callback, each scope a proposal could still
-            # reach keeps its rows needing no callback. If all leave the same
-            # single disposition, dialogue cannot change it (as for goal rows).
+            # reach keeps its rows needing no evidence but that absence. If all
+            # leave the same single disposition, dialogue cannot change it.
             rows = [[dict((key, value) for key, value in row.items() if key != 'requires')
                      for row in profile.get('identity_close_choices', dict()).get(scope, [table[scope]])
-                     if row.get('requires') != 'recorded_callback']
+                     if row.get('requires', 'none') in ('none', 'no_recorded_callback')]
                     for scope in ('unreached', 'incomplete')[bool(state['verified_fields']):]]
             if state['callbacks']:
                 scope = 'unreached' if unreached else 'incomplete'

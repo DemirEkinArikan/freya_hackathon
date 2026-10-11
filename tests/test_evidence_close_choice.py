@@ -124,6 +124,10 @@ class EvidenceCloseChoiceTests(unittest.TestCase):
             self.close(state, profile, catalog, maps)
         state["verified_fields"] = ["member_factor"]  # only the incomplete scope remains reachable
         self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_STOP")
+        # A row needing other protected evidence is never selected by evidence alone here.
+        profile["identity_close_choices"]["incomplete"][0]["requires"] = "invented_other_evidence"
+        with self.assertRaisesRegex(ValueError, "declared eligible choice"):
+            self.close(state, profile, catalog, maps)
 
     def test_code_complexity_stays_bounded(self):
         code = "try:\n" + "    x = 1\n" * 4500 + "except Exception:\n    x = 0\n"

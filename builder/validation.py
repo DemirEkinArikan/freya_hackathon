@@ -833,11 +833,19 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                             condition_bindings(child)
                 condition_bindings(transition.get("condition"))
             # The router never evaluates a tool transition, unless the kit's
-            # same-target merge joins it with an ordinary route.
-            if (transition.get("condition") == {"operator": "always"} and i != len(transitions) - 1
-                    and (transition.get("is_tool_call") is not True or any(
-                        isinstance(t, dict) and t.get("is_tool_call") is not True and t.get("target_node") == target
-                        for t in transitions))):
+            # same-target merge joins it with an ordinary route, whatever the
+            # conditions, into one route of undocumented kind and list position.
+            merged = [j for j, t in enumerate(transitions) if isinstance(t, dict)
+                      and t.get("is_tool_call") is not True and t.get("target_node") == target]
+            if transition.get("is_tool_call") is True and merged:
+                errors.append(f"{tpath}: is_tool_call route shares its target with ordinary transitions{merged}; "
+                              "the kit merges same-target routes into one route (the OR of their conditions, "
+                              "unconditional if any is always), which cannot be both a completion and a router row. "
+                              "Keep one route per target: drop one of them (a kept completion can also cover "
+                              "those caller answers, since an unmatched caller turn stays in the node) or send the "
+                              "ordinary route to a different node")
+            elif (transition.get("condition") == {"operator": "always"} and i != len(transitions) - 1
+                    and transition.get("is_tool_call") is not True):
                 errors.append(tpath + ": unconditional route shadows later transitions")
             if "is_tool_call" in transition and type(transition["is_tool_call"]) is not bool:
                 errors.append(tpath + ": is_tool_call must be boolean")

@@ -1,0 +1,827 @@
+{
+  "version": 1,
+  "kind": "t15_local_changed_policy_lane_baseline_record",
+  "recorded_at": "2026-10-11T07:38:18.768522+00:00",
+  "method": "baseline",
+  "label": "earlier guarded-builder algorithm",
+  "source": {
+    "git_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+    "git_tree": "14da16add0333d876dffdbf3afa3b258c19f9017",
+    "selection_files_sha256": "c1a066bb3b0806e3365819b5577eb81c1aa66ae94415de8c52b05124367ad033"
+  },
+  "plan": "docs/runtime-evidence/t15-rapid-development-plan-20261011.json",
+  "evaluator_manifest": {
+    "path": "benchmarks/fixtures/offline.json",
+    "sha256": "f0efb9d381af5daa66fa23e1478199b7dfd237eca500c6e6eeb66be6941b03dd",
+    "development_fixture_ids_sha256": "ebd0ae895a19546566722705a75666062a5f857f29ee55df441f28a4c8cd7afd",
+    "development_fixtures": 60
+  },
+  "inputs": {
+    "export": "byte-identical to the structured side's single export; re-derived in memory from the evaluator offline.json (no second export)",
+    "train-1": {
+      "current-policy.md": "46998c333247fe0a8a8e338e612be1be2be091604db14dac8f0267f76d035588",
+      "bank.openapi.json": "5f19320b43b54ea9419bb07f034e02fdf5ccf232c6e0bddb3d9a67be07ad8b7b"
+    },
+    "train-2": {
+      "current-policy.md": "da45b4a22a5ff62c6afab2e433c5d032ce8cdbc908fc92ffe10eec958a065b5d",
+      "effective-memo.md": "aff1a69b0463494a5a19c89664754dd116bd29a8d9831fb917dd86c4af291b0e",
+      "historical-policy.md": "2bc5820369892aca7d93cfb6668eb32cb07be4ed002ae830a6d456427283e985",
+      "operations-mail.md": "e1b1a4f2582d1f47cdbbf685a0616bf76fcf8a6a178bbb7212438fcc09260166",
+      "code-list.md": "966fc74361de94638fecd1cabfc630480e2cd644c075842381dac44980a09725",
+      "bank.openapi.json": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436"
+    },
+    "validation-1": "not exported",
+    "validation-2": "not exported",
+    "excluded_from_generation": [
+      "fixtures",
+      "customer scripts",
+      "expected records",
+      "replay scripts",
+      "evaluation reports",
+      "holdouts"
+    ]
+  },
+  "command": "python3.11 builder/build.py --brief <each exported brief, export order> --tool-api artifacts/t15-inputs/<profile>/bank.openapi.json --output-dir artifacts/t15-baseline-<profile>-generation --generate-only --model gpt-6.1-sol --reasoning-effort high",
+  "builds": {
+    "train-1": {
+      "run_id": "20261011T071451000468Z",
+      "worktree": "<claude scratchpad>/wt/t15-baseline-train-1-2d09c31",
+      "output_dir": "artifacts/t15-baseline-train-1-generation/20261011T071451000468Z",
+      "pids": {
+        "builder": 18656,
+        "launcher": 18630
+      },
+      "status": "failed",
+      "failure_kind": "builder",
+      "error": "Policy extraction failed after bounded repairs: policy contains unsupported constraints; policy.rules[19] contains unsupported rule fields; policy.rules[23] contains unsupported rule fields; policy.rules[24] contains unsupported rule fields; policy.rules[27] contains unsupported rule fields; policy.rules[31] contains unsupported rule fields",
+      "started_at": "2026-10-11T07:14:51.000913+00:00",
+      "ended_at": "2026-10-11T07:28:19.947293+00:00",
+      "elapsed_seconds": 808.946,
+      "remaining_seconds_at_end": 991.136,
+      "workflow_exported": false,
+      "selected_attempt": null,
+      "isolation_audit": {
+        "status": "pass",
+        "failures": [],
+        "time": "2026-10-11T07:14:59.949917+00:00"
+      },
+      "builder_source_sha256": "ad990dfbcb29f4b7ae6179516cc010441c68ebf69644cd7a67a7d316495d257b",
+      "builder_source_record_sha256": "894c57e2f2006450647da1357ab9f9083ccd69e8ab4b7f424fd4ca70f4065464",
+      "deadline_seconds": 1800.0,
+      "export_reserve_seconds": 300,
+      "evaluator_input": null,
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "mode": "generate-only",
+      "builder_input_fingerprints": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "27ee7511731188e7b287ff7de25aed1287fbaa8a3a3b491c70e51f0def0803d2"
+        }
+      ],
+      "builder_tool_api_sha256": "d1ef8916e24c5b9fd49a6781a676c39e581a3134f3f71396c012e6b733ad2a4f",
+      "policy_attempts": [
+        {
+          "check": "policy_validation",
+          "passed": false,
+          "error_count": 2,
+          "unsupported_constraints_declared": true,
+          "unsupported_rule_fields": 1,
+          "other_errors": []
+        },
+        {
+          "check": "policy_format_validation",
+          "passed": false,
+          "format_error": "inner_json"
+        },
+        {
+          "check": "policy_validation",
+          "passed": false,
+          "error_count": 6,
+          "unsupported_constraints_declared": true,
+          "unsupported_rule_fields": 5,
+          "other_errors": []
+        }
+      ],
+      "model_calls": 4,
+      "artifact_sha256": {
+        "builder-source.json": "c57edee4b6a4f0b16df8fb211744072a41ae54ded77ac3518ea5575470d7b130",
+        "manifest.json": "c5346ba62df104a844c5ad7c3f36385aa9fbc9f831627973691a094bdca412c6",
+        "policy.format-rejected-2.json": "dc35a913f980fda4db0d4af9e94d4396b26b66fc7490df37ea01b0a08cfb8f82",
+        "policy.rejected-1.json": "8947c906c783e749a00fd07f5f3b116ce919fbb50130b0e3867cb640c48f0603",
+        "policy.rejected-3.json": "8c2329282091ba6c75ec6ec564984d1bfa97df92f310d985379cda2180e3cc2f",
+        "trace.jsonl": "5a91199f918f3751bfb3f9d541b509c631f114cb8f7dee1dc8fc086395d8f14c"
+      }
+    },
+    "train-2": {
+      "run_id": "20261011T071802531422Z",
+      "worktree": "<claude scratchpad>/wt/t15-baseline-train-2-2d09c31",
+      "output_dir": "artifacts/t15-baseline-train-2-generation/20261011T071802531422Z",
+      "pids": {
+        "builder": 26603,
+        "launcher": 26570
+      },
+      "status": "failed",
+      "failure_kind": "builder",
+      "error": "Policy extraction failed after bounded repairs: policy contains unsupported constraints",
+      "started_at": "2026-10-11T07:18:02.531895+00:00",
+      "ended_at": "2026-10-11T07:34:30.262979+00:00",
+      "elapsed_seconds": 987.731,
+      "remaining_seconds_at_end": 812.297,
+      "workflow_exported": false,
+      "selected_attempt": null,
+      "isolation_audit": {
+        "status": "pass",
+        "failures": [],
+        "time": "2026-10-11T07:18:09.666729+00:00"
+      },
+      "builder_source_sha256": "ad990dfbcb29f4b7ae6179516cc010441c68ebf69644cd7a67a7d316495d257b",
+      "builder_source_record_sha256": "d14da44fad59dcc3ae49a4893ad874f1d1714d3a65f5ff06c892574406e1c927",
+      "deadline_seconds": 1800.0,
+      "export_reserve_seconds": 300,
+      "evaluator_input": null,
+      "model": "gpt-6.1-sol",
+      "reasoning_effort": "high",
+      "mode": "generate-only",
+      "builder_input_fingerprints": [
+        {
+          "id": "brief-1",
+          "file": "current-policy.md",
+          "sha256": "a3df9c87ca910d95bd7f55a8a6ed6397e79f3b1b42d286b81ba71d64216fb6ee"
+        },
+        {
+          "id": "brief-2",
+          "file": "effective-memo.md",
+          "sha256": "2d5aaf68dadf46298ff42720ca462e0c5590c7807c4f8a49f3aefbf6158430d4"
+        },
+        {
+          "id": "brief-3",
+          "file": "historical-policy.md",
+          "sha256": "9dab0f53683559f19d0d2f341cda7b2780d2fa346131a2285a82e9119448acb9"
+        },
+        {
+          "id": "brief-4",
+          "file": "operations-mail.md",
+          "sha256": "2d94e82066af72fe47a81e6229f92a5edc1f54612c50c5f735fae7c39ebeb47b"
+        },
+        {
+          "id": "brief-5",
+          "file": "code-list.md",
+          "sha256": "5bc32b39e009688154d529e4a9354da433bbc1a8d768a26c207477c50509ac7c"
+        }
+      ],
+      "builder_tool_api_sha256": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761",
+      "policy_attempts": [
+        {
+          "check": "policy_validation",
+          "passed": false,
+          "error_count": 28,
+          "unsupported_constraints_declared": true,
+          "unsupported_rule_fields": 11,
+          "other_errors": [
+            "quote is not present in the supplied source",
+            "refers to an unknown source"
+          ]
+        },
+        {
+          "check": "policy_validation",
+          "passed": false,
+          "error_count": 1,
+          "unsupported_constraints_declared": true,
+          "unsupported_rule_fields": 0,
+          "other_errors": []
+        },
+        {
+          "check": "policy_validation",
+          "passed": false,
+          "error_count": 1,
+          "unsupported_constraints_declared": true,
+          "unsupported_rule_fields": 0,
+          "other_errors": []
+        }
+      ],
+      "model_calls": 4,
+      "artifact_sha256": {
+        "builder-source.json": "0442e4f05c8155b957894747cb45b0e36e2b8311fc99b3520f21e4865ab476bc",
+        "manifest.json": "c99a50950733fa7ebd92662409c3f42f901c477d3b91b274e97d40f6d73efb4c",
+        "policy.rejected-1.json": "092a62b6f3736bec816a87091b85981ee2d0569dd310dfa354588ba762aef959",
+        "policy.rejected-2.json": "6a4414e170e500deae704193c3164f9cfde23d0f1cb71954ecf4cf713f73b61a",
+        "policy.rejected-3.json": "360dbdf2f16991f7ba7d8dcd5ba06d94a40e678915932c9aeadba4fa2da56e15",
+        "trace.jsonl": "48f5bbbcfa5dde173332be5680a88bf6125ac0f893a01688054d33a7efdb1b4a"
+      }
+    }
+  },
+  "evaluator_compiler_finding": {
+    "check": "builder.validation.validate_workflow(workflow, openapi, guard_context=context) on the retained 2d09c31 A+B run 20261010T224748051958Z",
+    "main_3dad5dd_compiler": "rejected: guarded workflow differs from exact controller compilation",
+    "2d09c31_compiler": "accepted: 0 errors",
+    "consequence": "local_generated_eval in a main checkout rejects every 2d09c31 candidate before replay; baseline candidates need the matching compiler",
+    "matched_evaluator": {
+      "worktree": "<claude scratchpad>/wt/t15-baseline-matched-eval",
+      "tree": "503efaf9a5303f212c2640d20bbbb3086e613317",
+      "tools_and_benchmarks_from": "3dad5dd9f943621fbcaa4240cdb7f65ad6c6dda0 (tools 6b074257, benchmarks 488d03a8)",
+      "builder_from": "2d09c31d2f2d25a0e01466e707f560127634cad3 (builder b1dc19a7)",
+      "accepts_retained_2d09c31_workflow": true,
+      "used_for_verdicts": false,
+      "reason_unused": "no baseline candidate exists"
+    },
+    "structured_note": "3f2399d and 3dad5dd have identical builder/, tools/ and benchmarks/ trees; main 180507c changes builder/validation.py and builder/execution_requirements.py, so every candidate needs its own matching compiler"
+  },
+  "builder_input_parity": "builder-level input fingerprints equal the round-1 structured 3f2399d train-1/train-2 runs (train-1 27ee7511/d1ef8916; train-2 a3df9c87, 2d5aaf68, 9dab0f53, 2d94e820, 5bc32b39 / eb561508)",
+  "declared_gap_families": {
+    "summary": "evaluator paraphrase of the model-declared unsupported constraints in the rejected policies; no model text is copied",
+    "both_profiles": [
+      "closing disposition for failed, incomplete or unreached identity is not mapped",
+      "queue-specific transfer prerequisites are not supplied",
+      "hardship 'support once': offer vs transfer and counter scope are undefined",
+      "closing disposition for a successful contact_callback without a commitment is not mapped",
+      "failed-write retry counter scope across write operations is undefined",
+      "mandatory product disposition after exhausted persuasion, rejected proposals or a second failed promise is not supplied"
+    ],
+    "both_profiles_rule": "declared in at least one rejected attempt of each profile",
+    "train-1_only": [
+      "typed read-back product fields are not named",
+      "resolve every overdue product vs every returned product",
+      "lateness bands stop at 45 days"
+    ],
+    "schema_rejections_2d09c31": "train-1 attempts 1 and 3 and train-2 attempt 1 also used rule fields the 2d09c31 policy schema does not support (for example scope, phase, precondition); train-2 attempt 1 also had a quote absent from its source and an unknown source reference; train-1 attempt 2 failed the output format check (inner_json)"
+  },
+  "validation_gate": {
+    "rule": "T15-COVERAGE-ACCOUNTING.md: Validation starts only after both methods finish training in both lanes; benchmarks/compare.py enforces validation_preceded_paired_training",
+    "status": "closed",
+    "reason": "no structured training result exists in either lane",
+    "validation_inputs_exported": false,
+    "validation_builds": 0
+  },
+  "per_fixture": [
+    {
+      "fixture_id": "train-1-C01",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C02",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C06",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C11",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C12",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C16",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C21",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C22",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C26",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C31",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C32",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C36",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C41",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C42",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C46",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C51",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C52",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-1-C56",
+      "profile_id": "train-1",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071451000468Z"
+    },
+    {
+      "fixture_id": "train-2-C01",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C02",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C06",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C11",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C12",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C16",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C21",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C22",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C26",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C31",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C32",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C36",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C41",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C42",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C46",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C51",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C52",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "train-2-C56",
+      "profile_id": "train-2",
+      "split": "train",
+      "verdict": "fail",
+      "basis": "no_candidate_build_failed",
+      "replay_executed": false,
+      "build_run_id": "20261011T071802531422Z"
+    },
+    {
+      "fixture_id": "validation-1-C03",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C07",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C13",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C17",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C23",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C27",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C33",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C37",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C43",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C47",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C53",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-1-C57",
+      "profile_id": "validation-1",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C03",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C07",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C13",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C17",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C23",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C27",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C33",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C37",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C43",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C47",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C53",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    },
+    {
+      "fixture_id": "validation-2-C57",
+      "profile_id": "validation-2",
+      "split": "validation",
+      "verdict": "uncovered",
+      "basis": "validation_gate_not_open_no_build",
+      "replay_executed": false,
+      "build_run_id": null
+    }
+  ],
+  "coverage": {
+    "train": {
+      "declared": 36,
+      "replays_executed": 0,
+      "pass": 0,
+      "fail": 36,
+      "uncovered": 0
+    },
+    "validation": {
+      "declared": 24,
+      "replays_executed": 0,
+      "pass": 0,
+      "fail": 0,
+      "uncovered": 24
+    }
+  },
+  "counting_rule": "a fixture whose method produced no candidate is a failure (kept in the denominator, replay_executed false); an unrun or unbound fixture is uncovered",
+  "holdout_evaluations": 0,
+  "hosted_calls": 0,
+  "simulations": 0,
+  "non_claims": [
+    "no baseline/structured ranking",
+    "no local PASS",
+    "no structured result",
+    "no validation result",
+    "no candidate freeze",
+    "no issue closure"
+  ]
+}

@@ -13,7 +13,7 @@ from builder.fallback_plan import deterministic_plan
 from builder.guards import compile_guarded_workflow, required_execution_kinds
 from builder.policy import compile_execution_policy
 from builder.runtime import Deadline, GenerationError
-from builder.validation import validate_workflow
+from builder.validation import plan_routing_errors, validate_workflow
 from test_execution_requirements import packet
 from test_relaxed_declarations import AMBIGUOUS, PROTECTED, relaxed_policy
 from tools import package_submission as package
@@ -32,7 +32,7 @@ def fallback_errors(policy, sources, openapi, declarations="strict"):
     execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(plan))
     workflow = compile_guarded_workflow(plan, contract, openapi, execution, bindings)["workflow"]
     return plan, validate_workflow(workflow, openapi, policy, guard_context={
-        "plan": plan, "contract": contract, "execution_policy": execution, "bindings": bindings}), workflow
+        "plan": plan, "contract": contract, "execution_policy": execution, "bindings": bindings}) + plan_routing_errors(plan), workflow
 
 
 class FallbackPlanTests(unittest.TestCase):

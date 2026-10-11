@@ -8,7 +8,7 @@ from test_guards import fixture
 from builder.guards import compile_guarded_workflow, validate_guarded_workflow
 from builder.validation import validate_workflow
 
-ANCHOR = "This call's current date and time is {{now}}:"
+ANCHOR = "This call's clock reads {{now}}. When that shows a date,"
 
 
 class CallClockDateTests(unittest.TestCase):

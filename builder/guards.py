@@ -2435,9 +2435,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     for node in nodes.values():
         for entry in node.get("extraction_schema", []):
             if entry.get("type") in ("date", "datetime") or entry["name"] in clocked:
-                entry["description"] = (entry.get("description", "") + " This call's current date and time is {{now}}:"
-                                        " resolve today, tomorrow, weekdays and every other relative date or time"
-                                        " from it, never from any other current date.").strip()
+                entry["description"] = (entry.get("description", "") + " This call's clock reads {{now}}. When that shows"
+                                        " a date, resolve today, tomorrow, weekdays and every other relative date or"
+                                        " time from it, never from any other current date.").strip()
     _bound_entries(nodes, list(plan["nodes"]))
     routing_changes += _one_route_per_target(nodes)
     workflow = {"initial_node": "bg_init", "nodes": nodes}

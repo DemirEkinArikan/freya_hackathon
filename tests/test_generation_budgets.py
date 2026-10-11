@@ -179,7 +179,7 @@ class GenerationBudgetTests(unittest.TestCase):
                 return {"plan": copy.deepcopy(broken if first else plan()), "contract_sha256": contract_sha256}
             generator.generate_plan.side_effect = workflow
             out = self.directory / f"out-{finished_at}"
-            args = self.args("--generate-only", "--output-dir", str(out))
+            args = self.args("--generate-only", "--output-dir", str(out), "--no-plan-fallback")
             with self.subTest(finished_at=finished_at):
                 if repaired:
                     result = execute(args, generator=generator, deadline=deadline)

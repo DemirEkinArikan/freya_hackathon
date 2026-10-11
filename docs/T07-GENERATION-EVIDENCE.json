@@ -358,7 +358,8 @@
     "input_exporter": "benchmarks.export_inputs",
     "status": "controlled_stop_with_original_failed_manifests",
     "reason": "Approved development APIs define trusted get_account response schema only; other six operation response schemas are absent. No invented API contracts were substituted.",
-    "accepted_policy_or_workflow": false
+    "accepted_policy_or_workflow": false,
+    "scope_note": "Historical preparation trials only. Later train-1/train-2 run entries used complete synthetic APIs and failed after bounded policy repairs; absent response schemas are not asserted as their current blocker."
   },
   "remaining": [
     "Actual complete generation and guarded compilation for changing approved schemas and supported goals",
@@ -398,5 +399,250 @@
   ],
   "initial_source_commit_scope": "Top-level source_commit binds the initial two policy-only runs; each later record binds its own exact source.",
   "generation_inputs_scope": "Top-level generation_inputs describes the initial organizer runs; later approved development runs bind their own input inventories.",
-  "latest_structurally_validated_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3"
+  "latest_structurally_validated_build_source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+  "rapid_acceptance_checkpoint": {
+    "as_of_utc": "2026-10-11T05:55:51.132257+00:00",
+    "shared_deadline_utc": "2026-10-11T06:15:00Z",
+    "starting_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+    "branch": "rapid/t07-20261011",
+    "scope": "Dedicated generated-candidate local acceptance tooling and evidence only; no reserved compiler edits",
+    "integrated_preparation_prs": [
+      110,
+      112,
+      113,
+      114
+    ],
+    "source_suite_attribution": "Contributing PR results are separate. Canonical callback combined4ef suite result is unverified: referenced log is absent. This checkpoint does not claim that earlier counts passed at4ef.",
+    "callback": {
+      "status": "prepared_no_model_launch_no_generated_candidate_found",
+      "coordination_updated_utc": "2026-10-11T05:41:48.469631+00:00",
+      "source_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+      "brief_file_sha256": "6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2",
+      "openapi_file_sha256": "3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436",
+      "openapi_canonical_sha256": "eb561508532884e4e8e7c1162e6e4cd4b11ffcefa60d4c4d88f1be512e143761",
+      "duplicate_model_invocation_started": false,
+      "original_audit_manifest_contract_plan_workflow_found": false,
+      "claimed_combined_suite_handle": 68621,
+      "claimed_combined_suite_result_verified": false,
+      "brief_canonical_sha256": "9fa17d8086f92e8102d35d95c08fb690aaee1ee6988032b56f50d314977350a4"
+    },
+    "other_goals": {
+      "S03": "No approved input or original build record available in reconciled shared coordination inventory",
+      "S04": "No approved input or original build record available in reconciled shared coordination inventory"
+    },
+    "historical_original_artifact_integrity": "All listed file hashes across five existing run records were independently rechecked and matched; original artifacts unchanged",
+    "acceptance_tool": "tools/generated_candidate_acceptance.py",
+    "claims": {
+      "actual_changed_goal_acceptance": false,
+      "hosted_behavior": false,
+      "speech_or_entry_event_compliance": false,
+      "model_jobs_launched": 0,
+      "simulation_calls": 0,
+      "holdout_inputs_used": false,
+      "issue_closed": false
+    },
+    "remaining": [
+      "Original fresh audited complete changed-goal/schema candidates at exact immutable checked source",
+      "Independent operative source/API/selected-permission review before evaluator expectations",
+      "After freeze, independently authored bound local cases with exact safe API calls and final states",
+      "Event-aware termination evidence: existing replay does not prove real platform entry scheduling or all-path speech behavior",
+      "A second supported changed banking goal/schema and matching merged evidence PR before whole T07 closure"
+    ],
+    "independent_source_review": {
+      "reviewed_utc": "2026-10-11T05:53:40.353635+00:00",
+      "record_relative_path": "artifacts/rapid-t07-acceptance/source-review.json",
+      "record_file_sha256": "da40c08b09585b7738fa8fd6065a26710a223831f774deea6b78d403fb41eacd",
+      "source_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+      "callback_source_obligations": [
+        {
+          "id": "authority",
+          "requirement": "Only schedule_callback and close_call are permitted. Never verify identity, retrieve accounts, create promises, add notes, transfer, collect a new telephone number, disclose a stored number, or infer payment/identity authority."
+        },
+        {
+          "id": "inputs",
+          "requirement": "Require nonempty one-call customer_id and valid local ISO now with explicit UTC offset. Missing/malformed required inputs end without any bank request. Derive time from supplied now and never host time; protect customer_id from speech replacement and narration."
+        },
+        {
+          "id": "calendar",
+          "requirement": "Monday–Friday excluding 2026-12-24 and 2026-12-31 define next business day, strictly later than today. Eligible dates are supplied today (including weekend/closure exception) or that next business day."
+        },
+        {
+          "id": "window",
+          "requirement": "Time is exactly HH:MM in inclusive 09:15–16:45 window. A today slot is strictly later than supplied HH:MM. No seconds/new offsets/later arbitrary dates/past dates. Clarify ambiguous/range/incomplete proposals; invalid proposals cause no bank request."
+        },
+        {
+          "id": "consent",
+          "requirement": "Before scheduling, speak complete final date, local HH:MM, and existing bank-held-number destination and ask explicit consent to that exact slot. Only a fresh clear affirmative after full readback suffices. Correction/cancellation/changing interruption invalidates consent and requires new readback/consent."
+        },
+        {
+          "id": "attempts",
+          "requirement": "Schedule at most once call-wide and once per exact request tuple, including changed slots and turns. Close at most once per call, without retry. No retry after any schedule or close negative, malformed, timeout or uncertainty."
+        },
+        {
+          "id": "request_bindings",
+          "requirement": "Use supplied customer_id as session_ref; confirmed callback date as pay_on; confirmed HH:MM as time. close_call uses exact sourced result_code/reason_code. No product_id or invented runtime inputs."
+        },
+        {
+          "id": "positive_receipts",
+          "requirement": "HTTP200 plus string accepted=\"true\" with no contradictory failure_code/malformed evidence alone establishes persisted write. Consent/caller claims/HTTP status alone cannot establish recording."
+        },
+        {
+          "id": "definite_negative_receipts",
+          "requirement": "HTTP200 plus string accepted=\"false\" and temporary_unavailable/invalid_request/verification_denied, or HTTP503 plus accepted=\"false\" and temporary_unavailable, is definite nonpersistent failure. Explain booking did not complete, never retry, and resume ordinary no-booking closing only via expressly sourced schedule_callback definite_failure_resume."
+        },
+        {
+          "id": "uncertainty",
+          "requirement": "Missing/malformed/conflicting evidence, other statuses, transport failures/timeouts stop ALL bank writes including close_call. Explain only inability to confirm booking, without saying persisted/success/failed-to-persist/cancelled."
+        },
+        {
+          "id": "close_evidence",
+          "requirement": "Ordinary callback-contact outcome is TRAIN_2_O6. Actual positive schedule receipt requires TRAIN_2_R10; absent callback uses TRAIN_2_R11. No caller claim/consent may select R10, and no R11 may hide an actual recorded callback."
+        },
+        {
+          "id": "immutability",
+          "requirement": "A successful booking is immutable. Acknowledge the exact recorded slot; no second scheduling/cancellation/change. Later requested changes retain original booking and R10 ordinary ending."
+        },
+        {
+          "id": "phase_defaults",
+          "requirement": "No verification is authorized. Fixed defensive failed/incomplete/not-started defaults are O6/R11; incomplete/not-started alternate O6/R10 requires actual recorded callback. Defaults require absent callback."
+        },
+        {
+          "id": "termination",
+          "requirement": "Every conversation/action cycle needs bounded safe ending. Decline/stop/wrong-number/death/unavailable-action/no usable contact/unreplaced invalid slot reaches no-booking close when reachable, then terminal. Any close result ends with no further bank request; preserve real attempted evidence and any recorded callback."
+        },
+        {
+          "id": "language",
+          "requirement": "Begin Turkish, switch English on caller request, keep questions brief/polite, and speak honest source-required outcomes before termination."
+        }
+      ],
+      "historical_runs": [
+        {
+          "run_id": "20261010T213114772427Z",
+          "status": "failed",
+          "source_commit": "18024c393aed1eaad71c4758809023a29053c79a",
+          "all_recorded_files_match": true,
+          "matched_file_count": 5,
+          "audit_summaries": [
+            {
+              "status": "pass",
+              "completed_turn_count": 1,
+              "reported_tool_count": 0,
+              "canary_exposure_count": 0,
+              "unknown_diagnostic_count": 0,
+              "elapsed_seconds": 7.26
+            }
+          ],
+          "generation_model_call_count": 3,
+          "generation_completed_turn_count": 3,
+          "generation_process_returncodes": [
+            0,
+            0,
+            0
+          ],
+          "semantic_acceptance_claim": false
+        },
+        {
+          "run_id": "20261010T213113900620Z",
+          "status": "policy_extracted",
+          "source_commit": "18024c393aed1eaad71c4758809023a29053c79a",
+          "all_recorded_files_match": true,
+          "matched_file_count": 7,
+          "audit_summaries": [
+            {
+              "status": "pass",
+              "completed_turn_count": 1,
+              "reported_tool_count": 0,
+              "canary_exposure_count": 0,
+              "unknown_diagnostic_count": 0,
+              "elapsed_seconds": 7.51
+            }
+          ],
+          "generation_model_call_count": 2,
+          "generation_completed_turn_count": 2,
+          "generation_process_returncodes": [
+            0,
+            0
+          ],
+          "semantic_acceptance_claim": false
+        },
+        {
+          "run_id": "20261010T224748051958Z",
+          "status": "generated_validated",
+          "source_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+          "all_recorded_files_match": true,
+          "matched_file_count": 14,
+          "audit_summaries": [
+            {
+              "status": "pass",
+              "completed_turn_count": 1,
+              "reported_tool_count": 0,
+              "canary_exposure_count": 0,
+              "unknown_diagnostic_count": 0,
+              "elapsed_seconds": 6.77
+            }
+          ],
+          "generation_model_call_count": 4,
+          "generation_completed_turn_count": 4,
+          "generation_process_returncodes": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "semantic_acceptance_claim": false
+        },
+        {
+          "run_id": "20261010T231942492895Z",
+          "status": "failed",
+          "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+          "all_recorded_files_match": true,
+          "matched_file_count": 6,
+          "audit_summaries": [
+            {
+              "status": "pass",
+              "completed_turn_count": 1,
+              "reported_tool_count": 0,
+              "canary_exposure_count": 0,
+              "unknown_diagnostic_count": 0,
+              "elapsed_seconds": 5.31
+            }
+          ],
+          "generation_model_call_count": 3,
+          "generation_completed_turn_count": 3,
+          "generation_process_returncodes": [
+            0,
+            0,
+            0
+          ],
+          "semantic_acceptance_claim": false
+        },
+        {
+          "run_id": "20261010T232400167593Z",
+          "status": "failed",
+          "source_commit": "2b493e9df0baf1638325b62cb73ff760b57faca5",
+          "all_recorded_files_match": true,
+          "matched_file_count": 6,
+          "audit_summaries": [
+            {
+              "status": "pass",
+              "completed_turn_count": 1,
+              "reported_tool_count": 0,
+              "canary_exposure_count": 0,
+              "unknown_diagnostic_count": 0,
+              "elapsed_seconds": 6.34
+            }
+          ],
+          "generation_model_call_count": 3,
+          "generation_completed_turn_count": 3,
+          "generation_process_returncodes": [
+            0,
+            0,
+            0
+          ],
+          "semantic_acceptance_claim": false
+        }
+      ],
+      "evidence_limit": "No callback candidate existed for operative generated-policy review or behavior execution. This is approved-input and historical-integrity review only."
+    }
+  }
 }

@@ -37,6 +37,8 @@ def _authored_equal(expected: Any, actual: Any) -> bool:
         return isinstance(actual, dict) and all(k in actual and _authored_equal(v, actual[k]) for k, v in expected.items())
     if isinstance(expected, list):
         return isinstance(actual, list) and len(expected) == len(actual) and all(_authored_equal(a, b) for a, b in zip(expected, actual))
+    if type(expected) in (int, float) and type(actual) in (int, float):
+        return expected == actual  # The platform stores an integral float such as 1.0 as 1.
     return type(expected) is type(actual) and expected == actual
 
 

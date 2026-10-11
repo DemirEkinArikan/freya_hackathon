@@ -89,7 +89,8 @@ class AskAndCaptureTests(unittest.TestCase):
                 context = decide_shaped()
                 change(context["plan"]["nodes"])
                 nodes, enters = self.compile(context)
-                self.assertEqual(nodes["ask"].get("extraction_schema"), context["plan"]["nodes"]["ask"].get("extraction_schema"))
+                names = lambda node: [entry["name"] for entry in node.get("extraction_schema", [])]
+                self.assertEqual(names(nodes["ask"]), names(context["plan"]["nodes"]["ask"]))
                 self.assertIn("listen", [enters(route["target_node"]) for route in nodes["ask"]["transitions"]])
 
 

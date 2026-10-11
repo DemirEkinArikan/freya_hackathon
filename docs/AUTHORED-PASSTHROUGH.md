@@ -7,7 +7,10 @@ silent entry nodes. Ordinary conversation nodes continue to wait for caller
 input when the flag is absent or false.
 
 An immediate route must declare a public default target and finish its
-transitions with an `always` fallback to that same target. Boolean flags are
+transitions with an ordinary `always` fallback to that same target. The fallback
+cannot be an agent-invoked `is_tool_call` transition: the kit does not evaluate
+that transition as a router branch. Waiting speaking nodes may still use the
+documented agent completion tool. Boolean flags are
 strict booleans. An explicitly supplied default must be a nonempty declared
 public node name; nulls, malformed values, unknown targets and private API
 targets are rejected. These fields do not permit authored API/code nodes or

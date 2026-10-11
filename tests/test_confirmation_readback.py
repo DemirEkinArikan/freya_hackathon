@@ -20,7 +20,10 @@ from test_guard_attempt_scopes import WireSession, callback_packet
 from test_guard_profiles import invented_policy
 
 CLAUSE = "the invented call reaches only the contact already on the bank file"
-LANGUAGE = "Görüşme dili Türkçedir"
+# A conditional statement: the confirmation must follow it at its point in the call.
+LANGUAGE = "Invented calls open in Welsh; switch to Basque whenever the caller asks"
+READBACK = {"actions": ["schedule_callback"], "clauses": [CLAUSE]}
+SPOKEN = {"actions": ["schedule_callback"], "language": LANGUAGE}
 QUESTION = "Bu randevuyu onaylıyor musunuz?"
 LEGACY = "Please confirm these exact terms: {{bg_readback}}. Do you agree?"
 WAIT = "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement."
@@ -28,16 +31,16 @@ MEMO = "Invented wording memo: also state that " + CLAUSE + ". " + LANGUAGE + ".
 RUNS = os.environ.get("FREYA_READBACK_RUNS")  # JSON {retained run directory: its OpenAPI file}
 
 
-def packet(value, memo=MEMO, question=False, **kwargs):
+def packet(rules, memo=MEMO, question=False, quotes=None, **kwargs):
     policy, sources, api = callback_packet(opaque=True, **kwargs)
     sources.append({"id": "wording", "file": "invented-wording.txt", "text": memo, "sha256": digest(memo)})
     policy["sources"].append({key: item for key, item in sources[-1].items() if key != "text"})
-    rules = {"confirmation_readback": value}
+    rules = dict(rules)
     if question:
         rules.update(confirmation_question=QUESTION, confirmation_question_actions=["schedule_callback"])
     for kind, item in rules.items():
         policy["rules"].append({"id": kind, "kind": kind, "value": copy.deepcopy(item),
-                                "source": {"id": "wording", "quote": memo}})
+                                "source": {"id": "wording", "quote": (quotes or {}).get(kind, memo)}})
     return policy, sources, api
 
 
@@ -64,8 +67,8 @@ def validation(context, workflow):
 
 
 class ConfirmationReadbackTests(unittest.TestCase):
-    def session(self, value, **kwargs):
-        _, context, workflow = compiled(*packet(value, **kwargs))
+    def session(self, rules, **kwargs):
+        _, context, workflow = compiled(*packet(rules, **kwargs))
         # The shared synthetic plan carries one authored-routing note; wording adds none.
         _, plain_context, plain = compiled(*callback_packet(opaque=True))
         self.assertEqual(validation(context, workflow), validation(plain_context, plain))
@@ -90,24 +93,24 @@ class ConfirmationReadbackTests(unittest.TestCase):
         self.assertEqual((node["on_enter"], node["task_message"]), ({"type": "tts", "text": LEGACY}, WAIT))
 
     def test_sourced_clause_is_spoken_verbatim_after_the_protected_terms(self):
-        context, workflow, s = self.session({"actions": ["schedule_callback"], "clauses": [CLAUSE]})
+        context, workflow, s = self.session({"confirmation_readback": READBACK})
         node = confirm_node(workflow)
         self.assertEqual(node["on_enter"], {"type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}; " + CLAUSE + ". Do you agree?"})
         self.assertEqual(node["task_message"], WAIT)
         self.assert_consent_guards(s)
-        _, workflow, _ = self.session({"actions": ["schedule_callback"], "clauses": [CLAUSE]}, question=True)
+        _, workflow, _ = self.session({"confirmation_readback": READBACK}, question=True)
         self.assertEqual(confirm_node(workflow)["on_enter"], {"type": "tts", "text": "{{bg_readback}}; " + CLAUSE + ". " + QUESTION})
 
     def test_declared_language_speaks_the_same_protected_terms_and_guards(self):
         legacy = confirm_node(compiled(*callback_packet(opaque=True))[2])
-        value = {"actions": ["schedule_callback"], "clauses": [CLAUSE], "language": LANGUAGE}
         for question in (False, True):
             with self.subTest(question=question):
-                context, workflow, s = self.session(value, question=question)
+                context, workflow, s = self.session({"confirmation_readback": READBACK, "confirmation_language": SPOKEN}, question=question)
                 node = confirm_node(workflow)
                 self.assertEqual(node["on_enter"], {"type": "llm"})
                 task = node["task_message"]
-                self.assertIn('"' + LANGUAGE + '"', task)
+                # The whole conditional statement, framed for this point in the call.
+                self.assertTrue(task.startswith('Use the language this sourced rule requires at this point in the call: "' + LANGUAGE + '". '))
                 self.assertIn("{{bg_readback}}; " + CLAUSE + ". Then ask ", task)
                 self.assertIn('this question: "' + QUESTION + '"' if question else "whether the caller agrees to exactly these terms", task)
                 self.assertTrue(task.endswith(WAIT))
@@ -116,52 +119,83 @@ class ConfirmationReadbackTests(unittest.TestCase):
                     self.assertEqual(node[key], legacy[key])
                 self.assert_consent_guards(s)
 
+    def test_fact_and_language_cite_their_own_source_statements(self):
+        quotes = {"confirmation_readback": "also state that " + CLAUSE, "confirmation_language": LANGUAGE}
+        rules = {"confirmation_readback": READBACK, "confirmation_language": SPOKEN}
+        task = confirm_node(compiled(*packet(rules, quotes=quotes))[2])["task_message"]
+        self.assertIn('"' + LANGUAGE + '". ', task)
+        self.assertIn("{{bg_readback}}; " + CLAUSE + ". Then ask ", task)
+        # Each text must still sit in its own rule's quotation.
+        for kind, quote in (("confirmation_readback", LANGUAGE), ("confirmation_language", "also state that " + CLAUSE)):
+            with self.subTest(kind=kind), self.assertRaisesRegex(ExecutionRequirementsError, kind + " wording must appear literally"):
+                compiled(*packet(rules, quotes=dict(quotes, **{kind: quote})))
+
     def test_unsourced_wording_is_rejected_at_extraction_and_in_the_sealed_compiler(self):
-        for value in ({"actions": ["schedule_callback"], "clauses": [CLAUSE + " today"]},
-                      {"actions": ["schedule_callback"], "language": "Invented other language"}):
+        for kind, value in (("confirmation_readback", dict(READBACK, clauses=[CLAUSE + " today"])),
+                            ("confirmation_readback", dict(READBACK, clauses=[CLAUSE[2:]])),
+                            ("confirmation_language", dict(SPOKEN, language="Invented other language")),
+                            ("confirmation_language", dict(SPOKEN, language=LANGUAGE[:-2]))):
             with self.subTest(value=value), self.assertRaisesRegex(ExecutionRequirementsError, "wording must appear literally"):
-                compiled(*packet(value))
-        _, context, _ = compiled(*packet({"actions": ["schedule_callback"], "clauses": [CLAUSE], "language": LANGUAGE}))
-        for tamper in ("quote", "value"):
-            changed = copy.deepcopy(context)
-            rule = changed["contract"]["active_rules"]["confirmation_readback"]
-            if tamper == "quote":
-                rule["provenance"][0]["quote"] = rule["provenance"][0]["quote"].replace(CLAUSE, "an invented other fact")
-            else:
-                for holder in (rule, changed["execution_policy"]["profile"]["confirmation_readback"]):
-                    target = holder["value"] if holder is rule else holder
-                    target["clauses"] = ["an unquoted invented fact"]
-            rehash(changed["contract"])
-            rehash(changed["execution_policy"])
-            with self.subTest(tamper=tamper), self.assertRaisesRegex(GuardCompileError, "occur literally"):
-                compile_guarded_workflow(**changed)
+                compiled(*packet({kind: value}))
+        _, context, _ = compiled(*packet({"confirmation_readback": READBACK, "confirmation_language": SPOKEN}))
+        for kind, key, text in (("confirmation_readback", "clauses", CLAUSE), ("confirmation_language", "language", LANGUAGE)):
+            for tamper in ("quote", "fragment", "value", "shape"):
+                changed = copy.deepcopy(context)
+                rule = changed["contract"]["active_rules"][kind]
+                profile = changed["execution_policy"]["profile"]
+                if tamper == "value":
+                    rule["value"][key] = profile[kind][key] = ["an unquoted invented fact"] if key == "clauses" else "An unquoted invented language"
+                elif tamper == "shape":
+                    # The shapes stay closed: the other rule's text cannot ride along.
+                    rule["value"] = profile[kind] = dict(READBACK, language=LANGUAGE)
+                else:
+                    # A fragment occurs only inside a longer word.
+                    rule["provenance"][0]["quote"] = rule["provenance"][0]["quote"].replace(
+                        text, "an invented other fact" if tamper == "quote" else "x" + text)
+                rehash(changed["contract"])
+                rehash(changed["execution_policy"])
+                message = kind + (" has an invalid structured value" if tamper == "shape" else " wording must occur literally")
+                with self.subTest(kind=kind, tamper=tamper), self.assertRaisesRegex(GuardCompileError, message):
+                    compile_guarded_workflow(**changed)
 
     def test_value_bearing_templated_or_open_wording_cannot_freeze(self):
-        good = {"actions": ["schedule_callback"], "clauses": [CLAUSE]}
-        texts = ("call back on 2031-05-06", "to 0212 555 0100", "within ٣ days", "{{phone}}", "a {phone}",
-                 "read bg_state", "AUTH_value", "bank_TOKEN", "a\nb", "a\x1bb", "", " \t", 1, None)
-        values = [dict(good, clauses=[text]) for text in texts] + [dict(good, language=text) for text in texts]
-        values += [{}, [], "schedule_callback", {"actions": ["schedule_callback"]}, {"clauses": [CLAUSE]},
-                   dict(good, actions=[]), dict(good, actions=["schedule_callback", "schedule_callback"]),
-                   dict(good, actions=["create_promise"]), dict(good, actions="schedule_callback"),
-                   dict(good, clauses=[]), dict(good, clauses=CLAUSE), dict(good, clauses=[CLAUSE, CLAUSE]),
-                   dict(good, destination="bank_held"), dict(good, fields=["phone"])]
-        for value in values:
-            with self.subTest(value=value), self.assertRaises(PolicyError):
-                compile_execution_policy(invented_policy({"confirmation_readback": value}))
-        for value in (good, {"actions": ["commit_promises", "schedule_callback"], "language": LANGUAGE}):
-            self.assertEqual(compile_execution_policy(invented_policy({"confirmation_readback": value}))["profile"]["confirmation_readback"], value)
-        self.assertIn("no digits", execution_rule_guidance()["confirmation_readback"])
+        texts = ("call back on 2031-05-06", "to 0212 555 0100", "within ٣ days", "Ⅻ", "½", "五", "{{phone}}", "a {phone}",
+                 "read bg_state", "AUTH_value", "bank_TOKEN", "a\nb", "a\x1bb", "a\u202eb", "a\u2028b", "a\u200bb", "a\x85b",
+                 "", " \t", 1, None)
+        values = [("confirmation_readback", dict(READBACK, clauses=[text])) for text in texts]
+        values += [("confirmation_language", dict(SPOKEN, language=text)) for text in texts]
+        for kind, good in (("confirmation_readback", READBACK), ("confirmation_language", SPOKEN)):
+            values += [(kind, value) for value in (
+                {}, [], "schedule_callback", {"actions": ["schedule_callback"]}, dict(good, actions=[]),
+                dict(good, actions=["schedule_callback", "schedule_callback"]), dict(good, actions=["create_promise"]),
+                dict(good, actions="schedule_callback"), {key: item for key, item in good.items() if key != "actions"},
+                dict(READBACK, language=LANGUAGE), dict(good, destination="bank_held"), dict(good, fields=["phone"]))]
+        values += [("confirmation_readback", dict(READBACK, clauses=clauses)) for clauses in ([], CLAUSE, [CLAUSE, CLAUSE])]
+        values += [("confirmation_language", dict(SPOKEN, language=[LANGUAGE]))]
+        for kind, value in values:
+            with self.subTest(kind=kind, value=value), self.assertRaises(PolicyError):
+                compile_execution_policy(invented_policy({kind: value}))
+        for kind, value in (("confirmation_readback", READBACK), ("confirmation_language", SPOKEN),
+                            ("confirmation_language", {"actions": ["commit_promises", "schedule_callback"], "language": LANGUAGE})):
+            self.assertEqual(compile_execution_policy(invented_policy({kind: value}))["profile"][kind], value)
+        guidance = execution_rule_guidance()
+        self.assertIn("no digits or other numerals", guidance["confirmation_readback"])
+        self.assertIn("checks only these literal properties, not meaning", guidance["confirmation_readback"])
+        for words in ("complete conversation-language statement", "including any switch condition", "never a bare language name",
+                      "only when the fixed English confirmation line does not satisfy", "different source statement"):
+            self.assertIn(words, guidance["confirmation_language"])
 
     def test_a_selected_named_action_must_require_confirmation(self):
-        with self.assertRaises(ExecutionRequirementsError) as raised:
-            compiled(*packet({"actions": ["schedule_callback"], "clauses": [CLAUSE]}, confirmation=False))
-        self.assertIn("requires no confirmation", str(raised.exception))
-        _, context, workflow = compiled(*packet({"actions": ["commit_transfer"], "clauses": [CLAUSE]}))
-        self.assertEqual(confirm_node(workflow)["on_enter"], {"type": "tts", "text": LEGACY})
+        for kind, value in (("confirmation_readback", READBACK), ("confirmation_language", SPOKEN)):
+            with self.subTest(kind=kind):
+                with self.assertRaises(ExecutionRequirementsError) as raised:
+                    compiled(*packet({kind: value}, confirmation=False))
+                self.assertIn(kind + " names a selected action that requires no confirmation", str(raised.exception))
+                _, context, workflow = compiled(*packet({kind: dict(value, actions=["commit_transfer"])}))
+                self.assertEqual(confirm_node(workflow)["on_enter"], {"type": "tts", "text": LEGACY})
 
     def test_authored_copies_gain_no_readback_privilege(self):
-        _, context, workflow = compiled(*packet({"actions": ["schedule_callback"], "language": LANGUAGE}))
+        _, context, workflow = compiled(*packet({"confirmation_language": SPOKEN}))
         task = confirm_node(workflow)["task_message"]
         unsealed = validate_workflow(workflow, context["openapi"])
         self.assertTrue(any("_confirm.task_message: authored text cannot read raw protected" in error for error in unsealed))
@@ -177,7 +211,7 @@ class ConfirmationReadbackTests(unittest.TestCase):
 
     def test_wording_adds_no_sealed_code(self):
         plain = code_sizes(compiled(*callback_packet(opaque=True))[2])
-        worded = code_sizes(compiled(*packet({"actions": ["schedule_callback"], "clauses": [CLAUSE], "language": LANGUAGE}))[2])
+        worded = code_sizes(compiled(*packet({"confirmation_readback": READBACK, "confirmation_language": SPOKEN}))[2])
         self.assertEqual(set(plain), set(worded))
         for name, (nodes, chars, code) in worded.items():
             self.assertEqual(nodes, plain[name][0])
@@ -200,11 +234,12 @@ class RetainedPlanReadbackSize(unittest.TestCase):
                 profile = context["execution_policy"]["profile"]
                 actions = sorted(set(profile.get("confirmation_actions", []))
                                  | ({"commit_promises"} if profile.get("require_confirmation") is True else set()))
-                value = {"actions": actions, "clauses": [CLAUSE], "language": LANGUAGE}
-                profile["confirmation_readback"] = copy.deepcopy(value)
-                context["contract"]["active_rules"]["confirmation_readback"] = {
-                    "value": copy.deepcopy(value), "rule_ids": ["readback"], "superseded_rule_ids": [], "superseded_provenance": [],
-                    "provenance": [{"rule_id": "readback", "id": "wording", "quote": MEMO}]}
+                for kind, value in (("confirmation_readback", {"actions": actions, "clauses": [CLAUSE]}),
+                                    ("confirmation_language", {"actions": actions, "language": LANGUAGE})):
+                    profile[kind] = copy.deepcopy(value)
+                    context["contract"]["active_rules"][kind] = {
+                        "value": copy.deepcopy(value), "rule_ids": [kind], "superseded_rule_ids": [], "superseded_provenance": [],
+                        "provenance": [{"rule_id": kind, "id": "wording", "quote": MEMO}]}
                 rehash(context["contract"])
                 rehash(context["execution_policy"])
                 workflow = compile_guarded_workflow(**context)["workflow"]

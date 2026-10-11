@@ -1,4 +1,4 @@
-"""Closed selector typing is inspection, never a runtime-selection claim.
+"""Closed date-selector typing is inspection, never a runtime-selection claim.
 
 Inputs here are independently fictional source/API packets. No generated
 policies, evaluator cases, model calls, or hosted actions are used.
@@ -17,8 +17,6 @@ from test_disclosure_applicability import context, fictional, rehash
 REFUSAL = "scoped execution rules lack protected runtime selection"
 DATE = {"effective_date": {"before_rule": "fictional-original-limit",
         "on_or_after": {"date": "2040-02-29", "rule": "fictional-replacement-limit"}}}
-GOAL = {"call_goal": {"selector": "selected_objective", "wire_codes_rule": "fictional-goal-codes",
-        "applies_to": ["JOB-A", "JOB-B"], "rule": "fictional-resolution-rule"}}
 
 
 def scoped_packet(kind, value):
@@ -64,16 +62,13 @@ class ScopedRuleTypingTests(unittest.TestCase):
         value["effective_date"]["on_or_after"]["rule"] = "possibly-another-kind"
         self.accepts("identity_wrong_limit", value)
 
-    def test_valid_goal_shape_preserves_explicit_default_and_does_not_infer_one(self):
-        execution = self.accepts("resolve_all_products", GOAL)
-        self.assertNotIn("default", execution["profile"]["resolve_all_products"]["call_goal"])
-        value = copy.deepcopy(GOAL)
-        value["call_goal"]["default"] = "SOURCE-DEFAULT-JOB"
-        value["call_goal"]["selector"] = "call_goal"
+    def test_primary_supported_goal_format_remains_exact_and_detached(self):
+        # Compatibility with the separately owned, supported primary interface;
+        # this check does not author another goal-reference selector format.
+        value = {"selector": "selected_objective", "by_value": {"FICTIONAL-JOB-A": False, "FICTIONAL-JOB-B": True}}
         execution = self.accepts("resolve_all_products", value)
-        self.assertEqual(execution["profile"]["resolve_all_products"]["call_goal"]["default"], "SOURCE-DEFAULT-JOB")
-        execution["profile"]["resolve_all_products"]["call_goal"]["applies_to"].clear()
-        self.assertEqual(value["call_goal"]["applies_to"], ["JOB-A", "JOB-B"])
+        execution["profile"]["resolve_all_products"]["by_value"]["FICTIONAL-JOB-A"] = True
+        self.assertIs(value["by_value"]["FICTIONAL-JOB-A"], False)
 
     def test_existing_primitives_and_reserved_deadline_band_remain_unchanged(self):
         for kind, value in (("identity_wrong_limit", 3), ("deadline_days", {"band-a": 0, "band-b": 7}),
@@ -133,65 +128,20 @@ class ScopedRuleTypingTests(unittest.TestCase):
                 with self.subTest(kind=kind, day=day):
                     self.rejects(kind, value)
 
-    def test_goal_tag_has_closed_keys_nonempty_ids_and_no_condition_language(self):
-        values = []
-        for key in ("wire_codes_rule", "rule", "default"):
-            for bad in ("", None, False, 7, [], {}):
-                value = copy.deepcopy(GOAL)
-                value["call_goal"][key] = bad
-                values.append(value)
-        for key in ("selector", "wire_codes_rule", "applies_to", "rule"):
-            value = copy.deepcopy(GOAL)
-            del value["call_goal"][key]
-            values.append(value)
-        values.extend([{"call_goal": {}}, {"call_goal": []},
-                       {**copy.deepcopy(GOAL), "scope": "arbitrary"},
-                       {"call_goal": {**copy.deepcopy(GOAL["call_goal"]), "condition": "if account loaded"}}])
-        for value in values:
-            with self.subTest(value=value):
-                self.rejects("resolve_all_products", value)
-
-    def test_goal_codes_are_unique_nonempty_and_bounded_at_64(self):
-        value = copy.deepcopy(GOAL)
-        value["call_goal"]["applies_to"] = ["CODE-" + str(index) for index in range(64)]
-        self.accepts("resolve_all_products", value)
-        for codes in ([], "CODE", [""], [False], [7], ["CODE", "CODE"],
-                      ["CODE-" + str(index) for index in range(65)]):
-            value = copy.deepcopy(GOAL)
-            value["call_goal"]["applies_to"] = codes
-            with self.subTest(codes=codes):
-                self.rejects("resolve_all_products", value)
-
-    def test_goal_selector_must_be_an_ordinary_call_input_namespace(self):
-        for selector in ("", None, False, 4, "two words", "1objective", "bg_state", "BG_policy",
-                         "auth_session", "api_key", "bank_token", "customer_id", "now", "secret_objective"):
-            value = copy.deepcopy(GOAL)
-            value["call_goal"]["selector"] = selector
-            with self.subTest(selector=selector):
-                self.rejects("resolve_all_products", value)
-        for selector in ("call_goal", "selected_objective", "JobSelector_2"):
-            value = copy.deepcopy(GOAL)
-            value["call_goal"]["selector"] = selector
-            self.accepts("resolve_all_products", value)
-
-    def test_wrapper_kinds_cannot_be_substituted_or_extend_unrelated_rule_types(self):
-        for kind, value in (("identity_wrong_limit", GOAL), ("deadline_days", GOAL),
-                            ("resolve_all_products", DATE), ("require_confirmation", DATE),
-                            ("confirmation_scope", GOAL), ("identity_close", DATE)):
+    def test_date_wrappers_cannot_extend_unrelated_rule_types(self):
+        for kind in ("resolve_all_products", "require_confirmation", "confirmation_scope", "identity_close"):
             with self.subTest(kind=kind):
-                self.rejects(kind, value)
+                self.rejects(kind, DATE)
 
     def test_public_guidance_marks_scopes_as_inspection_not_available_consumers(self):
         guidance = execution_rule_guidance()
-        for kind, tag in (("identity_wrong_limit", "effective_date"), ("deadline_days", "effective_date"),
-                          ("resolve_all_products", "call_goal")):
+        for kind, tag in (("identity_wrong_limit", "effective_date"), ("deadline_days", "effective_date")):
             with self.subTest(kind=kind):
                 self.assertIn(tag, guidance[kind])
                 self.assertIn("runtime", guidance[kind])
 
     def test_guard_and_prefreeze_requirements_refuse_scopes_even_with_asserted_consumer_flag(self):
-        for kind, value in (("identity_wrong_limit", DATE), ("deadline_days", DATE),
-                            ("resolve_all_products", GOAL)):
+        for kind, value in (("identity_wrong_limit", DATE), ("deadline_days", DATE)):
             with self.subTest(kind=kind):
                 values = scoped_packet(kind, value)
                 before = copy.deepcopy(values)

@@ -15,23 +15,24 @@ from builder.policy import compile_execution_policy
 from builder.runtime import Deadline, GenerationError
 from builder.validation import validate_workflow
 from test_execution_requirements import packet
+from test_relaxed_declarations import AMBIGUOUS, PROTECTED, relaxed_policy
 from tools import package_submission as package
 from tools.verify_submission_bundle import check_recompilation
 
 
-def fallback_errors(policy, sources, openapi):
-    """Run the same checks build.py applies to a model plan."""
-    contract = compile_policy_contract(policy, sources, openapi)
-    requirements = compile_execution_requirements(policy, sources, openapi)
+def fallback_errors(policy, sources, openapi, declarations="strict"):
+    """Run the same checks build.py applies to a model plan; return the plan, errors and workflow."""
+    contract = compile_policy_contract(policy, sources, openapi, declarations=declarations)
+    requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
     plan = deterministic_plan(contract, requirements)
-    errors = validate_plan_execution(plan, requirements, policy, sources, openapi)
+    errors = validate_plan_execution(plan, requirements, policy, sources, openapi, declarations=declarations)
     if errors:
-        return plan, errors
-    bindings = compile_action_bindings(policy, openapi)
+        return plan, errors, None
+    bindings = compile_action_bindings(policy, openapi, declarations=declarations)
     execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(plan))
     workflow = compile_guarded_workflow(plan, contract, openapi, execution, bindings)["workflow"]
     return plan, validate_workflow(workflow, openapi, policy, guard_context={
-        "plan": plan, "contract": contract, "execution_policy": execution, "bindings": bindings})
+        "plan": plan, "contract": contract, "execution_policy": execution, "bindings": bindings}), workflow
 
 
 class FallbackPlanTests(unittest.TestCase):
@@ -57,12 +58,48 @@ class FallbackPlanTests(unittest.TestCase):
         for actions, local in ((None, False), (None, True), (["schedule_callback", "close_call"], False),
                                (["verify_identity", "get_account", "close_call"], False)):
             with self.subTest(actions=actions, local=local):
-                plan, errors = fallback_errors(*packet(actions, local=local, narrow=actions is not None))
+                plan, errors, _ = fallback_errors(*packet(actions, local=local, narrow=actions is not None))
                 self.assertEqual(errors, [])
                 self.assertEqual(plan["initial_node"], "dialogue")
                 self.assertTrue(all(node["node_type"] in {"conversation", "guard_action"} for node in plan["nodes"].values()))
                 decide = plan["nodes"]["decide"]["transitions"]
                 self.assertTrue(all(t["is_tool_call"] and t["condition"] == {"operator": "always"} for t in decide))
+
+    def test_fallback_validates_in_relaxed_mode_and_carries_the_prompt_enforced_rules(self):
+        plan, errors, workflow = fallback_errors(*relaxed_policy(), declarations="relaxed")
+        self.assertEqual(errors, [])
+        protected = PROTECTED.replace("{{notes}}", "((notes))")
+        self.assertTrue(workflow["system_prompt"].startswith(plan["system_prompt"] + "\n\nBank rules that no system check enforces."))
+        self.assertIn(protected, workflow["system_prompt"])
+        self.assertIn(AMBIGUOUS, workflow["system_prompt"])
+        # The rule concerns close_call, so the step that routes into the close carries it too.
+        self.assertIn("Bank rule for this step that no system check enforces: " + protected,
+                      workflow["nodes"]["farewell"]["task_message"])
+
+    def test_rejected_model_plan_with_no_time_for_a_repair_exports_the_fallback(self):
+        # The long-brief path: the first model plan is rejected late and its repair cannot finish before the export reserve.
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        generator = self.broken_generator()
+        broken = generator.generate_plan.side_effect
+        def late(prompt, *, contract_sha256):
+            now[0] = 1460
+            return broken(prompt, contract_sha256=contract_sha256)
+        generator.generate_plan.side_effect = late
+        clients = []
+        def factory(**kwargs):
+            clients.append(test_builder.FakeClient(**kwargs))
+            return clients[0]
+        manifest = execute(self.args(), generator=generator, client_factory=factory, deadline=deadline)
+        self.assertEqual((manifest["status"], manifest["plan_origin"], manifest["selected_attempt_directory"]),
+                         ("exported", "deterministic_fallback", "attempts/plan-002"))
+        self.assertRegex(manifest["plan_fallback_reason"], r"^No time for a repair \(40 s available, about \d+ s needed\): "
+                                                           r"Candidate validation failed: ")
+        self.assertEqual((generator.generate_plan.call_count, clients[0].exports), (1, 1))
+        events = self.events(manifest)
+        admission = next(e for e in events if e["event"] == "repair_admission")
+        self.assertEqual((admission["stage"], admission["admitted"]), ("plan", False))
+        self.assertIn(("plan_fallback_decision", True), [(e["event"], e.get("started")) for e in events])
 
     def test_failed_model_plan_exports_the_fallback_with_its_origin_in_the_trace(self):
         generator = self.broken_generator()

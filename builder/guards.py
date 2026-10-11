@@ -10,7 +10,8 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _profile_errors, _scoped_value_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
+from .action_bindings import COLLECTION_ROLES
+from .policy import _execution_errors, _profile_errors, _scoped_value_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -362,6 +363,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                                 or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback")
                                 or "reason" in choice and (not isinstance(choice["reason"], str) or not choice["reason"])):
                             errors.append("identity_close_choices require outcome, optional nonempty reason and supported evidence")
+        elif kind == "goal_close":
+            errors.extend(_execution_errors(kind, value))
         elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account", "unstated"} for k, v in value.items())):
             errors.append("transfer_prerequisites requires queue-to-none/identity/account/unstated mapping")
         elif kind == "promise_readback" and value not in ("product_type", "none"):
@@ -473,6 +476,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             {key: decode("outcomes" if key == "outcome" else "reasons", value)
              if key in {"outcome", "reason"} else value for key, value in choice.items()}
             for choice in choices] for scope, choices in result["identity_close_choices"].items()}
+    if "goal_close" in result:
+        result["goal_close"] = {phase: [
+            {key: decode("outcomes" if key == "outcome" else "reasons", value)
+             if key in {"outcome", "reason"} else value for key, value in row.items()}
+            for row in rows] for phase, rows in result["goal_close"].items()}
     disclosure = result.get("account_disclosure_fields")
     if isinstance(disclosure, dict):
         # This is a frozen sourced code map, not a guessed product taxonomy.
@@ -527,6 +535,24 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
             if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
                 raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
+    # Goal rows close only phases with no protected collections fact. Payment,
+    # note and transfer goals keep their evidence-only closing semantics.
+    if result.get("goal_close") and selected_actions & COLLECTION_ROLES:
+        raise GuardCompileError(["goal_close cannot be combined with promise, note or transfer roles"])
+    for rows in result.get("goal_close", {}).values():
+        seen = set()
+        for row in rows:
+            allowed = result.get("close_reasons", {}).get(row["outcome"])
+            reason = row.get("reason", "")
+            if (row["outcome"] in {"transferred", "promise", "paid", "no_promise"} or allowed is None
+                    or (allowed and reason not in allowed) or (not allowed and reason)):
+                raise GuardCompileError(["goal closing rows require sourced non-collection outcomes and reasons"])
+            if (reason == "callback" and row["requires"] != "recorded_callback"
+                    or reason == "no_callback" and row["requires"] != "no_recorded_callback"):
+                raise GuardCompileError(["goal closing callback reasons require matching callback evidence"])
+            if (row["outcome"], reason) in seen:
+                raise GuardCompileError(["goal closing rows are duplicated"])
+            seen.add((row["outcome"], reason))
     return result
 
 
@@ -639,7 +665,8 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                         or not set(values) <= set(forward.values())):
                     raise GuardCompileError(["local disposition meanings must match the exact frozen injective policy mapping"])
                 continue
-            if not isinstance(category, dict) or set(category) != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}:
+            if (not isinstance(category, dict) or set(category) - {"unbound_codes"} != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}
+                    or "unbound_codes" in category and category_name not in ("outcomes", "reasons")):
                 raise GuardCompileError(["API action bindings require exact enum constraint descriptor shape"])
             actual_op = category.get("operation", {}).get("name")
             op = role_for_actual.get(actual_op)
@@ -661,7 +688,10 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 raise GuardCompileError(["action binding enum constraint differs from exact frozen string schema"])
             forward = category.get("semantic_to_wire", {})
             reverse = category.get("wire_to_semantic", {})
-            if {v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or constrained and any(v not in enum for v in forward.values()):
+            unbound = category.get("unbound_codes", [])
+            if ({v: k for k, v in forward.items()} != reverse or len(forward) != len(reverse) or constrained and any(v not in enum for v in forward.values())
+                    or not isinstance(unbound, list) or any(not isinstance(v, str) or not v or v in reverse for v in unbound)
+                    or constrained and any(v not in enum for v in unbound)):
                 raise GuardCompileError(["action binding vocabulary differs from supplied API enum"])
     return catalog
 
@@ -1012,7 +1042,23 @@ def guard_close(state, proposed, profile, maps):
                         raise ValueError('identity closing proposal lacks required callback evidence')
                     proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
         else:
-            raise ValueError('closing lacks protected evidence')
+            # Identity is verified (and possibly the account loaded) without a
+            # protected collections fact: only a sourced goal row may close.
+            phase = 'account_loaded' if state['account_loaded'] else 'verified'
+            # A recorded callback closes only through a recorded_callback row.
+            rows = [row for row in profile.get('goal_close', dict()).get(phase, list())
+                    if (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
+            if not rows:
+                raise ValueError('closing lacks protected evidence')
+            if len(rows) > 1:
+                if not isinstance(proposed.get('outcome', ''), str) or not isinstance(proposed.get('reason', ''), str):
+                    raise ValueError('goal closing proposal must be text')
+                outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
+                reason = guard_decode('reasons', proposed.get('reason', ''), maps)
+                rows = [row for row in rows if row['outcome'] == outcome and row.get('reason', '') == reason]
+            if len(rows) != 1:
+                raise ValueError('goal closing proposal lacks one declared eligible choice')
+            proposal = dict((key, value) for key, value in rows[0].items() if key != 'requires')
     reasons = profile['close_reasons']
     if proposal['outcome'] not in reasons:
         raise ValueError('closing outcome outside policy')

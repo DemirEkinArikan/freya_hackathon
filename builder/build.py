@@ -316,7 +316,9 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         if policy is None:
             if attempt:
                 if fulls == MAX_REPAIRS:
-                    raise exhausted  # The patch failed and no full re-emission is left.
+                    if patchable():
+                        continue  # The patch failed and no full re-emission is left: patch again.
+                    raise exhausted
                 fulls += 1
             call_reserve = EXPORT_RESERVE if retrying else reserve
             if repair:

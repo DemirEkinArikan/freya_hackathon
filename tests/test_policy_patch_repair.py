@@ -415,6 +415,33 @@ class PatchRepairBudgetTests(unittest.TestCase):
                       for e in read_events(self.run_directory()) if e["event"] == "repair_admission"]
         self.assertEqual(admissions, [(True, 350, "patch"), (True, 250, "patch"), (True, 150, "patch"), (False, 50, "patch")])
 
+    def test_a_failed_patch_with_no_full_re_emission_left_is_followed_by_another_patch(self):
+        generator = self.generator()
+        generator.generate.return_value = {"policy": misquoted(), "workflow": fixture()["workflow"]}
+        generator.generate_policy_patch.side_effect = [{"patch": {"operations": []}}] * 3 + [{"patch": requote()}]
+        result = execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((result["status"], result["policy_repairs"]), ("generated_validated", 4))
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (3, 4))
+        self.assertEqual(self.budget(), [(1, 0, 0, False, "patch"), (2, 1, 1, False, "patch"), (3, 2, 2, False, "patch")])
+
+    def test_patches_that_never_apply_stop_at_their_cap_with_the_last_validation_error(self):
+        generator = self.generator()
+        generator.generate.return_value = {"policy": misquoted(), "workflow": fixture()["workflow"]}
+        generator.generate_policy_patch.return_value = {"patch": {"operations": []}}
+        with self.assertRaisesRegex(ValueError, r"^Policy extraction failed after bounded repairs: policy.rules\[0\] quote"):
+            execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (3, 6))
+
+    def test_a_format_error_on_the_last_full_re_emission_lets_patching_resume(self):
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        generator.generate.side_effect = [{"policy": misquoted(), "workflow": fixture()["workflow"]},
+                                          GenerationFormatError("outer_json"), GenerationFormatError("outer_json")]
+        generator.generate_policy_patch.side_effect = [{"patch": {"operations": []}}] * 2 + [{"patch": requote()}]
+        result = execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((result["status"], result["policy_repairs"]), ("generated_validated", 3))
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (3, 3))
+
 
 class PolicyPatchRuntimeTests(unittest.TestCase):
     setUp = test_builder.BuilderTests.setUp

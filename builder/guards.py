@@ -586,6 +586,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
     for scope, proposal in result.get("identity_close", {}).items():
+        if proposal["outcome"] == "callback":
+            # Every row of a phase shares its outcome, and the phase also closes without a callback.
+            raise GuardCompileError(["identity_close outcomes cannot be bound to callback: that phase also closes without "
+                                     "a recorded callback; a callback reason in identity_close_choices requiring "
+                                     "recorded_callback can report one"])
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed and "reason" not in proposal:
             # A reasonless phase row refined by sourced choices only supplies
@@ -610,9 +615,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             if reason in seen:
                 raise GuardCompileError(["identity closing choices have duplicate decoded reasons"])
             seen.add(reason)
-            if reason == "callback" and choice["requires"] != "recorded_callback":
+            if "callback" in (choice["outcome"], reason) and choice["requires"] != "recorded_callback":
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
-            if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
+            if "no_callback" in (choice["outcome"], reason) and choice["requires"] != "no_recorded_callback":
                 raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
     # A protected outcome is a recorded fact; no sourced identity row stands in
     # for it. Rows are decoded above, so a code bound to that meaning counts.
@@ -637,8 +642,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             if (row["outcome"] in {"transferred", "promise", "paid", "no_promise"} or allowed is None
                     or (allowed and reason not in allowed) or (not allowed and reason)):
                 raise GuardCompileError(["goal closing rows require sourced non-collection outcomes and reasons"])
-            if (reason == "callback" and row["requires"] != "recorded_callback"
-                    or reason == "no_callback" and row["requires"] != "no_recorded_callback"):
+            if ("callback" in (row["outcome"], reason) and row["requires"] != "recorded_callback"
+                    or "no_callback" in (row["outcome"], reason) and row["requires"] != "no_recorded_callback"):
                 raise GuardCompileError(["goal closing callback reasons require matching callback evidence"])
             if (row["outcome"], reason) in seen:
                 raise GuardCompileError(["goal closing rows are duplicated"])
@@ -1239,9 +1244,10 @@ def guard_close(state, proposed, profile, maps):
     allowed = reasons[proposal['outcome']]
     if (allowed and proposal.get('reason') not in allowed) or (not allowed and proposal.get('reason')):
         raise ValueError('closing reason outside policy')
-    if proposal.get('reason') == 'callback' and not state['callbacks']:
+    # An outcome or reason code bound to a callback meaning claims that evidence.
+    if 'callback' in (proposal['outcome'], proposal.get('reason')) and not state['callbacks']:
         raise ValueError('callback-success closing requires a recorded callback')
-    if proposal.get('reason') == 'no_callback' and state['callbacks']:
+    if 'no_callback' in (proposal['outcome'], proposal.get('reason')) and state['callbacks']:
         raise ValueError('no_callback closing cannot hide a recorded callback')
     # Whatever row selected it, a protected outcome closes only as its recorded fact.
     if proposal['outcome'] in ('transferred', 'promise', 'paid', 'no_promise') and facts.get(proposal['outcome']) != proposal:

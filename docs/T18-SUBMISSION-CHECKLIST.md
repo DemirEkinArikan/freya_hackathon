@@ -1,0 +1,85 @@
+# T18 submission checklist
+
+[T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md) owns the builds and timing.
+[SUBMISSION-PACKAGE.md](SUBMISSION-PACKAGE.md) owns the manifest, ZIP and
+extraction check. This file adds the kit rules those two leave implicit and
+the records to fill in during the final window. It records no submission.
+Organizer instructions, when supplied, override this file.
+
+## Kit rules that shape the final window
+
+From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
+
+- Per final brief, submit the exported phone agent and the trace of the run
+  that built it; also submit the builder code. One trace per brief.
+- The kit exports with `freya.export_workflow(workflow_id, "<brief>.workflow.json")`.
+  The builder writes the same envelope to `<run>/submission.workflow.json`, and
+  the ZIP stores it as `workflows/hidden-N.workflow.json`. For upload, copy those
+  bytes unchanged to `<brief>.workflow.json`, using the organizer's name for that
+  brief, unless the organizer names files differently. Never re-serialize or edit.
+- The organizer loads the exported file into its own workspace: the file is
+  what gets scored, not the hosted slot.
+- Equal scores rank by total promised amount, then shorter build time, then
+  earlier submission. Send as soon as the verified package is ready. 19:45 UTC /
+  22:45 Istanbul is the latest send start, not the target. Build time breaks
+  ties only after score: never pick a faster run over one with better evidence.
+
+## Authorized channel record
+
+Fill in from organizer-originated instructions only. A relayed summary needs
+the original message. The reviewed kit names no destination.
+
+| Field | Value |
+|---|---|
+| Instruction source (message/page, sender, received UTC) | |
+| Destination, exactly as the organizer wrote it | |
+| Required attachments, names, format, size limit | |
+| Required metadata (team, repo, commit, other) | |
+| Export credential/import requirements | |
+| Receipt mechanism (page, email, ID) | |
+| Organizer deadline, checked against 20:00 UTC | |
+
+A field still empty at 19:15 UTC / 22:15 Istanbul: ask the organizer through
+the channel the instructions came from. Do not guess an address.
+
+## Before sending (on the evidence HEAD)
+
+- [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
+      the extraction check in SUBMISSION-PACKAGE.md all pass.
+- [ ] Each `<brief>.workflow.json` and trace attachment has the same SHA-256 as
+      its ZIP member and its selected run file.
+- [ ] Evidence HEAD pushed; its PR merged with matching head.
+- [ ] Clock is before 19:45 UTC.
+
+## Send and receipt record
+
+| Field | Value |
+|---|---|
+| Send start and end (UTC and Istanbul) | |
+| Destination used | |
+| Attachment names and SHA-256 | |
+| Package ZIP SHA-256 | |
+| Evidence commit | |
+| Receipt, verbatim (no credentials) | |
+| Local private screenshot path | |
+
+A draft, a local ZIP or a merged PR is not a submission. Post these fields on
+issue 19 without credentials or transcripts.
+
+## Contingencies
+
+- **One brief has no eligible run by 19:15 UTC.** The packager needs exactly two
+  runs and refuses a one-run package. Send the eligible run's export and trace
+  with `package_submission.py --source-only` code, and state that the other brief
+  failed. Never submit an over-time or failed run as eligible. T18 is then not
+  complete as specified; record the exact failure.
+- **Channel still absent at 19:45 UTC.** Keep the verified ZIP and attachments,
+  post the blocker on issue 19 with times, and send nothing to a guessed address.
+- **Upload fails or no receipt.** Retry through the same channel; record each
+  attempt's time and error. Do not change files between retries. A changed
+  package gets a new file name and hash, is re-verified, and the earlier file stays.
+- **Rollback.** A later retry that fails or overruns never replaces a selected
+  eligible run: its run directory and export stay the selection. Do not
+  republish or edit the hosted agent to restore it; the export is what gets
+  scored. Write each package retry to a new output name so the earlier verified
+  ZIP and its hash stay.

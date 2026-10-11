@@ -6,6 +6,60 @@ Only `benchmarks/scoring.py`, its dedicated evidence tests, and this document
 are owned here. Evaluator recording and bundle assembly retain ownership of
 `benchmarks/evidence.py`, `bundle.py`, and standalone hosted wiring.
 
+## Current acceptance — 11 October 2026
+
+T13's three original scoring/capture criteria are complete. The older
+checkpoints below describe the evidence available before the actual adapter
+captures and are historical. [The closure audit](ISSUE-CLOSURE-AUDIT.md) and
+[issue14's accepted checkpoint](https://github.com/DemirEkinArikan/freya_hackathon/issues/14#issuecomment-6102944376)
+supersede their outstanding-live-evidence statements.
+
+| Original criterion | Accepted evidence |
+| --- | --- |
+| Exact ledger multisets, order, counters, duplicate writes and transfer/note constraints | PR64 scorer regressions and its verified merge, plus PR88's present-null closing correction |
+| Transcripts, call/run IDs, judge verdict, latency and retained retries | Four original pinned calls across two fresh repetitions, with original transcripts, simulation/iteration/call attribution, request timings and observed retry metadata |
+| Missing/incomplete evidence cannot pass; local and hosted claims remain separate | PR88 retains the original infrastructure verdict and separately re-scores complete null/null receipts as behavioral FAIL; PR95 recorder/bundler and dedicated comparison checks reject incomplete or contradictory evidence |
+
+[PR88](https://github.com/DemirEkinArikan/freya_hackathon/pull/88) is merged with
+checked/pushed head `f3073ff174c6525674af4983c384271a0a9f7616` and merge
+`9e3ff00f719c84d7c7b764b46277f7a65fd081ba`.
+[PR95](https://github.com/DemirEkinArikan/freya_hackathon/pull/95) is merged with
+checked/pushed head `be0154d45affce28780fe13fdac49e6c3ceedb05` and merge
+`c77a9289068bdc402e9c6dff1db3180391ea5e08`. These matching heads were read back
+from GitHub for this continuation, which started from fetched main
+`4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b` on `rapid/t13-20261011`.
+
+The original result SHA-256 is
+`844446317f867094f68eba47b114b176c20c476e229503e772d048fdfe6c50d6`.
+Its separate [receipt re-score](network-evidence/20261011-native-adapter/receipt-rescore.json)
+binds the original capture to the corrected scorer source. All four banking
+verdicts remain **FAIL**. The harmless greeting graph establishes adapter and
+capture compatibility. The judge's `avgLatencyMs: null` and observed
+`attempts: 0` / `maxAttempts: 4` remain as recorded; request timings and call
+durations do not supply a missing response-latency measurement. No actual retry
+occurred, and no successful banking case or induced retry is required for
+scorer acceptance. New captures must retain their own source, attempt, version,
+transcript, calendar and configuration bindings; historic evidence is never
+reconstructed from the current checkout.
+
+At this continuation's board readback, T10/T11/T12 are closed and T09 is open.
+T13 is **dependency-only** and closes when T09 actually completes. The existing
+matching-head PR88 completion evidence remains valid; documentation or later
+checks do not replace its source attribution. After closure, notify T14
+immediately. Actual repair execution and baseline/structured banking comparison
+retain their respective T14/T15 acceptance requirements.
+
+The dedicated `tests/test_t13_capture_integration.py` exercises actual
+`record_evaluation` output after persistence through `assemble_bundle` and
+`compare`. Complete null/null failures remain comparable with zero strict
+passes; missing, partial or malformed closing receipts and transcript/ledger
+outages remain incomparable. Exact oracle mismatches remain failures even
+when successful tool writes and persisted ledger terms agree internally.
+Explicit recapture retains the failed original record while selecting a fresh
+record. These are offline integration checks using synthetic external services,
+with no new banking conversation, simulation or generation claim. Original
+capture hashes and per-call bindings were independently verified read-only.
+
 ## Bank evidence
 
 `score_ledger` checks exact multisets, including duplicate records, against the
@@ -82,7 +136,7 @@ reconciliation remain deterministic bank checks. Natural-language meaning,
 complete extraction of semantic events, persuasion, policy applicability and
 other conversation behavior remain the independent judge's responsibility.
 
-## Actual verification and remaining acceptance
+## Historical checkpoint before live adapter acceptance
 
 New synthetic regressions failed in 23 subcases before the initial corrections.
 Independent review then reproduced omitted transcript banking events and
@@ -123,7 +177,7 @@ holdouts may be consumed for this development audit. Once the actual evidence
 and dependencies are complete, `tools/cowork.py complete` must use the merged
 same-repository PR whose head matches the checked, pushed completion commit.
 
-## Merged verification
+## Historical merged verification
 
 PR64 merged checked/pushed head `2afe55f8d6d5bec8fbbb6312aeee0790a6c16667`
 as `d1f044256660a904fd6032661ccee9b90787198e`. The three scoring files match the

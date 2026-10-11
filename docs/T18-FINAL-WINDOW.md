@@ -82,10 +82,15 @@ path is local orchestration configuration, never generation input. Do not switch
 or edit another worker's active checkout. A local worktree artifact lock is not
 an acceptable substitute for the shared lease.
 
-Set `T18_SOURCE_COMMIT`, `T18_BUILDER_MODEL` and `T18_REASONING_EFFORT` from the
-accepted T17 freeze. These are explicit nonsecret configuration values. Create a detached worktree from
-that accepted source commit and verify `git rev-parse HEAD` equals the freeze;
-`git diff --exit-code -- builder benchmarks tools` must show no source changes.
+Set `T18_SOURCE_COMMIT`, `T18_SOURCE_INVENTORY_SHA256`, `T18_BUILDER_MODEL` and
+`T18_REASONING_EFFORT` from the accepted T17 freeze. The inventory digest is the
+full allowlisted source inventory recorded by T17, not just runtime provenance.
+These are explicit nonsecret configuration values. Create a detached worktree
+from that accepted source commit. The guard below verifies HEAD, rejects staged
+and unstaged tracked changes, and requires every allowlisted source file to match
+HEAD and the accepted inventory. An untracked allowlisted file, a deletion or a
+changed kit file must fail this guard. Missing actual T17 freeze evidence remains
+a blocker; do not fill these variables from a preparation rehearsal.
 The builder reads only this repository's private `.env` as data. Do not print or
 source credentials, read sibling environment files, or dump the environment.
 
@@ -106,6 +111,21 @@ a fresh registry does not reuse an existing workflow.
 ```sh
 git worktree add --detach /Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t18-frozen-final "$T18_SOURCE_COMMIT"
 cd /Users/demirekinarikan/VsCode/freya_hackathon-worktrees/t18-frozen-final
+test "$(git rev-parse HEAD)" = "$T18_SOURCE_COMMIT" || exit 1
+git diff --quiet HEAD -- || exit 1
+python3.11 - "$T18_SOURCE_INVENTORY_SHA256" <<'PY' || exit 1
+import sys
+from tools import package_submission as package
+
+files = package.source_files()
+package.verify_committed(files)
+hashes = {path.relative_to(package.ROOT).as_posix(): package.check_content(path)
+          for path in files}
+actual = package.digest(hashes)
+if actual != sys.argv[1]:
+    raise SystemExit('Frozen source inventory differs from the accepted T17 freeze')
+print({'source_files': len(files), 'source_inventory_sha256': actual})
+PY
 python3.11 builder/build.py \
   --brief artifacts/hidden-inputs/hidden-1/brief.md \
   --tool-api artifacts/hidden-inputs/hidden-1/openapi.json \

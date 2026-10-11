@@ -82,10 +82,10 @@ class PackageTests(unittest.TestCase):
                       {'event': 'model_call', 'model': config['model'], 'reasoning_effort': 'high',
                        'purpose': 'Audit generation tools/context with synthetic isolation canaries', 'time': '2026-10-10T12:00:00Z'},
                       self.audit_event(),
+                      {'event': 'generation_model_catalog', **self.catalog(), 'time': '2026-10-10T12:00:01Z'},
                       {"event": "model_call", "model": "synthetic-test-model", "purpose": "Synthetic offline trace fixture",
                        "prompt_characters": 100, 'reasoning_effort': 'high',
                        "time": "2026-10-10T12:00:01Z"},
-                      {'event': 'generation_model_catalog', **self.catalog(), 'time': '2026-10-10T12:00:01Z'},
                       {'event': 'action_guard_compilation', 'verified': True, 'plan_sha256': digest(plan),
                        'guard_manifest_sha256': digest(guards), 'time': '2026-10-10T12:00:01Z'},
                       {'event': 'deployment', **deployment, 'attempt': 1, "time": "2026-10-10T12:00:02Z"},
@@ -257,7 +257,9 @@ class PackageTests(unittest.TestCase):
                 rows.insert(1, {'event': 'inputs', 'time': rows[0]['time'], 'sources': run['sources'], 'tool_api_sha256': run['tool_api_sha256']})
                 original = [json.loads(line) for line in (self.root / 'hidden-1.jsonl').read_text().splitlines()]
                 rows[2:2] = original[2:5]
-                rows[6:6] = [{**original[6], 'time': rows[5]['time']}, {**original[7], 'time': rows[5]['time']}]
+                call_time = rows[5]['time']
+                rows[5:5] = [{**original[5], 'time': call_time}]
+                rows[7:7] = [{**original[7], 'time': call_time}]
                 rows[0]['model'] = run['model']
                 for row in rows:
                     if row.get('event') == 'model_call':

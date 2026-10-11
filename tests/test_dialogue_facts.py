@@ -24,6 +24,7 @@ PRODUCTS = [
 class DialogueFactTests(unittest.TestCase):
     def setUp(self):
         self.context = fixture()
+        self.controller_variables = {}
         self.configure()
 
     def configure(self, disclosure=None):
@@ -42,6 +43,10 @@ class DialogueFactTests(unittest.TestCase):
         variables = {"customer_id": CUSTOMER, "now": "2031-05-02T11:00",
                      "bg_facts": '{"forged":"STALE_FACT_MUST_DISAPPEAR"}',
                      "bg_state": state if isinstance(state, str) else json.dumps(state)}
+        if "bg_control_entries" in self.controller_variables:
+            # Retain the real initializer's private administrative state across
+            # these otherwise independent fact-writer calls.
+            variables["bg_control_entries"] = self.controller_variables["bg_control_entries"]
         public = {key: "proposal_" + key for key in inputs if key != "consent"}
         variables.update({public[key]: value for key, value in inputs.items() if key != "consent"})
         variables["bg_consent"] = inputs.get("consent", "")
@@ -49,6 +54,7 @@ class DialogueFactTests(unittest.TestCase):
         variables.update({mapped[key]: value for key, value in data.items()})
         namespace = {"vars": variables}
         exec(_code(phase, action, public, self.profile, self.catalog, {}, mapped), namespace)
+        self.controller_variables = variables
         self.assertNotIn("STALE_FACT_MUST_DISAPPEAR", variables["bg_facts"])
         try:
             next_state = json.loads(variables["bg_state"])

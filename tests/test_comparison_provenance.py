@@ -87,6 +87,20 @@ class ComparisonProvenanceTests(unittest.TestCase):
                 self.assertFalse(result["comparable"])
                 self.assertEqual(result["reason"], "build_budget_parity_absent")
 
+    def test_build_budget_parity_is_exact_numeric_equality(self):
+        # Pre-#117 builders record (start+1800)-start; later ones record the configured int.
+        for recorded, comparable in ((1800.0, True), (1800, True), (1799.9999999999998, False),
+                                     (1800.0000000000002, False)):
+            baseline, value = bundle("baseline"), bundle("structured")
+            baseline["build_provenance"]["source_snapshot"]["resolved_config"]["deadline_seconds"] = recorded
+            value["build_provenance"]["source_snapshot"]["resolved_config"]["deadline_seconds"] = 1800
+            for candidate in (baseline, value): rebind(candidate)
+            result = compare(baseline, value)
+            with self.subTest(recorded=recorded):
+                self.assertEqual(result["comparable"], comparable, result)
+                if not comparable:
+                    self.assertIn(result["reason"], ("build_budget_parity_absent", "build_source_config_mismatch"))
+
     def test_equal_original_build_budgets_allow_algorithm_specific_configuration(self):
         baseline, value = bundle("baseline"), bundle("structured")
         for candidate in (baseline, value):

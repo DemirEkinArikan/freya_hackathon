@@ -320,7 +320,10 @@ def compare(baseline, structured):
         left, right = _bundle(baseline), _bundle(structured)
         _require(left["brief"] == right["brief"] and left["source"] == right["source"], "source_parity_absent")
         _require(digest(left["conditions"]) == digest(right["conditions"]), "condition_parity_absent")
-        _require(digest(left["build_budget"]) == digest(right["build_budget"]), "build_budget_parity_absent")
+        # Exact numeric equality: earlier builders record the configured 1800 as
+        # a float (1800.0), later ones as an int. A rounded value still differs.
+        _require(all(left["build_budget"][key] == right["build_budget"][key] for key in left["build_budget"]),
+                 "build_budget_parity_absent")
         for field in ("calls", "sessions", "simulations", "iterations"):
             a_ids = set().union(*(trial[field] for trial in left["trials"].values()))
             b_ids = set().union(*(trial[field] for trial in right["trials"].values()))

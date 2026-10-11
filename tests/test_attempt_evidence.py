@@ -233,7 +233,7 @@ class AttemptEvidenceTests(unittest.TestCase):
     def test_export_reserve_and_admission_still_prevent_any_attempt(self):
         self.assertEqual((EXPORT_RESERVE, MAX_REPAIRS), (300, 2))
         default_deadline = Deadline()
-        self.assertEqual(default_deadline.limit - default_deadline.start, 1800)
+        self.assertEqual(default_deadline.duration_seconds, 1800)
         generator = self.generator()
         with self.assertRaises(DeadlineExceeded):
             execute(self.args(), generator=generator, deadline=Deadline(299),

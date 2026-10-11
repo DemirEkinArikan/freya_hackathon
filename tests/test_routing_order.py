@@ -88,7 +88,7 @@ class RoutingOrderTests(unittest.TestCase):
     def test_ordinary_or_merged_unconditional_routes_still_shadow_later_routes(self):
         later = conversation("later", [route("close")])
         for transitions, error in (([route("close"), route("later", intent())], "unconditional route shadows later transitions"),
-                                   ([route("close", tool=True), route("close", intent())], "is_tool_call always route shares its target")):
+                                   ([route("close", tool=True), route("close", intent())], "is_tool_call route shares its target")):
             with self.subTest(transitions=transitions):
                 errors = errors_for({"talk": conversation("talk", transitions, entry="llm"), "later": later})
                 self.assertTrue(any(e.startswith("node.talk.transitions[0]: " + error) for e in errors))

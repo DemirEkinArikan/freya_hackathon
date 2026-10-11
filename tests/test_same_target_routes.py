@@ -17,16 +17,17 @@ from builder.policy import compile_execution_policy
 from builder.safety import digest, read_json
 from builder.validation import validate_workflow
 from test_kit_routing_guidance import context
-from test_replay_scheduling import compiled, conversation, intent, route
+from test_replay_scheduling import compiled, conversation, equals, intent, route
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def merged(path, ordinary):
-    return (f"{path}: is_tool_call always route shares its target with ordinary transitions{ordinary}; the kit merges "
-            "same-target routes into one unconditional route that shadows the other transitions. Keep one route per "
-            "target: drop one of them (a kept completion can also cover those caller answers, since an unmatched "
-            "caller turn stays in the node) or send the ordinary route to a different node")
+    return (f"{path}: is_tool_call route shares its target with ordinary transitions{ordinary}; the kit merges "
+            "same-target routes into one route (the OR of their conditions, unconditional if any is always), which "
+            "cannot be both a completion and a router row. Keep one route per target: drop one of them (a kept "
+            "completion can also cover those caller answers, since an unmatched caller turn stays in the node) or "
+            "send the ordinary route to a different node")
 
 
 def errors_for(transitions):
@@ -38,13 +39,19 @@ def errors_for(transitions):
 
 
 class SameTargetRouteTests(unittest.TestCase):
-    def test_completion_sharing_a_target_with_an_ordinary_route_is_refused_wherever_it_sits(self):
+    def test_completion_sharing_a_target_with_an_ordinary_route_is_refused_whatever_its_condition_or_position(self):
         for transitions, error in (
                 ([route("close", tool=True), route("later", intent()), route("close", intent())],
                  merged("node.talk.transitions[0]", [2])),
                 # Last in the list, the merged route still shadows the intent before it.
                 ([route("later", intent()), route("close", intent()), route("close", tool=True)],
-                 merged("node.talk.transitions[2]", [1]))):
+                 merged("node.talk.transitions[2]", [1])),
+                # A conditional completion still merges into one route that cannot be both.
+                ([route("later", intent()), route("close", intent(), tool=True), route("close", intent())],
+                 merged("node.talk.transitions[1]", [2])),
+                ([route("later", intent()), route("close", equals("answer_text", "done"), tool=True),
+                  route("close", intent())],
+                 merged("node.talk.transitions[1]", [2]))):
             with self.subTest(error=error):
                 self.assertEqual(errors_for(transitions), [error])
 
@@ -91,6 +98,10 @@ class RetainedPlanRecompile(unittest.TestCase):
                 "plan": candidate, "contract": contract, "execution_policy": execution, "bindings": bindings})
 
         self.assertEqual(errors(plan), [merged("node.recovery.transitions[1]", [8])])
+        conditional = copy.deepcopy(plan)
+        row = conditional["nodes"]["recovery"]["transitions"][1]
+        row["condition"] = {"operator": "matches_intent", "description": row["description"]}
+        self.assertEqual(errors(conditional), [merged("node.recovery.transitions[1]", [8])])
         for drop in (1, 8):
             candidate = copy.deepcopy(plan)
             del candidate["nodes"]["recovery"]["transitions"][drop]

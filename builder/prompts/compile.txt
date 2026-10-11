@@ -81,11 +81,14 @@ defines that concept. They are interface names, not predetermined banking rules:
 - resolve_all_products: explicit boolean for whether every returned product must
   be resolved before final close, or {selector:"source_declared_input_name",
   by_value:{"supplied_input_code":boolean}} when the source explicitly varies that
-  prerequisite by initial call scope. The selector must occur literally in its
+  prerequisite by initial call scope. Add products:"overdue" (alone, or with
+  the selector form) when the source scopes resolution to overdue products
+  rather than every returned product. The selector must occur literally in its
   rule quotation and in source-backed call_variables; use exact supplied codes,
   never defaults or an inferred goal category. Runtime seals the initial value;
   missing, non-string or unknown selector values quarantine. This grants no
-  outcome, note permission or action and does not change note finalization.
+  outcome, note permission or action; for the object form, note finalization
+  requires the same selected products.
 - confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array
   of commit_promises/commit_transfer/schedule_callback roles, possibly empty.
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.
@@ -108,9 +111,13 @@ defines that concept. They are interface names, not predetermined banking rules:
   Preserve the fixed exhausted-identity disposition. Missing proposal/evidence
   must not silently select another reason. All option values come from sources.
 
-- transfer_prerequisites: exact queue-to-none/identity/account prerequisite map.
+- transfer_prerequisites: queue-to-none/identity/account/unstated prerequisite map
+  for queues the source authorizes dispatching; "unstated" when the source gives
+  no prerequisite (adds no gate, grants nothing else). Omitted queues are refused.
 - promise_readback: {product_fields:[...],value_labels?:{field:{value:spoken_label}}},
-  using only human-readable returned fields, excluding customer/internal product IDs.
+  using only human-readable returned fields, excluding customer/internal product IDs;
+  "product_type" when the source requires confirming the product but names no
+  fields; "none" only when commit_promises needs no confirmation.
 - promise_failure_disposition: {reason,clear_pending:boolean} when the brief specifies it.
 - nonpersistent_failures: operation-to-array of {http_status,error?} guarantees.
   Populate only from an explicit supplied API nonpersistence guarantee; absence of

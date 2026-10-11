@@ -299,8 +299,9 @@ class ExecutionRequirementsTests(unittest.TestCase):
 
     def test_cross_rule_queue_mismatch_is_pre_freeze_error(self):
         policy, sources, api = packet()
-        rule(policy, "transfer_prerequisites")["value"].pop("specialist")
-        with self.assertRaisesRegex(ExecutionRequirementsError, "exactly match"):
+        prerequisites = rule(policy, "transfer_prerequisites")["value"]
+        prerequisites["unpermitted"] = prerequisites.pop("specialist")
+        with self.assertRaisesRegex(ExecutionRequirementsError, "belong to permitted transfer queues"):
             compile_execution_requirements(policy, sources, api)
 
     def test_all_present_typed_shapes_are_checked_without_echoing_values(self):

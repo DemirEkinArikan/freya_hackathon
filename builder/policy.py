@@ -122,9 +122,9 @@ _SHAPE_GUIDANCE = {
     "goal_close": 'an optional object with only verified and/or account_loaded keys, for goals that select no promise, note or transfer role. verified applies once identity is verified and no account is loaded; account_loaded after positive account evidence. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons, each outcome/reason pair once per phase; collections meanings (promise, paid, transferred, no_promise) are never permitted. With schedule_callback every close code must be a bound wire_codes meaning, and after a recorded callback only recorded_callback rows are eligible. One eligible row is fixed; several rows require a matching closing proposal. Other evidence conditions are unsupported constraints',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
-    "resolve_all_products": "a boolean, or exactly {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution; selector occurs literally in this rule's quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only the every-product closing prerequisite, never allowed outcomes, actions or note finalization",
-    "transfer_prerequisites": 'a nonempty object mapping queue names to "none", "identity", or "account"',
-    "promise_readback": "an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps",
+    "resolve_all_products": 'a boolean, or an object with {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution, and/or products: "overdue" when the source scopes resolution to overdue products (protected integer days_late >= 1) instead of every returned product; {products: "overdue"} alone applies to every call. selector occurs literally in this rule\'s quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only which products must be resolved before the final close and, for the object form, before note finalization (a selected false requires none); never allowed outcomes or actions',
+    "transfer_prerequisites": 'a nonempty object mapping permitted transfer queue names to "none", "identity", "account" or "unstated". Use "unstated" when the source authorizes dispatching that queue but states no identity/account prerequisite: no evidence gate is added and nothing else is granted; never add identity or account from omission. Omit a queue the source names only in closing vocabulary without authorizing its dispatch; the controller refuses staging an omitted queue',
+    "promise_readback": 'an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps; an absent or empty selected field is left out of that product\'s label. Use exactly "product_type" when the source requires confirming the product but prescribes no product fields: each product is named only by its protected product type, the type already used for floors; labels shared by two loaded products block the confirmation and no other field is read back. Use exactly "none" only when the source requires no confirmation for commit_promises (require_confirmation false and commit_promises not in confirmation_actions)',
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
 }
 
@@ -343,13 +343,16 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  and set(value) <= {"finalize_notes", "schedule_callback", "commit_transfer"})
     elif kind == "resolve_all_products":
         valid = type(value) is bool
-        if isinstance(value, dict) and set(value) == {"selector", "by_value"}:
-            try:
-                check_call_variables([value["selector"]])
-                valid = (isinstance(value["by_value"], dict) and bool(value["by_value"])
-                         and all(text(code) and type(required) is bool for code, required in value["by_value"].items()))
-            except CallVariablesError:
-                valid = False
+        if (isinstance(value, dict) and value and set(value) <= {"selector", "by_value", "products"}
+                and ("selector" in value) == ("by_value" in value) and value.get("products", "overdue") == "overdue"):
+            valid = True
+            if "selector" in value:
+                try:
+                    check_call_variables([value["selector"]])
+                    valid = (isinstance(value["by_value"], dict) and bool(value["by_value"])
+                             and all(text(code) and type(required) is bool for code, required in value["by_value"].items()))
+                except CallVariablesError:
+                    valid = False
     elif kind in {"confirmation_actions", "close_precedence"}:
         valid = (isinstance(value, list) and (kind == "confirmation_actions" or bool(value))
                  and all(text(item) for item in value) and len(set(value)) == len(value))
@@ -385,16 +388,16 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                  and text(value["reason"]) and type(value["clear_pending"]) is bool)
     elif kind == "transfer_prerequisites":
         valid = (isinstance(value, dict) and bool(value)
-                 and all(text(queue) and prerequisite in ("none", "identity", "account")
+                 and all(text(queue) and prerequisite in ("none", "identity", "account", "unstated")
                          for queue, prerequisite in value.items()))
     elif kind == "promise_readback":
-        valid = (isinstance(value, dict) and set(value) <= {"product_fields", "value_labels"}
+        valid = value in ("product_type", "none") or (isinstance(value, dict) and set(value) <= {"product_fields", "value_labels"}
                  and isinstance(value.get("product_fields"), list) and bool(value["product_fields"])
                  and all(text(field) and field not in {"customer_id", "product_id"}
                          for field in value["product_fields"])
                  and len(set(value["product_fields"])) == len(value["product_fields"])
                  and isinstance(value.get("value_labels", {}), dict))
-        if valid:
+        if valid and isinstance(value, dict):
             valid = all(text(field) and field in value["product_fields"] and isinstance(labels, dict)
                         and all(text(wire) and text(label) for wire, label in labels.items())
                         for field, labels in value.get("value_labels", {}).items())

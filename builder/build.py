@@ -39,6 +39,7 @@ from .policy import execution_rule_guidance
 from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
+from .policy_patch import apply_policy_patch, repair_excerpt
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -56,7 +57,8 @@ FIRST_WORKFLOW_RESERVE = 450
 # took 0.62-1.19 times this). A repair starts only when its allocation covers 90%
 # of the estimate; otherwise the build stops with the real failure instead of
 # timing out. A format repair has no previous document, so only the 61 s base is
-# checked; the two on 11 Oct took 261 s and 443 s.
+# checked; the two on 11 Oct took 261 s and 443 s. A patch repair rewrites only the
+# excerpt it is shown, so its estimate is sized by that excerpt.
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9
@@ -96,6 +98,8 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--test-brief", choices=("A", "B"), help="Evaluator-only selection when supplied cases mix practice briefs")
     out.add_argument("--model", default=os.environ.get("FREYA_BUILDER_MODEL") or os.environ.get("BUILDER_MODEL") or "gpt-6.1-sol")
     out.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh"), default="high")
+    out.add_argument("--policy-repair", choices=("patch", "full"), default="patch",
+                     help="Repair a rejected policy by a structured patch first (falls back to a full re-emission), or only by full re-emission")
     out.add_argument("--codex", default="codex", help="Existing Codex CLI executable")
     out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
                      help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
@@ -160,11 +164,15 @@ def make_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) 
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None = None) -> str:
+def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None = None, *, patch: bool = False) -> str:
     template = (PROJECT / "builder/prompts/compile.txt").read_text(encoding="utf-8")
     policy_instructions = template.split("Adapt to the supplied banking objective", 1)[1].split(
         "Generate a complete Freya workflow", 1)[0]
     header = (PROJECT / "builder/prompts/extract.txt").read_text(encoding="utf-8")
+    if patch:
+        # The patch wire format replaces only the extraction role and wire paragraph.
+        header = ((PROJECT / "builder/prompts/patch.txt").read_text(encoding="utf-8")
+                  + "\nRead every supplied source." + header.split("Read every supplied source.", 1)[1])
     payload = {"sources": sources, "openapi": openapi,
                "execution_interface": {"actions": execution_action_catalogue(),
                                        "rule_shapes": execution_rule_guidance()}}
@@ -195,7 +203,7 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
-def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, reserve):
+def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, reserve, **fields):
     """Start a repair only if it can finish before the reserve; otherwise keep the real failure."""
     size = len(json.dumps(previous, ensure_ascii=False, separators=(",", ":"))) if previous is not None else 0
     estimate = REPAIR_BASE_SECONDS + REPAIR_SECONDS_PER_CHARACTER * size
@@ -203,7 +211,7 @@ def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, re
     admitted = available >= REPAIR_ADMISSION_FRACTION * estimate
     trace.emit("repair_admission", stage=stage, attempt=attempt, admitted=admitted,
                estimated_seconds=round(estimate, 1), available_seconds=round(available, 2),
-               reserve_seconds=reserve, remaining_seconds=round(deadline.remaining(), 2))
+               reserve_seconds=reserve, remaining_seconds=round(deadline.remaining(), 2), **fields)
     if not admitted:
         raise DeadlineExceeded(f"No time for a repair ({max(available, 0):.0f} s available, "
                                f"about {estimate:.0f} s needed): {failure}")
@@ -217,38 +225,91 @@ def _stage_completed(trace, deadline, durations, stage, started, **fields):
                remaining_seconds=round(deadline.remaining(), 2), **fields)
 
 
+def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt, failure, *, cap, reserve):
+    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt.
+
+    The excerpt, prompt and apply code never read the deadline, so any exception
+    they raise is a patch failure: a bug there must not lose the full repair.
+    """
+    try:
+        request = repair_excerpt(rejected["policy"], rejected["errors"])
+        prompt = make_policy_prompt(sources, openapi, request, patch=True)
+    except Exception as exc:
+        trace.emit("policy_patch", attempt=attempt, applied=False, error=f"{type(exc).__name__}: {exc}")
+        return None
+    _admit_repair(trace, deadline, "policy", attempt, request["excerpt"], failure, cap=cap, reserve=reserve,
+                  repair_mode="patch")
+    deadline.require(seconds=1, reserve=reserve)
+    allocated = deadline.timeout(cap, reserve=reserve)
+    trace.emit("policy_generation_budget", attempt=attempt, repair_mode="patch", cap_seconds=cap,
+               allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
+               remaining_seconds=round(deadline.remaining(), 2))
+    started = deadline.elapsed()
+    patch = patched = error = None
+    try:
+        returned = generator.generate_policy_patch(prompt, max_seconds=allocated, reserve_seconds=reserve)
+        patch = returned.get("patch") if isinstance(returned, dict) else None
+    except GenerationFormatError as exc:
+        error = str(exc)
+    try:
+        patched = None if error else apply_policy_patch(rejected["policy"], patch)
+    except Exception as exc:  # PolicyPatchError, or a bug in the apply
+        error = f"{type(exc).__name__}: {exc}"
+    try:
+        size = len(json.dumps(patch, ensure_ascii=False, separators=(",", ":")))
+    except (TypeError, ValueError):
+        patch, size = None, None
+    operations = patch.get("operations") if isinstance(patch, dict) else None
+    trace.emit("policy_patch", attempt=attempt, applied=patched is not None, error=error,
+               operations=len(operations) if isinstance(operations, list) else None, patch_characters=size,
+               excerpt_characters=len(json.dumps(request["excerpt"], ensure_ascii=False, separators=(",", ":"))),
+               rejected_policy_characters=len(json.dumps(rejected["policy"], ensure_ascii=False, separators=(",", ":"))),
+               prompt_characters=len(prompt), elapsed_seconds=round(deadline.elapsed() - started, 3),
+               patch=sanitize(patch, secrets=secrets))
+    return patched
+
+
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
-                    declarations="strict"):
-    repair = failure = None
+                    repair_mode="patch", declarations="strict"):
+    repair = failure = rejected = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
+    # Injected generators without the patch call keep full repairs.
+    patching = repair_mode == "patch" and callable(getattr(generator, "generate_policy_patch", None))
     for attempt in range(MAX_REPAIRS + 1):
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
-        if repair:
-            _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
-                          cap=cap, reserve=reserve)
-        deadline.require(seconds=1, reserve=reserve)
-        allocated = deadline.timeout(cap, reserve=reserve)
-        trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
-                   allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
-                   first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
-                   remaining_seconds=round(deadline.remaining(), 2))
         started = deadline.elapsed()
-        try:
-            extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
-                                           purpose="Extract banking policy and source/API bindings",
-                                           max_seconds=allocated, reserve_seconds=reserve)
-        except GenerationFormatError as exc:
-            _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
-            trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
-                       elapsed_seconds=round(deadline.elapsed() - started, 3))
-            if attempt == MAX_REPAIRS:
-                raise
-            failure = str(exc)
-            repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
-            continue
+        policy = None
+        if patching and rejected is not None and isinstance(rejected["policy"], dict):
+            policy = _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt + 1,
+                                     failure, cap=cap, reserve=reserve)
+        mode = None if attempt == 0 else "patch" if policy is not None else "full"
+        if policy is None:
+            if repair:
+                _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
+                              cap=cap, reserve=reserve)
+            deadline.require(seconds=1, reserve=reserve)
+            allocated = deadline.timeout(cap, reserve=reserve)
+            trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
+                       allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
+                       first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
+                       remaining_seconds=round(deadline.remaining(), 2))
+            started = deadline.elapsed()
+            try:
+                extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
+                                               purpose="Extract banking policy and source/API bindings",
+                                               max_seconds=allocated, reserve_seconds=reserve)
+            except GenerationFormatError as exc:
+                _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
+                trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
+                           elapsed_seconds=round(deadline.elapsed() - started, 3))
+                if attempt == MAX_REPAIRS:
+                    raise
+                failure = str(exc)
+                repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+                continue
+            policy = extracted.get("policy")
         elapsed = round(deadline.elapsed() - started, 3)
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
-        policy = extracted.get("policy")
         try:
             assert_no_secrets(policy, forbidden_values=secrets)
             # Recorded trivial rewrites (quote edges/marks/whitespace, unread descriptive
@@ -264,15 +325,17 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
                 {"policy": policy, "validation_errors": errors}, secrets=secrets))
-            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed)
+            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed,
+                       repair_mode=mode)
             if attempt == MAX_REPAIRS:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
             failure = "Policy extraction failed: " + "; ".join(errors)
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
+            rejected = {"policy": repair["previous_policy"], "errors": errors}
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
                    selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
-                   attempt=attempt + 1, elapsed_seconds=elapsed)
+                   attempt=attempt + 1, elapsed_seconds=elapsed, repair_mode=mode)
         return copy.deepcopy(policy), compiled, requirements, attempt
     raise AssertionError("unreachable policy extraction state")
 
@@ -465,6 +528,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
             "codex_executable": args.codex, "deadline_seconds": deadline.duration_seconds,
             "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
+            "policy_repair_mode": args.policy_repair,
             "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
                                    "policy_repair_cap_seconds": POLICY_REPAIR_CAP,
                                    "first_workflow_reserve_seconds": FIRST_WORKFLOW_RESERVE,
@@ -513,7 +577,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         else:
             policy, compiled, requirements, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
-                workflow_pending=mode != "extract-policy-only", declarations=declarations)
+                workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair,
+                declarations=declarations)
             policy_origin = "extracted"
         _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
                          repairs=policy_repairs, origin=policy_origin)

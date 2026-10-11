@@ -53,7 +53,8 @@ the channel the instructions came from. Do not guess an address.
 - [ ] `final_attempts.py select` exited 0. Both `artifacts/final/<label>/selection.json`
       records name the selected attempt k of N, and no attempt directory was
       removed or edited. The manifest came from `final_attempts.py manifest`, so it
-      has `selections`.
+      has `selections`. `health.jsonl` and every attempt's `launch.json` are in the
+      evidence commit.
 - [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
       the extraction check in SUBMISSION-PACKAGE.md all pass.
 - [ ] On that ZIP, `verify_submission_bundle.py --commit <evidence commit>` and

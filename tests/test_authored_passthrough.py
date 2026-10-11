@@ -131,8 +131,10 @@ class AuthoredPassthroughTests(unittest.TestCase):
     def test_waiting_speaking_node_keeps_its_agent_completion_transition(self):
         node = self.context["plan"]["nodes"]["talk"]
         node["on_enter"] = {"type": "llm"}
-        node["transitions"].append({"target_node": "close", "description": "complete required farewell",
-                                    "condition": {"operator": "always"}, "is_tool_call": True})
+        # One route per target: the kit would merge an ordinary close route into this one.
+        node["transitions"] = [row for row in node["transitions"] if row["target_node"] != "close"] + [{
+            "target_node": "close", "description": "complete required farewell",
+            "condition": {"operator": "always"}, "is_tool_call": True}]
         workflow = compile_guarded_workflow(**self.context)["workflow"]
         compiled = workflow["nodes"]["talk"]
         self.assertFalse(compiled.get("passthrough", False))

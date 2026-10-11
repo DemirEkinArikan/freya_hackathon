@@ -18,6 +18,11 @@ from tools import final_attempts as final
 from tools import package_submission as package
 
 
+def platform_error(message):
+    from builder.platform import PlatformError
+    return PlatformError(message)
+
+
 class FinalAttemptsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -40,6 +45,7 @@ class FinalAttemptsTests(unittest.TestCase):
         self.env_file = self.root / 'private.env'
         self.env_file.write_text('FREYA_API_KEY=synthetic-launch-key\n')
         self.failures, self.alive = set(), False
+        self.client, self.sleep = MagicMock(), MagicMock()  # Staging probes and pauses never really happen here.
 
     def run_main(self, *argv):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
@@ -50,6 +56,7 @@ class FinalAttemptsTests(unittest.TestCase):
         popen = MagicMock(side_effect=[SimpleNamespace(pid=7100 + number) for number in range(20)])
         with patch.object(final.subprocess, 'Popen', popen), patch.object(final.shutil, 'which', return_value='/bin/codex'), \
              patch.object(final, '_alive', side_effect=lambda pid: self.alive), \
+             patch.object(final, 'FreyaClient', self.client), patch.object(final.time, 'sleep', self.sleep), \
              patch.dict(final.os.environ, {'OPENAI_API_KEY': 'synthetic-openai-value'}):
             final.os.environ.pop('FREYA_API_KEY', None)  # Only the --env-file supplies the key here.
             result = self.run_main('launch', '--env-file', str(self.env_file), '--model', 'synthetic-model',
@@ -85,10 +92,35 @@ class FinalAttemptsTests(unittest.TestCase):
             self.assertEqual(record['pid'] - 7100, popen.call_args_list.index(call))
         self.assertEqual(len(slots), 6)
         self.assertNotEqual(final.os.environ.get('FREYA_API_KEY'), 'synthetic-launch-key')
+        # Interleaved and spread: each brief starts at once, and starts are a pause apart.
+        self.assertEqual([call.args[0][call.args[0].index('--brief') + 1] for call in popen.call_args_list],
+                         ['brief.md', 'brief-2.md'] * 3)
+        self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 5)
+        # One staging probe before each start, recorded in its launch record and the health log.
+        self.assertEqual(self.client.call_args.kwargs['api_key'], 'synthetic-launch-key')
+        health = [json.loads(line) for line in (self.root / 'artifacts/final/health.jsonl').read_text().splitlines()]
+        self.assertEqual([record['ok'] for record in health], [True] * 6)
+        self.assertIs(json.loads((self.root / 'artifacts/final/hidden-2/attempt-3/launch.json').read_text())
+                      ['staging_health']['ok'], True)
         # A retry round continues the numbering; earlier attempts are never reused.
         (code, _, _), popen = self.launch('--labels', 'hidden-2', '--attempts', '1')
         self.assertEqual(code, 0)
         self.assertIn('artifacts/final/hidden-2/attempt-4', popen.call_args.args[0])
+
+    def test_staging_failures_are_recorded_by_status_and_never_block_a_launch(self):
+        self.client.return_value.request.side_effect = platform_error(
+            'GET /api/v2/workspaces: HTTP 504: <html>opaque-gateway-body</html>')
+        (code, _, _), popen = self.launch('--attempts', '1', '--stagger-seconds', '0')
+        self.assertEqual(code, 0)
+        self.assertEqual(popen.call_count, 2)
+        log = (self.root / 'artifacts/final/health.jsonl').read_text()
+        self.assertEqual([json.loads(line)['error'] for line in log.splitlines()], ['HTTP 504', 'HTTP 504'])
+        self.assertNotIn('opaque-gateway-body', log + (self.root / 'artifacts/final/hidden-1/attempt-1/launch.json').read_text())
+        self.client.return_value.request.side_effect = None
+        with patch.object(final, 'FreyaClient', self.client):
+            code, out, _ = self.run_main('health', '--env-file', str(self.env_file))
+        self.assertEqual((code, json.loads(out)['ok']), (0, True))
+        self.assertEqual(len((self.root / 'artifacts/final/health.jsonl').read_text().splitlines()), 3)
 
     def test_launch_refuses_over_the_machine_cap_or_without_credentials(self):
         self.launch()

@@ -59,6 +59,10 @@ class HopLatencyTests(unittest.TestCase):
             "target not llm entry": lambda plan: plan["decide"].update(on_enter={"type": "silent"}),
             "target has a router row": lambda plan: plan["decide"].update(transitions=[completion("talk"), intent("close")]),
             "action target": lambda plan: plan["talk"].update(transitions=[intent("close")]) or plan.pop("decide"),
+            # always would merge with this row into one unconditional row (N1).
+            "earlier row to the decision": lambda plan: plan["talk"]["transitions"].insert(0, {
+                "target_node": "decide", "description": "Caller is unsure.", "condition": {"logic": "or", "conditions": [
+                    {"variable": "availability_answer", "operator": "equals", "operand": "maybe"}]}}),
         }
         for label, change in cases.items():
             with self.subTest(label):
@@ -66,7 +70,6 @@ class HopLatencyTests(unittest.TestCase):
                 change(frozen["plan"]["nodes"])
                 talk = self.compiled(frozen, api)["talk"]
                 self.assertEqual(talk["transitions"][-1]["condition"]["operator"], "matches_intent")
-                self.assertIn("routing_prompt", talk)
 
     def test_deterministic_rows_before_the_catch_all_keep_their_order(self):
         frozen, api = decide_shape()

@@ -423,17 +423,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
-    for kind in ("confirmation_readback", "confirmation_language"):
-        wording = profile.get(kind)
-        if kind in profile and not _profile_errors(kind, wording):
-            texts = wording.get("clauses", [wording.get("language")])
-            provenance = contract.get("active_rules", {}).get(kind, {}).get("provenance", [])
-            if not provenance or any(not isinstance(source.get("quote"), str) or any(
-                    not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", source["quote"]) for item in texts) for source in provenance):
-                errors.append(kind + " wording must occur literally in its own sourced quotation")
-            confirmed = set(profile.get("confirmation_actions", [])) | ({"commit_promises"} if profile.get("require_confirmation") is True else set())
-            if selected_actions & set(wording["actions"]) - confirmed:
-                errors.append(kind + " names a selected action that requires no confirmation")
+    wording = profile.get("confirmation_readback")
+    if "confirmation_readback" in profile and not _profile_errors("confirmation_readback", wording):
+        provenance = contract.get("active_rules", {}).get("confirmation_readback", {}).get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or any(
+                not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", source["quote"]) for item in wording["clauses"]) for source in provenance):
+            errors.append("confirmation_readback wording must occur literally in its own sourced quotation")
+        confirmed = set(profile.get("confirmation_actions", [])) | ({"commit_promises"} if profile.get("require_confirmation") is True else set())
+        if selected_actions & set(wording["actions"]) - confirmed:
+            errors.append("confirmation_readback names a selected action that requires no confirmation")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1964,21 +1962,12 @@ def _code_node(name: str, code: str, transitions: list[dict]) -> dict:
 
 
 def _confirmation_speech(profile: dict, action: str) -> dict:
-    """Compiler-owned confirmation entry; sourced wording is used verbatim."""
+    """Compiler-owned confirmation entry; sourced clauses are spoken verbatim."""
     wait = ("Wait for a clear yes or no about the exact terms just read. "
             "Do not change terms, call tools, or treat another topic as agreement.")
     wording = profile.get("confirmation_readback", {})
-    language = profile.get("confirmation_language", {})
     terms = "{{bg_readback}}" + "".join("; " + clause for clause in (wording["clauses"] if action in wording.get("actions", []) else []))
     question = profile.get("confirmation_question") if action in profile.get("confirmation_question_actions", []) else None
-    if action in language.get("actions", []):
-        # A fixed line cannot follow a sourced language rule, which may switch
-        # during the call; the dialogue model renders the same protected terms.
-        return {"on_enter": {"type": "llm"}, "task_message": (
-            'Use the language this sourced rule requires at this point in the call: "' + language["language"] + '". In this one turn, read back '
-            "exactly these protected terms, keeping every date, time and amount unchanged and adding no other term: "
-            + terms + ". Then ask " + ('this question: "' + question + '"' if question else
-                                       "whether the caller agrees to exactly these terms") + ". " + wait)}
     text = terms + ". " + question if question else "Please confirm these exact terms: " + terms + ". Do you agree?"
     return {"on_enter": {"type": "tts", "text": text}, "task_message": wait}
 

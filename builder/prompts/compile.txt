@@ -85,12 +85,16 @@ defines that concept. They are interface names, not predetermined banking rules:
   of commit_promises/commit_transfer/schedule_callback roles, possibly empty.
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.
 - close_precedence: ordered semantic outcome array derived from the final selection rule.
-- identity_close: failed/incomplete/unreached records with outcome and optional reason.
+- identity_close: failed/incomplete/unreached records with outcome and optional reason,
+  plus an optional verified record for the sourced ending after successful identity
+  in goals without promise or note actions.
 
-- identity_close_choices: optional unreached/incomplete arrays of
-  {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.
+- identity_close_choices: optional unreached/incomplete/verified arrays of
+  {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"};
+  verified options may also require "account_loaded"|"no_account_loaded".
   Use when the supplied policy has several language-derived dispositions in an
-  identity scope. Each option keeps that scope's declared outcome; callback
+  identity scope. Each unreached/incomplete option keeps that scope's declared
+  outcome; verified options may carry different sourced outcomes. Callback
   success needs actual recorded-callback evidence, never merely a caller claim.
   Preserve the fixed exhausted-identity disposition. Missing proposal/evidence
   must not silently select another reason. All option values come from sources.

@@ -24,6 +24,10 @@ CANONICAL = {
     "notes": {"refused", "hardship", "dispute", "paid", "service_error"},
     "queues": {"support", "general", "restructuring"},
 }
+# Close outcomes/reasons may also carry the source's own meaning label. Only
+# CANONICAL meanings have protected-fact semantics; a label stays inert and is
+# selectable only through a sourced identity-phase disposition.
+LABELLED = {"outcomes", "reasons"}
 TARGETS = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
            "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
 
@@ -66,12 +70,18 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> dict[str, dict[
                 raise ActionBindingError("opaque " + category + " require explicit semantic mappings")
             mapping = {value: value for value in sorted(values)}
         if not isinstance(mapping, dict) or not mapping or any(
-                not isinstance(meaning, str) or meaning not in CANONICAL[category]
+                not isinstance(meaning, str) or not meaning
+                or meaning not in CANONICAL[category] and category not in LABELLED
                 or not isinstance(wire, str) or not wire for meaning, wire in mapping.items()):
             raise ActionBindingError("unknown or invalid semantic mapping for " + category)
         if len(set(mapping.values())) != len(mapping):
             raise ActionBindingError("ambiguous semantic mapping for " + category)
-        if not values <= set(mapping.values()):
+        # Policy vocabularies may name a code by its wire value or by its
+        # declared meaning; either resolves to exactly one bound wire value.
+        wires = {mapping.get(value, value) for value in values}
+        if len(wires) != len(values):
+            raise ActionBindingError("policy " + category + " name one bound code twice")
+        if not wires <= set(mapping.values()):
             raise ActionBindingError("semantic mapping does not cover policy " + category)
         if any(wire in CANONICAL[category] and wire != meaning for meaning, wire in mapping.items()):
             raise ActionBindingError("canonical API values cannot be assigned conflicting meanings")
@@ -81,8 +91,10 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> dict[str, dict[
     transfer = rule_value(policy, "transfer_reasons", {})
     if transfer:
         outcome = maps.get("outcomes", {}).get("transferred")
-        allowed = rule_value(policy, "close_reasons", {}).get(outcome, [])
-        if outcome is None or not set(transfer.values()) <= set(allowed):
+        close = rule_value(policy, "close_reasons", {})
+        reasons = maps.get("reasons", {})
+        allowed = {reasons.get(value, value) for value in close.get(outcome, close.get("transferred", []))}
+        if outcome is None or not {reasons.get(value, value) for value in transfer.values()} <= allowed:
             raise ActionBindingError("transfer closing reasons are inconsistent with the permitted transferred outcome")
     return maps
 

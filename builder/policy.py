@@ -110,15 +110,15 @@ _SHAPE_GUIDANCE = {
     "action_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "result_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "product_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
-    "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique",
+    "wire_codes": "an object mapping category names to nonempty string-to-string maps from semantic meaning to exact API value; wire values within each category must be unique. outcomes/reasons keys may be source-defined meanings outside the protected kernel vocabulary; such labels are inert and selectable only through identity_close dispositions. Never bind an opaque code to a protected meaning the source does not give it",
     "nonpersistent_failures": "an object mapping actual operation names to arrays of unique objects containing http_status (integer 100..599), optional error (nonempty string), and optional api_source containing exactly pointer and quote (nonempty strings); controller execution requires a literal OpenAPI witness scoped to that operation's exact response status",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
     "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent',
     "definite_failure_resume": 'an optional unique string array containing only finalize_notes/schedule_callback/commit_transfer; an empty array is allowed. For selected roles an explicit attempt_scopes entry and matching positive limit are required. Only source-authorized continuation after an exact API-qualified nonpersistent negative receipt is enabled: retry the same frozen request below its cap, or resume without claiming success at the cap. This supplies no bank disposition, never resumes uncertainty, and never replays close_call or changes promise exhaustion handling',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
-    "identity_close": "an optional object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
-    "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
+    "identity_close": "an optional object containing exactly failed, incomplete, unreached, and optional verified; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
+    "identity_close_choices": 'a nonempty object with only unreached/incomplete/verified scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback", and for verified also "account_loaded"/"no_account_loaded"). Every unreached/incomplete choice must retain identity_close[scope].outcome; verified choices may carry different sourced outcomes, each gated by its evidence requirement. verified (here and in identity_close) is the sourced ending after successful identity for goals without promise or note actions, never a stand-in for a protected write, transfer or collections outcome. Any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
     "resolve_all_products": "a boolean, or exactly {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution; selector occurs literally in this rule's quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only the every-product closing prerequisite, never allowed outcomes, actions or note finalization",
@@ -161,9 +161,9 @@ def _structured_error(kind: str, value: Any, domain: str) -> str:
         missing = sorted(scopes - set(value))
         if missing:
             message += "; missing required scopes: " + ", ".join(missing)
-        if set(value) - scopes:
+        if set(value) - scopes - {"verified"}:
             message += "; unsupported scope fields are present"
-        for scope in ("failed", "incomplete", "unreached"):
+        for scope in ("failed", "incomplete", "unreached", "verified"):
             if scope not in value:
                 continue
             proposal = value[scope]
@@ -360,16 +360,17 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                      and text(value["field"]) and value["direction"] in ("ascending", "descending")
                      and value["tie_breaker"] == "account_order")))
     elif kind == "identity_close_choices":
-        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"unreached", "incomplete"}
+        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"unreached", "incomplete", "verified"}
                  and all(isinstance(choices, list) and bool(choices) for choices in value.values()))
         if valid:
             valid = all(isinstance(choice, dict) and set(choice) <= {"outcome", "reason", "requires"}
                         and text(choice.get("outcome"))
-                        and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                        and (choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                             or scope == "verified" and choice.get("requires") in ("account_loaded", "no_account_loaded"))
                         and ("reason" not in choice or text(choice["reason"]))
-                        for choices in value.values() for choice in choices)
+                        for scope, choices in value.items() for choice in choices)
     elif kind == "identity_close":
-        valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
+        valid = (isinstance(value, dict) and {"failed", "incomplete", "unreached"} <= set(value) <= {"failed", "incomplete", "unreached", "verified"}
                  and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}
                          and text(proposal.get("outcome")) and ("reason" not in proposal or text(proposal["reason"]))
                          for proposal in value.values()))

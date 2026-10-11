@@ -10,7 +10,7 @@ from pathlib import Path
 
 from builder.guards import compile_guarded_workflow, run_guard_step
 from builder.safety import read_json
-from test_closing_choices import context as closing_context
+from test_closing_choices import CHOICES, context as closing_context
 from test_goal_requirements import SealedSession
 from test_recorded_callback_close import context as kernel_context
 from tools.replay_guarded import replay
@@ -64,14 +64,16 @@ class CallbackClaimTests(unittest.TestCase):
 
 
 class CompiledRefusedCloseTests(unittest.TestCase):
-    def session(self):
-        context = closing_context()[0]
+    def session(self, choices=CHOICES):
+        context = closing_context(choices)[0]
         return SealedSession(context, compile_guarded_workflow(**context)["workflow"])
 
     def test_refused_proposal_is_flagged_and_ends_at_the_quarantine_stop(self):
-        for proposal in ({"outcome": "not_reached", "reason": "declined"}, {"outcome": "", "reason": ""}):
+        # An absent proposal is refused only where the phase's fixed row (unclear) is no eligible choice.
+        missing = dict(CHOICES, unreached=[row for row in CHOICES["unreached"] if row["reason"] != "unclear"])
+        for choices, proposal in ((CHOICES, {"outcome": "not_reached", "reason": "declined"}), (missing, {"outcome": "", "reason": ""})):
             with self.subTest(proposal=proposal):
-                s = self.session()
+                s = self.session(choices)
                 s.action("close_call", **proposal)
                 self.assertEqual((s.variables["bg_route"], s.variables["bg_body"], s.variables["bg_quarantined"]),
                                  ("blocked", "", "yes"))

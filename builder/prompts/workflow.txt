@@ -103,6 +103,12 @@ constraints and input-defined calendar rules. Do not assume guard calculations
 speak those explanations or impose a shared deadline when the source does not.
 
 Keep the plan compact with shared per-product dialogue and input-derived branches.
+Every dialogue call, including a nonspeaking decision step, carries the whole
+system_prompt while the caller waits. Keep system_prompt to identity, language
+and rules that hold in every speaking step; put step-specific procedure in the
+task_message of the step that speaks it. A decision step's task_message is a
+compact checklist of the state it reads, and each completion description is one
+short clause naming the state that selects it.
 The reference defines transport format only, never bank-specific requirements.
 Repairs may change the plan using sanitized diagnostics, never the frozen contract.
 

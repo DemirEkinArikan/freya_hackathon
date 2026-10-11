@@ -503,17 +503,19 @@ def validate_generated_artifacts(path, run, events):
 
 
 # T18 order, declared before release, across one brief's parallel builder attempts:
-# exported first, local validator checks first, package checks first, fewest
-# diagnostics, earliest finish, then the lower attempt number. Among those that pass
-# the three checks, an export of the builder's deterministic fallback plan
-# (deterministic_fallback true) ranks after every model-plan export.
-ATTEMPT_ORDER = ('exported', 'local_validation', 'package_validation', 'diagnostics', 'finished_at')
+# exported first, local validator checks first, package checks first, a model-plan
+# export before an export of the builder's deterministic fallback plan
+# (deterministic_fallback true), strict declaration mode before any other, fewest
+# diagnostics, earliest finish, then the lower attempt number.
+ATTEMPT_ORDER = ('exported', 'local_validation', 'package_validation', 'deterministic_fallback', 'mode',
+                 'diagnostics', 'finished_at')
 
 
 def attempt_rank(entry):
     finished = dt.datetime.fromisoformat(entry['finished_at']).timestamp() if entry['finished_at'] else math.inf
     return (not entry['exported'], not entry['local_validation'], not entry['package_validation'],
-            entry.get('deterministic_fallback', False), entry['diagnostics'], finished, entry['attempt'])
+            entry.get('deterministic_fallback', False), entry.get('mode') != 'strict', entry['diagnostics'], finished,
+            entry['attempt'])
 
 
 def validate_selection(record, label, selected_files):
@@ -527,6 +529,8 @@ def validate_selection(record, label, selected_files):
         if (not isinstance(entry, dict) or type(entry.get('attempt')) is not int or entry['attempt'] != number
                 or any(type(entry.get(key)) is not bool for key in ATTEMPT_ORDER[:3])
                 or type(entry.get('deterministic_fallback', False)) is not bool
+                or entry.get('mode') not in ('strict', 'relaxed', None)
+                or not (entry.get('reasoning_effort') is None or _nonempty(entry['reasoning_effort']))
                 or type(entry.get('diagnostics')) is not int or entry['diagnostics'] < 0
                 or not (entry.get('run') is None or _nonempty(entry['run']))
                 or not (entry.get('finished_at') is None or _nonempty(entry['finished_at']))

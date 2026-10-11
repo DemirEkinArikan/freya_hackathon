@@ -85,7 +85,7 @@ def source_name(name: str) -> bool:
                 and (path.suffix in EXTENSIONS or path.name in {"VERSION", "env.example"})))
 
 
-def _strict_json(raw: bytes | str):
+def _strict_json(raw: bytes | str, *, scan: bool = True):
     def pairs(items):
         value = {}
         for key, child in items:
@@ -112,7 +112,8 @@ def _strict_json(raw: bytes | str):
             raise ValueError("nonfinite_json")
     # Every structurally parsed evidence record is scanned, even when its
     # filename is .txt/.md. Renaming an export/trace cannot bypass JSON keys.
-    assert_no_secrets(value)
+    if scan:
+        assert_no_secrets(value)
     return value
 
 
@@ -208,14 +209,21 @@ def _check_content(payload: dict[str, bytes], index: dict, source_root: Path) ->
                 if line.strip():
                     assert_no_secrets(_strict_json(line), forbidden_values=known)
         elif name in index["evidence_files"] and text.lstrip().startswith(("{", "[")):
-            # Evidence roles survive filename changes. Syntax failures may be
-            # ordinary brief text; parsed objects must still pass secret checks.
+            # Evidence roles survive filename changes. Bytes that are not strict
+            # JSON are ordinary brief text (a bracketed code list, say), as the
+            # packager scans them. Parse without the secret scan so a detection
+            # is never mistaken for text; every parsed value is scanned below.
             try:
-                values = [_strict_json(raw)]
-            except json.JSONDecodeError:
+                values = [_strict_json(raw, scan=False)]
+            except (ValueError, RecursionError):
+                values = []
                 lines = [line for line in text.splitlines() if line.strip()]
-                values = ([_strict_json(line) for line in lines]
-                          if all(line.lstrip().startswith(("{", "[")) for line in lines) else [])
+                if all(line.lstrip().startswith(("{", "[")) for line in lines):
+                    for line in lines:
+                        try:
+                            values.append(_strict_json(line, scan=False))
+                        except (ValueError, RecursionError):
+                            pass
             for value in values:
                 assert_no_secrets(value, forbidden_values=known)
 

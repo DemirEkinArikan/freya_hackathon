@@ -147,9 +147,15 @@ class ReleaseBoundaryTests(unittest.TestCase):
         h.api_result("callback", {"evidence_ok": True})
         callback = deepcopy(self.state(h)["callbacks"])
         h.code("callback")
+        unconfirmed = deepcopy(h.variables)
+        h.variables["bg_consent"] = "yes"
+        h.code("bg_callback_accept")
+        self.assertEqual(h.variables["bg_route"], "blocked")
         self.assertEqual(self.body(h), {})
         self.assertEqual(self.state(h)["callbacks"], callback)
         self.assertEqual(self.state(h)["attempt_counts"], {"schedule_callback:call": 1})
+        # The refused duplicate quarantines the session; continue from the unconfirmed request.
+        h.variables = unconfirmed
         h.variables.update(outcome="C_E", close_reason="WHY_F")
         h.code("close")
         self.assert_wire(h, "close", "close_call")
@@ -173,6 +179,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.reject(h, "callback")
         h.variables.update(day="2031-05-06", at="13:00")
         h.code("callback")
+        self.assertEqual(h.variables["bg_route"], "blocked")
         self.assertEqual(self.body(h), {})
         self.assertEqual(self.state(h)["attempt_counts"], {"schedule_callback:call": 2})
         self.assertEqual(self.state(h)["call_inputs"], {"contact_label": "Synthetic Contact"})
@@ -203,6 +210,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertFalse(self.state(h)["quarantined"])
         h.code("stage")
         h.code("commit")
+        self.assertEqual(h.variables["bg_route"], "blocked")
         self.assertEqual(self.body(h), {})
         self.assertEqual(self.state(h)["attempt_counts"], {
             "commit_promises:product:release-asset-0": 1, "commit_promises:product:release-asset-1": 2})

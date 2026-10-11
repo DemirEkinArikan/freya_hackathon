@@ -441,6 +441,13 @@ def validate_run(path, run, workflow, events, inputs):
         raise ValueError('Input fingerprints differ from the selected build manifest/trace')
     retained.extend(validate_provenance(path, run, events))
     retained.extend(validate_generated_artifacts(path, run, events))
+    # A supplied --policy-file skips extraction, leaving its model work and time outside this trace.
+    stages = [event for event in events if _event_name(event) == 'stage_completed' and event.get('stage') == 'policy']
+    if (run.get('policy_origin') != 'extracted' or len(stages) != 1 or stages[0].get('origin') != 'extracted'
+            or not any(_event_name(event) == 'model_call' and event.get('purpose') == 'Extract banking policy and source/API bindings'
+                       and type(event.get('prompt_characters')) is int and event['prompt_characters'] > 0
+                       for event in events[:events.index(stages[0])])):
+        raise ValueError('Selected build must extract its own policy inside its trace, not resume a supplied policy file')
     return retained
 
 

@@ -257,7 +257,7 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
         started = deadline.elapsed()
         policy = None
-        if patching and rejected is not None:
+        if patching and rejected is not None and isinstance(rejected["policy"], dict):
             policy = _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt + 1,
                                      failure, cap=cap, reserve=reserve)
         mode = None if attempt == 0 else "patch" if policy is not None else "full"

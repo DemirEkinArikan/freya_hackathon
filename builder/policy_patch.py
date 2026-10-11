@@ -70,7 +70,8 @@ def repair_excerpt(policy: Any, errors: list[str]) -> dict[str, Any]:
     excerpt = {"rules": [{"path": f"/rules/{i}", "rule": copy.deepcopy(rules[i])} for i in sorted(picked["rules"])],
                "unsupported_constraints": [{"path": f"/unsupported_constraints/{i}", "entry": copy.deepcopy(entries[i])}
                                            for i in sorted(picked["unsupported_constraints"])],
-               "fields": {name: copy.deepcopy(policy[name]) for name in TOP_FIELDS if name in fields and name in policy}}
+               "fields": {name: copy.deepcopy(policy[name]) for name in TOP_FIELDS
+                          if name in fields and isinstance(policy, dict) and name in policy}}
     index = [[rule.get("id"), rule.get("kind")] if isinstance(rule, dict) else [None, None] for rule in rules]
     return {"validation_errors": list(errors), "excerpt": excerpt, "rule_index": index,
             "unsupported_constraints_count": len(entries)}

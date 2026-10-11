@@ -264,6 +264,16 @@ class PolicyPatchBuildTests(unittest.TestCase):
                                  [("patch", True, 310, round(patch_estimate, 1))] if mode == "patch"
                                  else [(None, False, 310, round(full_estimate, 1))])
 
+    def test_a_rejected_non_object_policy_goes_straight_to_a_full_repair(self):
+        self.assertEqual(repair_excerpt(None, ["policy.goal must be a nonempty string"])["excerpt"],
+                         {"rules": [], "unsupported_constraints": [], "fields": {}})
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        generator.generate.side_effect = [{"policy": None, "workflow": {}}, fixture()]
+        result = execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((result["policy_repairs"], generator.generate.call_count), (1, 2))
+        generator.generate_policy_patch.assert_not_called()
+
     def test_generators_without_the_patch_call_keep_full_repairs(self):
         class FullOnly:
             def __init__(self):

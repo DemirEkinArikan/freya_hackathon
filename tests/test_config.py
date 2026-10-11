@@ -1,9 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from builder import build
 from builder.config import load_local_environment, read_local_environment
 from builder.runtime import generation_environment
+from tools import package_submission as package
 
 
 class LocalEnvironmentTests(unittest.TestCase):
@@ -24,6 +27,21 @@ class LocalEnvironmentTests(unittest.TestCase):
         load_local_environment(self.path, env)
         self.assertEqual(env['FREYA_API_KEY'], 'synthetic-key')
         self.assertEqual(generation_environment(env), {'HOME': '/tmp'})
+
+    def test_backup_key_is_data_and_always_private(self):
+        self.path.write_text('FREYA_API_KEY=synthetic-key\nFREYA_API_KEY_2=synthetic-backup-key\n')
+        env = {}
+        load_local_environment(self.path, env)
+        self.assertEqual(env['FREYA_API_KEY_2'], 'synthetic-backup-key')
+        self.assertEqual(generation_environment(env), {})
+        with patch.dict(build.os.environ, env, clear=True):
+            self.assertIn('synthetic-backup-key', build._known_secrets())
+        source = self.path.parent / 'README.md'
+        source.write_text('synthetic-backup-key')
+        with patch.object(package, 'ROOT', self.path.parent), \
+                self.assertRaisesRegex(ValueError, 'requires review') as caught:
+            package.check_content(source)
+        self.assertNotIn('synthetic-backup-key', str(caught.exception))
 
     def test_invalid_input_does_not_execute_or_echo_values(self):
         for text in ('FREYA_API_KEY=$(touch forbidden-marker)', 'FREYA_API_KEY=`secret-command`',

@@ -1,0 +1,9 @@
+[
+ {"source": "BRIEF.md", "kind": "text", "text": ["text/BRIEF.md"], "images": [], "files": ["files/BRIEF.md"], "error": null, "readme": "`BRIEF.md`: start here"},
+ {"source": "README.md", "kind": "text", "text": ["text/README.md"], "images": [], "files": ["files/README.md"], "error": null, "readme": ""},
+ {"source": "customers.xlsx", "kind": "excel", "text": ["text/customers.xlsx.md"], "images": [], "files": ["files/customers.xlsx"], "error": null, "readme": "`customers.xlsx`: the test customers"},
+ {"source": "qa.pdf", "kind": "pdf", "text": ["text/qa.pdf.md"], "images": [], "files": ["files/qa.pdf"], "error": null, "readme": "`qa.pdf`: questions and answers"},
+ {"source": "flow.png", "kind": "image", "text": [], "images": ["files/flow.png"], "files": ["files/flow.png"], "error": null, "readme": "`flow.png`: the call flow drawing"},
+ {"source": "calls/example1.md", "kind": "text", "text": ["text/calls/example1.md"], "images": [], "files": ["files/calls/example1.md"], "error": null, "readme": "`calls/example1.md`: an example conversation"},
+ {"source": "blob.bin", "kind": "binary", "text": [], "images": [], "files": ["files/blob.bin"], "error": null, "readme": ""}
+]

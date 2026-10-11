@@ -1,0 +1,8 @@
+{"agent_id": "agent-x", "simulation_id": "sim-x", "iteration_id": "it-x", "seconds": 60, "passed": 3, "total": 2, "runs": 2,
+ "final": [{"id": "C-1-cooperative", "pass": true}, {"id": "PUB-99", "pass": true}],
+ "rows": [{"id": "C-1-cooperative", "pass": true, "failed": [], "call_id": "call-2", "customer_id": "cust-1"}],
+ "all_rows": [
+  [{"id": "C-1-cooperative", "level": "easy", "family": "Happy path", "pass": true, "failed": [], "call_id": "call-1", "customer_id": "cust-1"},
+   {"id": "PUB-99", "level": "easy", "family": "Happy path", "pass": true, "failed": [], "call_id": "call-9", "customer_id": "cust-9"}],
+  [{"id": "C-1-cooperative", "level": "easy", "family": "Happy path", "pass": true, "failed": [], "call_id": "call-2", "customer_id": "cust-1"}]
+ ]}

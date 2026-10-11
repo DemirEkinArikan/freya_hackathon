@@ -48,8 +48,9 @@ the rejected policy (`builder/policy_patch.py`). The patch is applied
 deterministically, all or nothing, and the result goes through the same
 unchanged contract and execution-requirement checks, so a patched rule still
 needs its exact source quote. Admission sizes a patch by that excerpt instead of
-the whole policy. A malformed patch, an unappliable one or a format error falls
-back to a full repair in the same attempt, if that repair is admitted. A patched
+the whole policy. A malformed patch, an unappliable one, a format error or any
+exception in the excerpt, prompt or apply code falls back to a full repair in
+the same attempt, if that repair is admitted. A patched
 policy that fails validation uses a repair attempt like any other. The trace
 records `repair_admission` with `repair_mode: patch` and a `policy_patch` event
 with the patch, its size, the excerpt and prompt sizes and the elapsed time.

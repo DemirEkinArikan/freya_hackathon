@@ -39,7 +39,7 @@ from .policy import execution_rule_guidance
 from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
-from .policy_patch import PolicyPatchError, apply_policy_patch, repair_excerpt
+from .policy_patch import apply_policy_patch, repair_excerpt
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -215,13 +215,21 @@ def _stage_completed(trace, deadline, durations, stage, started, **fields):
 
 
 def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt, failure, *, cap, reserve):
-    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt."""
-    request = repair_excerpt(rejected["policy"], rejected["errors"])
+    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt.
+
+    The excerpt, prompt and apply code never read the deadline, so any exception
+    they raise is a patch failure: a bug there must not lose the full repair.
+    """
+    try:
+        request = repair_excerpt(rejected["policy"], rejected["errors"])
+        prompt = make_policy_prompt(sources, openapi, request, patch=True)
+    except Exception as exc:
+        trace.emit("policy_patch", attempt=attempt, applied=False, error=f"{type(exc).__name__}: {exc}")
+        return None
     _admit_repair(trace, deadline, "policy", attempt, request["excerpt"], failure, cap=cap, reserve=reserve,
                   repair_mode="patch")
     deadline.require(seconds=1, reserve=reserve)
     allocated = deadline.timeout(cap, reserve=reserve)
-    prompt = make_policy_prompt(sources, openapi, request, patch=True)
     trace.emit("policy_generation_budget", attempt=attempt, repair_mode="patch", cap_seconds=cap,
                allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
                remaining_seconds=round(deadline.remaining(), 2))
@@ -230,9 +238,12 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
     try:
         returned = generator.generate_policy_patch(prompt, max_seconds=allocated, reserve_seconds=reserve)
         patch = returned.get("patch") if isinstance(returned, dict) else None
-        patched = apply_policy_patch(rejected["policy"], patch)
-    except (GenerationFormatError, PolicyPatchError) as exc:
+    except GenerationFormatError as exc:
         error = str(exc)
+    try:
+        patched = None if error else apply_policy_patch(rejected["policy"], patch)
+    except Exception as exc:  # PolicyPatchError, or a bug in the apply
+        error = f"{type(exc).__name__}: {exc}"
     try:
         size = len(json.dumps(patch, ensure_ascii=False, separators=(",", ":")))
     except (TypeError, ValueError):

@@ -3,6 +3,7 @@ import copy
 import json
 import subprocess
 import unittest
+from unittest import mock
 
 from builder.build import execute, make_policy_prompt
 from builder.contract import PolicyContractError, compile_policy_contract
@@ -78,6 +79,8 @@ class PolicyPatchApplyTests(unittest.TestCase):
         rule = fixture()["policy"]["rules"][1]
         for patch in (None, [], {}, {"operations": []}, {"operations": {}}, {"operations": [], "note": "x"},
                       {"operations": [{"op": "move", "rule_id": "close_reasons"}]},
+                      {"operations": [{"op": ["replace"], "rule_id": "execution_actions", "value": rule}]},
+                      {"operations": [{"op": {"op": "remove"}, "rule_id": "execution_actions"}]},
                       {"operations": [{"op": "remove", "rule_id": "close_reasons", "path": "/rules/1"}]},
                       {"operations": [{"op": "replace", "rule_id": "execution_actions"}]},
                       {"operations": [{"op": "remove", "rule_id": "execution_actions", "value": rule}]},
@@ -224,6 +227,42 @@ class PolicyPatchBuildTests(unittest.TestCase):
                 self.assertEqual([e.get("repair_mode") for e in events if e["event"] == "repair_admission"], ["patch", None])
                 passed = next(e for e in events if e["event"] == "policy_execution_requirements")
                 self.assertEqual((passed["attempt"], passed["repair_mode"]), (2, "full"))
+
+    def test_unhashable_rule_kinds_and_patch_ops_never_fail_the_build(self):
+        policy = fixture()["policy"]
+        policy["rules"][3]["kind"] = ["record_notes"]  # rejected: policy.rules[3].kind must be nonempty
+        fixed = {"operations": [{"op": "replace", "rule_id": "record_notes", "value": fixture()["policy"]["rules"][3]}]}
+        listed_op = {"operations": [{"op": ["replace"], "rule_id": "record_notes", "value": {}}]}
+        for name, patch, full_calls in (("kind", fixed, 1), ("op", listed_op, 2)):
+            generator = self.generator()
+            generator.generate.return_value = fixture()
+            generator.generate.side_effect = [{"policy": copy.deepcopy(policy), "workflow": fixture()["workflow"]}, fixture()]
+            generator.generate_policy_patch.return_value = {"patch": patch}
+            with self.subTest(name=name):
+                result = execute(self.args("--generate-only", "--output-dir", str(self.directory / name)), generator=generator)
+                self.assertEqual((result["status"], result["policy_repairs"], generator.generate.call_count),
+                                 ("generated_validated", 1, full_calls))
+                repair = json.loads(generator.generate_policy_patch.call_args.args[0].split("\n\nAUTHORIZED INPUTS:\n", 1)[1])
+                self.assertEqual(repair["repair"]["excerpt"]["rules"], [{"path": "/rules/3", "rule": policy["rules"][3]}])
+
+    def test_an_exception_in_the_patch_code_falls_back_to_a_full_repair(self):
+        def prompt(*args, patch=False):
+            if patch:
+                raise TypeError("bug")
+            return make_policy_prompt(*args)
+        for name, replacement in (("repair_excerpt", mock.Mock(side_effect=TypeError("bug"))), ("make_policy_prompt", prompt),
+                                  ("apply_policy_patch", mock.Mock(side_effect=TypeError("bug")))):
+            generator = self.generator()
+            generator.generate.return_value = fixture()
+            generator.generate.side_effect = [{"policy": misquoted(), "workflow": fixture()["workflow"]}, fixture()]
+            generator.generate_policy_patch.return_value = {"patch": requote()}
+            with self.subTest(name=name), mock.patch(f"builder.build.{name}", replacement):
+                result = execute(self.args("--generate-only", "--output-dir", str(self.directory / name)), generator=generator)
+                self.assertEqual((result["status"], result["policy_repairs"], generator.generate.call_count,
+                                  generator.generate_policy_patch.call_count),
+                                 ("generated_validated", 1, 2, int(name == "apply_policy_patch")))
+                patch_event = next(e for e in read_events(self.run_directory(name)) if e["event"] == "policy_patch")
+                self.assertEqual((patch_event["applied"], patch_event["error"]), (False, "TypeError: bug"))
 
     def test_patch_is_admitted_where_a_full_rewrite_is_not(self):
         # The first call ends at 740 s: min(450, 1060 - 300 - 450) = 310 s remain for a repair.

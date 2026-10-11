@@ -56,7 +56,7 @@ def repair_excerpt(policy: Any, errors: list[str]) -> dict[str, Any]:
             if not isinstance(rule, dict):
                 continue
             kind = rule.get("kind")
-            kind = kind if kind in _TYPED_KINDS or re.search(r"[_0-9]", str(kind)) else None
+            kind = kind if isinstance(kind, str) and (kind in _TYPED_KINDS or re.search(r"[_0-9]", kind)) else None
             if _mentioned(rule.get("id"), text) or _mentioned(kind, text):
                 picked["rules"].add(index)
         fields.update(name for name, pattern in _FIELD_MENTIONS.items() if re.search(pattern, text))
@@ -97,7 +97,7 @@ def apply_policy_patch(policy: Any, patch: Any) -> dict[str, Any]:
         where = f"patch operations[{number}]"
         op = operation.get("op") if isinstance(operation, dict) else None
         address = [key for key in ("rule_id", "path") if isinstance(operation, dict) and key in operation]
-        if (op not in {"add", "replace", "remove"} or len(address) != 1
+        if (not isinstance(op, str) or op not in {"add", "replace", "remove"} or len(address) != 1
                 or set(operation) != {"op", address[0], *(() if op == "remove" else ("value",))}):
             raise PolicyPatchError(where + " needs op add, replace or remove, exactly one of rule_id or path, "
                                            "and a value unless it removes")

@@ -42,7 +42,7 @@ class GenerationBudgetTests(unittest.TestCase):
                                  "seconds_per_character": 0.0044}})
         self.assertEqual((config["deadline_seconds"], config["export_reserve_seconds"], config["max_repairs"]),
                          (1800, 300, 2))
-        self.assertEqual((config["model"], config["reasoning_effort"], config["provider"]), ("claude-opus-5-5", "max", "claude"))
+        self.assertEqual((config["model"], config["reasoning_effort"], config["provider"]), ("claude-opus-5-5", "high", "claude"))
 
     def test_policy_repair_shares_deadline_and_retains_first_workflow(self):
         now = [0.0]

@@ -14,7 +14,8 @@ claiming that the builder is ready for competition.
 ## Setup
 
 Use Python **3.11** on macOS/Linux (or WSL) and `gh`. The default builder provider
-is Claude: `--provider claude` calls `claude-opus-5-5` at `max` effort through the
+is Claude: `--provider claude` calls `claude-opus-5-5` at `high` effort (the strongest
+that fits the stage caps; `--reasoning-effort xhigh|max` raise it) through the
 Anthropic Messages API, so install the `anthropic` Python SDK (`pip install anthropic`)
 and set `ANTHROPIC_API_KEY` in the environment or `.env`. The trace records the
 provider, model and effort of every call, never the key. `--provider codex` keeps the

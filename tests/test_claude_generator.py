@@ -107,7 +107,7 @@ class ClaudeGeneratorTests(unittest.TestCase):
         self.assertEqual((request["model"], request["max_tokens"]), ("claude-opus-5-5", runtime.CLAUDE_MAX_TOKENS))
         self.assertEqual(request["messages"], [{"role": "user", "content": "PROMPT-CANARY-7731"}])
         self.assertEqual(request["extra_body"]["output_config"],
-                         {"effort": "max", "format": {"type": "json_schema", "schema": GENERATION_SCHEMA}})
+                         {"effort": "high", "format": {"type": "json_schema", "schema": GENERATION_SCHEMA}})
         self.assertEqual(request["extra_body"]["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertFalse({"tools", "tool_choice", "system", "mcp_servers"} & {*request, *request["extra_body"]})
         events = self.events()
@@ -118,7 +118,7 @@ class ClaudeGeneratorTests(unittest.TestCase):
         self.assertEqual((audit["status"], audit["isolation_mode"], audit["request_tools"]), ("pass", "api_no_tools", []))
         call = events[names.index("model_call")]
         self.assertEqual((call["provider"], call["model"], call["reasoning_effort"], call["prompt_characters"]),
-                         ("anthropic", "claude-opus-5-5", "max", 18))
+                         ("anthropic", "claude-opus-5-5", "high", 18))
         result = events[names.index("generation_result")]
         self.assertEqual((result["served_model"], result["stop_reason"], result["usage"]["output_tokens"]),
                          ("claude-opus-5-5", "end_turn", 22))
@@ -250,11 +250,15 @@ class ProviderWiringTests(unittest.TestCase):
 
     def test_provider_defaults(self):
         args = self.args()
-        self.assertEqual((build._resolve_provider(args), args.model, args.reasoning_effort), ("claude", "claude-opus-5-5", "max"))
+        self.assertEqual((build._resolve_provider(args), args.model, args.reasoning_effort), ("claude", "claude-opus-5-5", "high"))
+        args = self.args("--reasoning-effort", "max")
+        self.assertEqual((build._resolve_provider(args), args.reasoning_effort), ("claude", "max"))
         args = self.args("--provider", "codex")
         self.assertEqual((build._resolve_provider(args), args.model, args.reasoning_effort), ("codex", "gpt-6.1-sol", "high"))
         with self.assertRaisesRegex(ValueError, "requires --provider claude"):
             build._resolve_provider(self.args("--provider", "codex", "--reasoning-effort", "max"))
+        with self.assertRaisesRegex(ValueError, "requires a Claude model id"):
+            build._resolve_provider(self.args("--model", "gpt-6.1-sol"))
 
     def test_default_build_runs_the_claude_generator_end_to_end(self):
         proposed = plan()
@@ -276,13 +280,13 @@ class ProviderWiringTests(unittest.TestCase):
         with patch("builder.build.ClaudeGenerator", side_effect=make), \
                 patch("builder.build.CodexGenerator", side_effect=AssertionError("Codex used")):
             manifest = build.execute(self.args("--generate-only"))
-        self.assertEqual(made, [{"model": "claude-opus-5-5", "reasoning_effort": "max"}])
+        self.assertEqual(made, [{"model": "claude-opus-5-5", "reasoning_effort": "high"}])
         self.assertEqual((manifest["status"], manifest["provider"], manifest["model"], manifest["reasoning_effort"]),
-                         ("generated_validated", "claude", "claude-opus-5-5", "max"))
+                         ("generated_validated", "claude", "claude-opus-5-5", "high"))
         run = PROJECT / manifest["run_directory"]
         events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
         self.assertEqual((events[0]["provider"], events[0]["model"], events[0]["reasoning_effort"]),
-                         ("claude", "claude-opus-5-5", "max"))
+                         ("claude", "claude-opus-5-5", "high"))
         calls = [e for e in events if e["event"] == "model_call"]
         self.assertEqual([(c["provider"], c["model"]) for c in calls], [("anthropic", "claude-opus-5-5")] * 2)
         self.assertEqual(json.loads((run / "builder-source.json").read_text())["resolved_config"]["provider"], "claude")

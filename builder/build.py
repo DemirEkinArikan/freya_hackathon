@@ -551,6 +551,9 @@ def _resolve_provider(args) -> str:
         args.reasoning_effort = CLAUDE_EFFORT if provider == "claude" else "high"
     if provider == "codex" and args.reasoning_effort == "max":
         raise ValueError("--reasoning-effort max requires --provider claude")
+    if provider == "claude" and not args.model.startswith("claude-"):
+        # A Codex model id would otherwise read as an unavailable Claude model and fall back silently.
+        raise ValueError("--provider claude requires a Claude model id; pass --provider codex for " + args.model)
     return provider
 
 

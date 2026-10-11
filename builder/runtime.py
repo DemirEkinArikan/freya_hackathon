@@ -663,7 +663,11 @@ def _decode_output(text: str, *, plan_contract_sha256: str | None = None, patch:
 CLAUDE_MODEL = "claude-opus-5-5"
 CLAUDE_FALLBACK_MODEL = "claude-sonnet-5-5"
 CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
-CLAUDE_EFFORT = "max"
+# The strongest effort that fits the stage caps, measured on the kit public-A policy call
+# (70.7k-character prompt) on 11 Oct: high returned a valid first policy in 306 s (40.5k
+# output tokens, about 134 per second); xhigh and max were still thinking, with no output,
+# after 540 s and 810 s of the 900 s cap. --reasoning-effort xhigh or max remains available.
+CLAUDE_EFFORT = "high"
 # Summarized thinking streams events while Claude reasons, so a silent stream is stalled.
 CLAUDE_THINKING = {"type": "adaptive", "display": "summarized"}
 # Thinking counts toward max_tokens. Policies reach 18-29k output tokens and plans about

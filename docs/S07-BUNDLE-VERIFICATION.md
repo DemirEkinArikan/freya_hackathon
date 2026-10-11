@@ -34,7 +34,7 @@ The command returns JSON on stdout and exits 0 only after verification succeeds;
 failure returns exit 1 with a sanitized error category. A successful report
 records `status: preparation_verified` or `status: consistency_verified`,
 `mode`, `source_only`, `commit`, `source_file_count`, `evidence_file_count`,
-`archive_sha256` and `limitations`. Final reports additionally mark evidence
+`archive_sha256`, `attempt_selection` and `limitations`. Final reports additionally mark evidence
 byte membership in the trusted commit; hosted authenticity, hidden-build
 execution and submission receipt remain unverified. Retain the exact
 command, trusted commit and report. A report belongs to that archive's raw
@@ -79,6 +79,7 @@ final submission buffer.
 | Selected attempt | Frozen policy/contract, proposal/plan, compiler context, guarded graph, publication and export records agree for the selected bounded attempt |
 | Action coverage | Recomputed execution requirements and the selected plan cover the source-selected capabilities before exact guarded recompilation |
 | Eligibility consistency | Successful live-mode record, passing mandatory tool-free isolation audit before generation, policy extracted inside the selected trace (never a supplied `--policy-file`), fixed `experimental-5` phone model, permitted tool wiring and finite in-budget timing |
+| Attempt selection | When the manifest has `selections`, each record is the declared order's eligible choice and its selected entry matches the packaged run's raw manifest, trace and export bytes. `attempt_selection` reports "selected k of N" per label, and is null without records. Unselected attempts appear only as hashes; the packager re-hashes them on disk |
 | Final evidence membership | Every archived evidence member belongs to the retained selected sets and equals a regular-file blob in the trusted commit; original remapped evidence Git-path correspondence remains unverified |
 
 Raw ZIP byte hashes and controller canonical JSON digests have different roles;

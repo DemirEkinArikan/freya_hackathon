@@ -331,6 +331,14 @@ def _final_evidence(payload: dict[str, bytes], index: dict, commit: str, source_
     for name, path in manifest["runs"].items():
         if path != f"runs/{name}/manifest.json":
             raise ValueError("final_manifest")
+    # Optional declared-order record of every builder attempt per brief (T18 multi-attempt).
+    selections, summary = manifest.get("selections"), None
+    if selections is not None:
+        if (not isinstance(selections, dict) or set(selections) != _BUILD_NAMES
+                or any(selections[name] != f"selections/{name}.json" or selections[name] not in evidence
+                       for name in _BUILD_NAMES)):
+            raise ValueError("final_manifest")
+        summary = {}
     bundles = []
     for inputs in manifest["inputs"].values():
         if (not isinstance(inputs, dict) or set(inputs) != {"briefs", "tool_api"}
@@ -373,37 +381,52 @@ def _final_evidence(payload: dict[str, bytes], index: dict, commit: str, source_
                 if binding["builder_source_sha256"][name] != run["builder_source_sha256"]:
                     raise ValueError("final_evidence")
                 retained.update(path.relative_to(root).as_posix() for path in [export_path, trace_path, run_path, *files])
-                selected = run_path.parent / run["selected_attempt_directory"]
-                authored = _strict_json((selected / "workflow.json").read_bytes())
-                context = _strict_json((selected / "guard-context.json").read_bytes())
-                api = _strict_json(payload[manifest["inputs"][name]["tool_api"]])
-                policy = _strict_json((run_path.parent / "policy.json").read_bytes())
-                sources = [{"id": f"brief-{number}", "file": PurePosixPath(path).name,
-                            "sha256": digest(payload[path].decode("utf-8")), "text": payload[path].decode("utf-8")}
-                           for number, path in enumerate(manifest["inputs"][name]["briefs"], 1)]
-                contract = compile_policy_contract(policy, sources, api)
-                requirements = compile_execution_requirements(policy, sources, api)
-                if validate_plan_execution(context["plan"], requirements, policy, sources, api):
-                    raise ValueError("guard_compilation")
-                bindings = compile_action_bindings(policy, api)
-                execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(context["plan"]))
-                if (digest(contract) != digest(context["contract"])
-                        or digest(bindings) != digest(context["bindings"])
-                        or digest(execution) != digest(context["execution_policy"])):
-                    raise ValueError("guard_compilation")
-                compiled = compile_guarded_workflow(context["plan"], context["contract"], api,
-                                                     context["execution_policy"], context["bindings"])
-                if (digest(compiled["workflow"]) != digest(authored)
-                        or digest(compiled["guard_manifest"]) != digest(_strict_json((selected / "guard-manifest.json").read_bytes()))
-                        or validate_workflow(authored, api, policy, guard_context=context)):
-                    raise ValueError("guard_compilation")
-                stored = dict(export["workflow"])
-                stored.pop("agent_config", None)  # Fixed model is checked by validate_run.
-                assert_equivalent_stored_workflow(stored, authored)
+                if selections is not None:
+                    record = package.validate_selection(_strict_json(payload[selections[name]]), name, {
+                        key: payload[manifest[kind][name]] for key, kind in
+                        (("manifest", "runs"), ("trace", "traces"), ("export", "workflows"))})
+                    summary[name] = {"selected": record["selected"], "of": record["attempt_count"]}
+                    retained.add(selections[name])
+                check_recompilation(run_path.parent, run, export,
+                                    [(PurePosixPath(path).name, payload[path].decode("utf-8"))
+                                     for path in manifest["inputs"][name]["briefs"]],
+                                    _strict_json(payload[manifest["inputs"][name]["tool_api"]]))
             if len(source_bindings) != 1 or retained - set(index["source_files"]) != set(evidence):
                 raise ValueError("final_evidence")
         finally:
             package.ROOT = original_root
+    return summary
+
+
+def check_recompilation(run_dir: Path, run: dict, export: dict, briefs: list, api: dict) -> None:
+    """Recompile a run's selected attempt exactly from its frozen policy and ordered (name, text) briefs."""
+    if run.get("selected_attempt_directory") not in {f"attempts/plan-{number:03d}" for number in (1, 2, 3)}:
+        raise ValueError("guard_compilation")
+    selected = run_dir / run["selected_attempt_directory"]
+    authored = _strict_json((selected / "workflow.json").read_bytes())
+    context = _strict_json((selected / "guard-context.json").read_bytes())
+    policy = _strict_json((run_dir / "policy.json").read_bytes())
+    sources = [{"id": f"brief-{number}", "file": file, "sha256": digest(text), "text": text}
+               for number, (file, text) in enumerate(briefs, 1)]
+    contract = compile_policy_contract(policy, sources, api)
+    requirements = compile_execution_requirements(policy, sources, api)
+    if validate_plan_execution(context["plan"], requirements, policy, sources, api):
+        raise ValueError("guard_compilation")
+    bindings = compile_action_bindings(policy, api)
+    execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(context["plan"]))
+    if (digest(contract) != digest(context["contract"])
+            or digest(bindings) != digest(context["bindings"])
+            or digest(execution) != digest(context["execution_policy"])):
+        raise ValueError("guard_compilation")
+    compiled = compile_guarded_workflow(context["plan"], context["contract"], api,
+                                         context["execution_policy"], context["bindings"])
+    if (digest(compiled["workflow"]) != digest(authored)
+            or digest(compiled["guard_manifest"]) != digest(_strict_json((selected / "guard-manifest.json").read_bytes()))
+            or validate_workflow(authored, api, policy, guard_context=context)):
+        raise ValueError("guard_compilation")
+    stored = dict(export["workflow"])
+    stored.pop("agent_config", None)  # Fixed model is checked by validate_run.
+    assert_equivalent_stored_workflow(stored, authored)
 
 
 def verify_bundle(archive: Path, source_root: Path, expected_commit: str) -> dict:
@@ -423,10 +446,12 @@ def verify_bundle(archive: Path, source_root: Path, expected_commit: str) -> dic
         _check_content(payload, index, source_root)
         phase = "trusted_source"
         _verify_source(source_root, expected_commit, payload, index["source_files"])
+        selection = None
         if not index["source_only"]:
             phase = "final_evidence"
-            _final_evidence(payload, index, expected_commit, source_root)
+            selection = _final_evidence(payload, index, expected_commit, source_root)
         return {"status": "preparation_verified" if index["source_only"] else "consistency_verified",
+                "attempt_selection": selection,
                 "mode": "source-preparation" if index["source_only"] else "final-consistency",
                 "source_only": index["source_only"], "commit": expected_commit,
                 "source_file_count": len(index["source_files"]), "evidence_file_count": len(index["evidence_files"]),

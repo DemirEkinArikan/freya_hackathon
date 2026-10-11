@@ -518,6 +518,48 @@ class SyntheticFinalConsistencyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '^final_evidence$'):
             self.verify(self.rehash_evidence({first: json.dumps(second).encode()}))
 
+    def test_selected_attempt_k_of_n_is_bound_and_reported(self):
+        manifest_path = self.root / 'submission.json'
+        data = json.loads(manifest_path.read_text())
+        for name in ('hidden-1', 'hidden-2'):
+            # Attempt 1 failed and stays preserved outside the package; attempt 2 is the packaged run.
+            failed = self.root / 'preserved' / name
+            failed.mkdir(parents=True)
+            (failed / 'manifest.json').write_text('{"status": "failed"}')
+            (self.root / name / 'trace.jsonl').write_bytes((self.root / data['traces'][name]).read_bytes())
+            sha = lambda path: hashlib.sha256((self.root / path).read_bytes()).hexdigest()
+            flags = dict.fromkeys(package.ATTEMPT_ORDER[:3])
+            attempts = [{'attempt': 1, 'run': f'preserved/{name}', 'status': 'failed', **dict.fromkeys(flags, False),
+                         'diagnostics': 0, 'finished_at': None, 'manifest_sha256': sha(f'preserved/{name}/manifest.json'),
+                         'trace_sha256': None, 'export_sha256': None},
+                        {'attempt': 2, 'run': name, 'status': 'exported', **dict.fromkeys(flags, True),
+                         'diagnostics': 0, 'finished_at': '2026-10-10T12:00:03Z', 'manifest_sha256': sha(data['runs'][name]),
+                         'trace_sha256': sha(data['traces'][name]), 'export_sha256': sha(data['workflows'][name])}]
+            record = {'version': 1, 'label': name, 'order': list(package.ATTEMPT_ORDER), 'selected': 2,
+                      'attempt_count': 2, 'attempts': attempts}
+            (self.root / 'selection-records').mkdir(exist_ok=True)
+            (self.root / 'selection-records' / f'{name}.json').write_text(json.dumps(record))
+        data['selections'] = {name: f'selection-records/{name}.json' for name in ('hidden-1', 'hidden-2')}
+        self.commit = data['commit'] = self.commit_sources()
+        manifest_path.write_text(json.dumps(data))
+        output = self.root / 'artifacts/final.zip'
+        with patch.object(package, 'ROOT', self.root), contextlib.redirect_stdout(io.StringIO()):
+            package.main(['--manifest', str(manifest_path), '--output', str(output)])
+        self.archive.write_bytes(output.read_bytes())
+        with zipfile.ZipFile(self.archive) as archive:
+            self.entries = [(info, archive.read(info)) for info in archive.infolist()]
+        self.assertEqual(self.verify()['attempt_selection'],
+                         {'hidden-1': {'selected': 2, 'of': 2}, 'hidden-2': {'selected': 2, 'of': 2}})
+        index = self.index()
+        index['submission']['selections']['hidden-2'] = 'selections/hidden-1.json'
+        with self.assertRaisesRegex(ValueError, '^final_manifest$'):
+            self.verify(self.rewrite({'package-index.json': json.dumps(index).encode()}))
+        # rehash_evidence commits the changed record, so this check runs last.
+        record = self.evidence_json('selections/hidden-1.json')
+        record['selected'] = 1
+        with self.assertRaisesRegex(ValueError, '^final_evidence$'):
+            self.verify(self.rehash_evidence({'selections/hidden-1.json': json.dumps(record).encode()}))
+
     def test_wrong_phone_model_and_tool_credentials_are_rejected(self):
         for mutation in ('phone-model', 'tool-credential'):
             workflow = self.evidence_json('workflows/hidden-1.json')

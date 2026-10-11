@@ -134,6 +134,7 @@ Four files differ from the kit:
 - **`.claude/skills/build-phone-agent/SKILL.md`** is the Plan B skill of 18:32 (`b16aa4f266f4…`, changelog
   `scratchpad/planb-kit/SKILL-CHANGELOG.md`). Its three `FREYA_SIM_CONCURRENCY=15` commands now read `=10`, under
   the official rules. It also has a section on case folders and the mock (`MOCK_URL`, the case's test customers as
-  self-test seeds, the slot and notes file the prompt names).
+  self-test seeds, the slot and notes file the prompt names). The overfitting audit (PR 220) replaced its
+  practice-brief specifics with generic rules and added the save-twice rule.
 - **`tools/score.py`** counts a ledger or expected list it lacks (`promises`, `notes`, `callbacks`, `transfers`) as
   empty, so a mock contract without one of the kit's write tools does not crash `run_cases.py`.

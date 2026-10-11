@@ -1,0 +1,355 @@
+{
+  "version": 1,
+  "task": "T16",
+  "issue": "https://github.com/DemirEkinArikan/freya_hackathon/issues/17",
+  "status": "ready_to_launch_after_accepted_freeze",
+  "protocol": "docs/T16-AUTHORING-PROTOCOL.md",
+  "targets": {
+    "local_holdouts": 60,
+    "hosted_holdouts": 60,
+    "note": "Targets exactly as defined in issue 17. This plan changes neither the counts nor the repetition rules."
+  },
+  "preconditions": [
+    "T15 (issue 16) is accepted: merged PR and recorded development/baseline evidence.",
+    "The accepted candidate is frozen with `python3.11 -m benchmarks.freeze create --candidate-root <reviewed candidate source> --config-file <original resolved config> --record <record>`, and `benchmarks.freeze verify --record <record>` passes.",
+    "The freeze record path, candidate_sha256 and created_at are posted on issue 17 before any author starts.",
+    "`python3.11 tools/t16_authoring.py check-spec` reports 12 authors, 60 local and 60 hosted reservations.",
+    "`python3.11 -m benchmarks.freeze readiness --candidate-root builder --runtime-root .` still shows 60 reserved / 0 materialized in each base pack."
+  ],
+  "launch": {
+    "max_concurrent_authors": 12,
+    "author_root": "<T16_AUTHOR_ROOT>: a new directory outside every checkout and outside the candidate root",
+    "steps": [
+      "For each author id: python3.11 tools/t16_authoring.py prepare --author <id> --record <record> --workspace <T16_AUTHOR_ROOT>/<id>",
+      "Launch one fresh agent per workspace with author_prompt; each agent works only in its own workspace.",
+      "When an author reports done: python3.11 tools/t16_authoring.py validate --record <record> --workspace <T16_AUTHOR_ROOT>/<id>; send only the printed errors back to that same author.",
+      "When all 12 validate: python3.11 tools/t16_authoring.py assemble --record <record> --workspace <T16_AUTHOR_ROOT>/A01 ... --workspace <T16_AUTHOR_ROOT>/A12 --out-dir benchmarks/holdout/<freeze-id>",
+      "python3.11 -m benchmarks.freeze readiness --candidate-root <candidate root> --config-file <config> --fixtures-dir benchmarks/holdout/<freeze-id> must show 60 materialized / 0 reserved in each pack.",
+      "python3.11 -m benchmarks.hosted --dry-run --split holdout --cases benchmarks/holdout/<freeze-id>/hosted.json",
+      "Post both pack sha256 values on issue 17; hand hosted.json to S06 and the local pack to local evaluation."
+    ],
+    "author_prompt": "You are independent T16 holdout author {author}. Your workspace is {workspace}. Read {workspace}/assignment.json, {workspace}/inputs/docs/T16-AUTHORING-PROTOCOL.md and other files under {workspace}/inputs/ only. Do not open any other path, repository, git history, issue, pull request, artifact, log, network resource or another author's workspace, and do not run repository commands other than the validate command below. Write {workspace}/author.json in the protocol's author file format: one synthetic bank (clean and raw representations) with one local case per assigned local reservation, and one hosted case per assigned hosted reservation. Derive every local expected ledger and helper value yourself from your own policy text, case facts and customer decisions. For each case, set authored_at from `date -u +%Y-%m-%dT%H:%M:%S+00:00` when you finish that case. Then run `python3.11 {repo}/tools/t16_authoring.py validate --record {record} --workspace {workspace}` and fix only what it reports until errors is empty. Reply with the final validate output only."
+  },
+  "approved_inputs": [
+    "docs/T16-AUTHORING-PROTOCOL.md",
+    "docs/DEVELOPMENT-API-V2.md",
+    "benchmarks/development_protocol.py",
+    "build-the-builder/README.md",
+    "build-the-builder/briefs/brief-a.md",
+    "build-the-builder/briefs/brief-b.md",
+    "build-the-builder/public-test-set.json",
+    "build-the-builder/tools/run_cases.py"
+  ],
+  "forbidden_input_prefixes": [
+    "builder/",
+    "artifacts/",
+    "tests/",
+    "benchmarks/fixtures/",
+    "benchmarks/holdout/",
+    "benchmarks/freezes/",
+    "benchmarks/generate.py",
+    "benchmarks/catalog",
+    "docs/runtime-evidence/",
+    "docs/development-inputs/",
+    "docs/T16-FANOUT-SPEC.json",
+    ".git"
+  ],
+  "critical_rule": {
+    "declared": "A holdout case is critical when its oracle requires an irreversible, security-gated, handoff, fault-recovery or adversarial decision. Computed from case facts by tools/t16_authoring.py critical_reasons, never taken from an author's own flag.",
+    "reasons": {
+      "irreversible_write": "the expected ledger contains at least one promise",
+      "security_gate": "the expected outcome means not_verified or not_reached",
+      "handoff": "the expected ledger contains a transfer",
+      "fault_recovery": "the case injects a tool fault",
+      "adversarial": "hosted style compound or authored compound behaviour; local bucket adversarial_dialogue or the adversarial tag"
+    }
+  },
+  "repetitions": {
+    "hosted": "Every hosted holdout runs three actual repetitions (runbook rule). A case passes only when all of them pass. Critical cases are reported separately as critical_passing_all_repetitions.",
+    "local": "Each local case runs in both representations (clean and raw). A critical case needs three actual replay executions per representation; any other case needs one. Compiled replay is deterministic, so local repetitions show replay stability, not model variance.",
+    "counting": "Unrun, incomplete or infrastructure-only repetitions never count as passes. A failed repetition fails the case and the case stays in the denominator."
+  },
+  "scoring": {
+    "policy_adaptation": "Local lane only: candidate contract compilation per authored profile (both representations) and observed local ledgers.",
+    "wording_robustness": "Hosted lane only: known public seed facts and official ledgers, scored against each brief's own frozen deployment.",
+    "combined_score": null
+  },
+  "authors": [
+    {
+      "id": "A01",
+      "local_reservations": [
+        "holdout-1-C04",
+        "holdout-1-C18",
+        "holdout-1-C30",
+        "holdout-1-C45",
+        "holdout-1-C59"
+      ],
+      "hosted_reservations": [
+        "HOST-061",
+        "HOST-073",
+        "HOST-085",
+        "HOST-097",
+        "HOST-109"
+      ],
+      "policy_dimensions": [
+        "identity_schema",
+        "identity_counter",
+        "retry_counter",
+        "outcome_bindings"
+      ]
+    },
+    {
+      "id": "A02",
+      "local_reservations": [
+        "holdout-1-C14",
+        "holdout-1-C28",
+        "holdout-1-C40",
+        "holdout-1-C55",
+        "holdout-1-C09"
+      ],
+      "hosted_reservations": [
+        "HOST-062",
+        "HOST-074",
+        "HOST-086",
+        "HOST-098",
+        "HOST-110"
+      ],
+      "policy_dimensions": [
+        "identity_counter",
+        "calendar",
+        "persuasion_counter",
+        "wire_codes"
+      ]
+    },
+    {
+      "id": "A03",
+      "local_reservations": [
+        "holdout-1-C24",
+        "holdout-1-C38",
+        "holdout-1-C50",
+        "holdout-1-C05",
+        "holdout-1-C19"
+      ],
+      "hosted_reservations": [
+        "HOST-063",
+        "HOST-075",
+        "HOST-087",
+        "HOST-099",
+        "HOST-111"
+      ],
+      "policy_dimensions": [
+        "calendar",
+        "deadline_bands",
+        "outcome_bindings",
+        "goals"
+      ]
+    },
+    {
+      "id": "A04",
+      "local_reservations": [
+        "holdout-1-C34",
+        "holdout-1-C48",
+        "holdout-1-C60",
+        "holdout-1-C15",
+        "holdout-1-C29"
+      ],
+      "hosted_reservations": [
+        "HOST-064",
+        "HOST-076",
+        "HOST-088",
+        "HOST-100",
+        "HOST-112"
+      ],
+      "policy_dimensions": [
+        "deadline_bands",
+        "floor_fields",
+        "wire_codes",
+        "request_schema"
+      ]
+    },
+    {
+      "id": "A05",
+      "local_reservations": [
+        "holdout-1-C44",
+        "holdout-1-C58",
+        "holdout-1-C10",
+        "holdout-1-C25",
+        "holdout-1-C39"
+      ],
+      "hosted_reservations": [
+        "HOST-065",
+        "HOST-077",
+        "HOST-089",
+        "HOST-101",
+        "HOST-113"
+      ],
+      "policy_dimensions": [
+        "floor_fields",
+        "retry_counter",
+        "goals",
+        "callback_window"
+      ]
+    },
+    {
+      "id": "A06",
+      "local_reservations": [
+        "holdout-1-C54",
+        "holdout-1-C08",
+        "holdout-1-C20",
+        "holdout-1-C35",
+        "holdout-1-C49"
+      ],
+      "hosted_reservations": [
+        "HOST-066",
+        "HOST-078",
+        "HOST-090",
+        "HOST-102",
+        "HOST-114"
+      ],
+      "policy_dimensions": [
+        "retry_counter",
+        "persuasion_counter",
+        "request_schema",
+        "identity_schema"
+      ]
+    },
+    {
+      "id": "A07",
+      "local_reservations": [
+        "holdout-2-C09",
+        "holdout-2-C30",
+        "holdout-2-C54",
+        "holdout-2-C15",
+        "holdout-2-C38"
+      ],
+      "hosted_reservations": [
+        "HOST-067",
+        "HOST-079",
+        "HOST-091",
+        "HOST-103",
+        "HOST-115"
+      ],
+      "policy_dimensions": [
+        "persuasion_counter",
+        "outcome_bindings",
+        "callback_window",
+        "identity_counter"
+      ]
+    },
+    {
+      "id": "A08",
+      "local_reservations": [
+        "holdout-2-C59",
+        "holdout-2-C20",
+        "holdout-2-C44",
+        "holdout-2-C05",
+        "holdout-2-C28"
+      ],
+      "hosted_reservations": [
+        "HOST-068",
+        "HOST-080",
+        "HOST-092",
+        "HOST-104",
+        "HOST-116"
+      ],
+      "policy_dimensions": [
+        "outcome_bindings",
+        "wire_codes",
+        "identity_schema",
+        "calendar"
+      ]
+    },
+    {
+      "id": "A09",
+      "local_reservations": [
+        "holdout-2-C49",
+        "holdout-2-C10",
+        "holdout-2-C34",
+        "holdout-2-C55",
+        "holdout-2-C18"
+      ],
+      "hosted_reservations": [
+        "HOST-069",
+        "HOST-081",
+        "HOST-093",
+        "HOST-105",
+        "HOST-117"
+      ],
+      "policy_dimensions": [
+        "wire_codes",
+        "goals",
+        "identity_counter",
+        "deadline_bands"
+      ]
+    },
+    {
+      "id": "A10",
+      "local_reservations": [
+        "holdout-2-C39",
+        "holdout-2-C60",
+        "holdout-2-C24",
+        "holdout-2-C45",
+        "holdout-2-C08"
+      ],
+      "hosted_reservations": [
+        "HOST-070",
+        "HOST-082",
+        "HOST-094",
+        "HOST-106",
+        "HOST-118"
+      ],
+      "policy_dimensions": [
+        "goals",
+        "request_schema",
+        "calendar",
+        "floor_fields"
+      ]
+    },
+    {
+      "id": "A11",
+      "local_reservations": [
+        "holdout-2-C29",
+        "holdout-2-C50",
+        "holdout-2-C14",
+        "holdout-2-C35",
+        "holdout-2-C58"
+      ],
+      "hosted_reservations": [
+        "HOST-071",
+        "HOST-083",
+        "HOST-095",
+        "HOST-107",
+        "HOST-119"
+      ],
+      "policy_dimensions": [
+        "request_schema",
+        "callback_window",
+        "deadline_bands",
+        "retry_counter"
+      ]
+    },
+    {
+      "id": "A12",
+      "local_reservations": [
+        "holdout-2-C19",
+        "holdout-2-C40",
+        "holdout-2-C04",
+        "holdout-2-C25",
+        "holdout-2-C48"
+      ],
+      "hosted_reservations": [
+        "HOST-072",
+        "HOST-084",
+        "HOST-096",
+        "HOST-108",
+        "HOST-120"
+      ],
+      "policy_dimensions": [
+        "callback_window",
+        "identity_schema",
+        "floor_fields",
+        "persuasion_counter"
+      ]
+    }
+  ]
+}

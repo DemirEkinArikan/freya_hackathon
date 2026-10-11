@@ -118,7 +118,8 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
         "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
     "close_call": {
-        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close."],
+        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close.",
+                             "Before verification, with no recorded callback or verification evidence, an empty outcome and reason proposal selects the recorded identity phase's identity_close row when that row is one eligible declared choice; any other proposal must match a declared choice."],
         "positive_recording": ["Validated positive close evidence marks the close recorded."],
         "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
 }
@@ -1162,6 +1163,13 @@ def guard_close(state, proposed, profile, maps):
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
             elif all(len(item) == 1 and item == rows[0] for item in rows) and rows[0][0].get('requires') == 'no_recorded_callback':
                 proposal = dict((key, value) for key, value in rows[0][0].items() if key != 'requires')
+            elif proposed.get('outcome', '') == '' and proposed.get('reason', '') == '':
+                # Nothing was proposed (no extracted value, or a close step
+                # without proposal inputs): the recorded identity phase selects
+                # its fixed row, only where that row is one eligible choice.
+                proposal = dict(table['unreached' if unreached else 'incomplete'])
+                if [dict((key, value) for key, value in row.items() if key != 'requires') for row in rows[0 if unreached else -1]].count(proposal) != 1:
+                    raise ValueError('identity closing proposal lacks one declared eligible choice')
             else:
                 if not isinstance(proposed.get('outcome', ''), str):
                     raise ValueError('identity closing outcome proposal must be text')

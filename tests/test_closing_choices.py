@@ -168,8 +168,8 @@ class ClosingChoiceTests(unittest.TestCase):
         state = self.step("prepare", self.state, "verify_identity", {"field": field, "answer": "invented correct answer"})[0]
         self.state = self.step("result", state, "verify_identity", result={"ok": True, "verified": True, "wrong_answers_left": 3})[0]
         self.assertEqual(self.close("not_verified", "declined")[2]["reason"], "declined")
-        with self.assertRaisesRegex(ValueError, "declared eligible choice"):
-            self.close("not_reached", "wrong_number")
+        # The phase's single eligible choice is fixed; an unreached proposal cannot select another.
+        self.assertEqual(self.close("not_reached", "wrong_number")[2]["reason"], "declined")
 
     def test_selected_choice_scope_rejects_missing_invalid_and_wrong_scope_proposals(self):
         self.setup_context()
@@ -288,8 +288,7 @@ class ClosingChoiceTests(unittest.TestCase):
         start, field = self.state, self.profile["identity_fields"][0]
         state = self.step("prepare", start, "verify_identity", {"field": field, "answer": "invented correct answer"})[0]
         self.state = self.step("result", state, "verify_identity", result={"ok": True, "verified": True, "wrong_answers_left": 3})[0]
-        with self.assertRaisesRegex(ValueError, "declared eligible choice"):
-            self.close("not_reached", "wrong_number")
+        self.assertEqual(self.close("not_reached", "wrong_number")[2]["reason"], "declined")
         self.state = start
         for remaining in (2, 1, 0):
             state = self.step("prepare", self.state, "verify_identity", {"field": field, "answer": "invented incorrect answer"})[0]

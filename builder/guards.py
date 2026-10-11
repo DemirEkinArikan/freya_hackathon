@@ -1008,6 +1008,13 @@ def guard_close(state, proposed, profile, maps):
             # which frozen callback choices can represent that evidence.
             unreached = (state['identity_status'] == 'pending' and not state['verified_fields']
                          and state['wrong_answers'] == 0)
+            # Without a recorded callback, each scope a proposal could still
+            # reach keeps its rows needing no callback. If all leave the same
+            # single disposition, dialogue cannot change it (as for goal rows).
+            rows = [[dict((key, value) for key, value in row.items() if key != 'requires')
+                     for row in profile.get('identity_close_choices', dict()).get(scope, [table[scope]])
+                     if row.get('requires') != 'recorded_callback']
+                    for scope in ('unreached', 'incomplete')[bool(state['verified_fields']):]]
             if state['callbacks']:
                 scope = 'unreached' if unreached else 'incomplete'
                 choices = profile.get('identity_close_choices', dict()).get(scope)
@@ -1021,6 +1028,8 @@ def guard_close(state, proposed, profile, maps):
                 if len(matching) != 1:
                     raise ValueError('recorded callback lacks one declared closing choice for the actual identity phase')
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
+            elif all(len(item) == 1 and item == rows[0] for item in rows):
+                proposal = rows[0][0]
             else:
                 if not isinstance(proposed.get('outcome', ''), str):
                     raise ValueError('identity closing outcome proposal must be text')

@@ -25,7 +25,7 @@ def mixed(*, opaque=False, account_paid=False, marker=False, precedence=True):
     add_rule(policy, "identity_close", rule(full_policy, "identity_close")["value"])
     rule(policy, "note_reasons")["value"] = ["refused"] + (["paid"] if marker else [])
     rule(policy, "close_reasons")["value"] = {"paid": [], "no_promise": ["refused"], "not_verified": ["identity_failed"]}
-    rule(policy, "identity_close")["value"]["unreached"] = {"outcome": "paid"}
+    rule(policy, "identity_close")["value"]["unreached"] = {"outcome": "not_verified", "reason": "identity_failed"}
     if precedence:
         add_rule(policy, "close_precedence", ["paid", "no_promise"] if account_paid else ["no_promise"])
     if opaque:
@@ -71,7 +71,7 @@ class PaidDispositionPhaseTests(unittest.TestCase):
                 self.assertEqual(compile_execution_policy(values[0])["profile"]["note_reasons"],
                                  [NOTES["refused"]] if opaque else ["refused"])
 
-    def test_real_account_refusal_close_and_identity_paid_close_keep_distinct_proofs(self):
+    def test_real_account_refusal_close_and_identity_close_keep_distinct_proofs(self):
         for opaque in (False, True):
             with self.subTest(opaque=opaque):
                 values = mixed(opaque=opaque)
@@ -86,8 +86,17 @@ class PaidDispositionPhaseTests(unittest.TestCase):
                 _, context, workflow = compiled(*values)
                 identity = SealedSession(context, workflow)
                 identity.action("close_call", outcome=OUTCOMES["paid"] if opaque else "paid")
-                self.assertEqual(identity.body["outcome"], OUTCOMES["paid"] if opaque else "paid")
+                self.assertEqual(identity.body["outcome"], OUTCOMES["not_verified"] if opaque else "not_verified")
                 self.assertFalse(identity.state["account_loaded"])
+
+    def test_identity_paid_row_is_refused_without_its_recorded_fact(self):
+        for opaque in (False, True):
+            with self.subTest(opaque=opaque):
+                policy, sources, api = mixed(opaque=opaque)
+                rule(policy, "identity_close")["value"]["unreached"] = {"outcome": OUTCOMES["paid"] if opaque else "paid"}
+                witness(policy, sources)
+                with self.assertRaisesRegex(ExecutionRequirementsError, "cannot use a protected-fact outcome"):
+                    compile_execution_requirements(policy, sources, api)
 
     def test_explicit_account_paid_precedence_without_marker_stays_rejected(self):
         for opaque in (False, True):

@@ -74,7 +74,7 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "conf
                          "attempt_scopes", "definite_failure_resume",
                          "confirmation_question", "confirmation_question_actions",
                          "identity_factor_state", "identity_counter_movement", "identity_failure_classes",
-                         "uncertain_stop_explanation"}
+                         "uncertain_stop_explanation", "identity_answer_checks"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -125,6 +125,7 @@ _SHAPE_GUIDANCE = {
     "identity_factor_state": 'optional, exactly "latest_check" when the source makes the latest completed check of each identity factor control its passed flag. While identity is incomplete a correction of an already passed factor may be checked again: the controller withdraws that pass before sending it, only verified=true restores it, and the next factor is the first in identity_fields order without a pass. Wrong-answer counting is unchanged and no answer is replayed automatically. Absence keeps passes permanent and checks only the next factor',
     "identity_counter_movement": 'optional, exactly "exact" when the source requires the returned wrong_answers_left to start at the API\'s declared maximum (otherwise identity_wrong_limit), never increase, fall by exactly one on a processed mismatch and stay unchanged on a match. Any other movement, including a match reaching zero, is uncertain verification: it is checked before exhaustion and success, no further check is sent, and the call closes only through the identity_close_choices row requiring uncertain_verification. Absence keeps the cumulative counter update',
     "identity_failure_classes": 'optional nonempty object with only repeat_once, fault and/or sealed keys, each a nonempty array of unique {http_status: integer 100..599, error?: nonempty string} verify_identity matchers. Each matcher appears in one class only and equals the http_status/error of an operative verify_identity nonpersistent_failures entry with its api_source (a definite no-processing receipt). repeat_once: the controller sends that exact request once more, immediately and without a new answer; a further definite failure of that repeat is a definite verification failure. fault: a definite verification failure. Either ends verification, which then closes only through the identity_close_choices row requiring definite_verification_failure. sealed: the bank session is already closed; the controller makes no further bank call, including close_call, and records no disposition. A witnessed matcher without a class leaves identity unchanged for a new complete answer. With this rule any other verify_identity failure is uncertain verification, and nothing is retried after uncertain processing',
+    "identity_answer_checks": 'optional nonempty object mapping identity_fields names to exactly "calendar_date" or {digits: n}, n an integer from 1 to 32 (not a boolean); no other keys or formats. Use it when the source requires a factor answer in that exact form. Before verify_identity is sent for a listed factor, the controller refuses an answer whose exact text is not a real YYYY-MM-DD calendar date (calendar_date) or not exactly n ASCII digits 0-9 (digits); nothing is trimmed or converted, and a refused answer sends no request and changes no counter, factor or close. A source requirement limited to these forms is enforced and needs no declaration; the workflow still normalises spoken answers into the form and asks again. Absence sends any nonempty answer',
     "goal_close": 'an optional object with only verified, account_loaded and/or account_failed keys, for goals that select no promise, note or transfer role. If other goals of the source select such roles, add selector (a source-declared read-only call input named in this rule\'s quotation) and goals (its actual supplied codes, or semantic keys of a wire_codes category named exactly selector): rows then apply only to calls whose sealed initial value is listed, those calls cannot use promise, note or transfer roles, and other calls keep evidence-only closes. A listed goal must have product resolution false. verified applies once identity is verified without account evidence; account_loaded after positive account evidence; account_failed after a definite negative account receipt (declared non-2xx get_account status, success flag false, mapped fields valid). With account_failed declared, other negative account receipts quarantine without a close; a recorded one is final: only account_failed rows apply, so omit there any pair the source says cannot override the receipt. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons, each outcome/reason pair once per phase; collections meanings (promise, paid, transferred, no_promise) are never permitted. With schedule_callback every close code must be a bound wire_codes meaning, and after a recorded callback only recorded_callback rows are eligible. One eligible row is fixed; several rows require a matching closing proposal. A condition resting only on what is said in the conversation has no protected evidence: list its pair in each phase where it can apply, for the workflow to establish and propose; this is not an unsupported constraint. Other evidence conditions are unsupported constraints',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
@@ -262,7 +263,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
     elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products", "call_input_formats",
-                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes", "uncertain_stop_explanation"}:
+                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes", "uncertain_stop_explanation",
+                  "identity_answer_checks"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -424,6 +426,11 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = value == "latest_check"
     elif kind == "identity_counter_movement":
         valid = value == "exact"
+    elif kind == "identity_answer_checks":
+        valid = isinstance(value, dict) and bool(value) and all(
+            text(name) and (check == "calendar_date" or isinstance(check, dict) and set(check) == {"digits"}
+                            and type(check["digits"]) is int and 1 <= check["digits"] <= 32)
+            for name, check in value.items())
     elif kind == "uncertain_stop_explanation":
         # Sourced words only: no digits, templates or engine names can add a
         # value, binding or field to the stop line.

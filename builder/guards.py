@@ -74,7 +74,8 @@ _CONTROLLER_STATE_EFFECTS = {
                                "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged, except that under identity_factor_state latest_check a re-check of a passed factor withdraws its pass before sending and only verified=true restores it.",
                                "Under identity_counter_movement exact, any returned wrong_answers_left other than the expected remaining (unchanged on a match, one less on a mismatch) is uncertain verification, checked before exhaustion and success."],
         "rejections": ["Uncertain verification evidence, or an identity_failure_classes fault or failed exact repeat, ends verification: only the identity_close_choices row requiring that evidence can close, otherwise the call is quarantined.",
-                       "An identity_failure_classes sealed receipt forbids every later bank call, including close_call; no disposition is recorded."]},
+                       "An identity_failure_classes sealed receipt forbids every later bank call, including close_call; no disposition is recorded.",
+                       "Under identity_answer_checks, an answer for a listed factor is refused before sending unless its exact text is a real YYYY-MM-DD calendar date (calendar_date) or exactly n ASCII digits (digits); a refused answer sends no request and changes no counter, factor or close."]},
     "get_account": {
         "accepted_staging": ["Sending the account request does not establish loaded products."],
         "positive_recording": ["Validated positive account evidence loads the returned products once."]},
@@ -397,6 +398,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("identity_close_choices allow at most one row per verification evidence")
         elif kind == "goal_close":
             errors.extend(_execution_errors(kind, value))
+        elif kind == "identity_answer_checks" and isinstance(value, dict) and set(value) - set(profile.get("identity_fields", [])):
+            errors.append("identity_answer_checks keys must be identity_fields names")
         elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account", "unstated"} for k, v in value.items())):
             errors.append("transfer_prerequisites requires queue-to-none/identity/account/unstated mapping")
         elif kind == "promise_readback" and value not in ("product_type", "none"):
@@ -1392,6 +1395,13 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         recheck = profile.get('identity_factor_state') == 'latest_check' and field in state['verified_fields']
         if field != expected and not recheck or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
+        # A sourced answer format is checked on the exact text that would be sent.
+        check = profile.get('identity_answer_checks', dict()).get(field)
+        if check is not None:
+            if not re.fullmatch('[0-9]{4}-[0-9]{2}-[0-9]{2}' if check == 'calendar_date' else '[0-9]{%d}' % check['digits'], str(inputs['answer'])):
+                raise ValueError('identity answer does not match its sourced format')
+            if check == 'calendar_date':
+                guard_date(str(inputs['answer']))
         if recheck:
             state['verified_fields'].remove(field)
         operation = action

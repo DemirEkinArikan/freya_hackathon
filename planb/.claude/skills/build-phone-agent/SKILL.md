@@ -7,7 +7,7 @@ description: Build a Freya phone agent from a bank's brief, test it on the pract
 
 Work from the kit folder. Use only the brief files and the tool API file you were given. Never copy a rule or a value from another brief, from the practice cases, from `examples/base-agent.json` (its prompts, phrases, URLs, codes and `test_variables`) or from the examples in this skill: every rule, number, code, phrase and sentence in the agent comes from this brief, in the language its customers speak. The examples come from the kit's two English practice briefs about late payments: they show the form, never the content, and a rule there that this brief does not state does not apply. The keys are in the environment; never print them.
 
-The whole build, tests included, must end within 30 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0}` first and note the start time.
+The whole build, tests included, must end within 30 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}` first and note the start time.
 
 ## Time box
 
@@ -21,12 +21,21 @@ The whole build, tests included, must end within 30 minutes. Run `date; echo SEL
 
 At most two test-and-fix rounds: a smoke run (3 or 4 cases), a fix, the full set, a fix. A run takes about 2 minutes with `FREYA_SIM_CONCURRENCY=10` when the workspace is free and up to 11 when the platform is busy. Waiting for the workspace's simulation slot ("waiting for this workspace's simulation lease") counts against your time. Before the first test, look at the slot: when `FREYA_LEASE` is set, run `cat "${FREYA_LEASE%.lock}.json"`. If another holder is running a simulation, do the export and write the trace notes first, so a long wait cannot leave the run without them. Run `date` before every test. Run tests in the foreground and wait for them; never end your turn while a test runs, because the builder stops when you stop.
 
+## Case folders and the mock
+
+A run can give a case folder instead of brief files: many documents in Markdown, Word, PDF and Excel. `build.py` converts it to `out/case/`, and the prompt names it.
+- Read `out/case/INDEX.md` first. It lists every document in reading order with its readable version (`text/`) and its original (`files/`): `BRIEF.md` is the starting point and `README.md` says what each document is. Read every document completely. Open every image (a flow drawing) with the Read tool, and the original of any document that did not convert.
+- Together the documents are the brief: the brief itself, the analysis, the flow drawing, the announcements (a later announcement replaces an earlier rule of the same kind), the questions and answers (they settle what the rules leave open) and the service contract, which is the tool API file. The test customers are the seeds of the self-test, never content for the agent.
+- Example conversations show the tone, the order of the steps and the language. The agent speaks the language the case's customers speak, and says the sentences the documents prescribe in that language, word for word. Never copy a name, number or amount from an example into the agent.
+- When `MOCK_URL` is set, the bank for this run is that mock: every tool URL is `$MOCK_URL` followed by the operation's path from the contract, never the contract's own server address. `tools/run_cases.py` and `tools/score.py` already talk to the mock (`FREYA_BANK_HOST`); see "Self-test".
+- Use the slot name and the trace-notes file the prompt names.
+
 ## Steps
 
-1. Read the brief files completely. With two files, the second amends the first and every rule it does not replace still applies. In raw bank material (a mail, a policy extract, a memo, a code list), a later memo replaces an earlier rule of the same kind, and the codes the agent sends are the tool API file's values. The tool API file is the `.json` you were given, otherwise `tools/openapi.json`. Every tool URL (`servers` plus path), field, required list and allowed value comes from it.
+1. Read the brief files completely. With two files, the second amends the first and every rule it does not replace still applies. In raw bank material (a mail, a policy extract, a memo, a code list), a later memo replaces an earlier rule of the same kind, and the codes the agent sends are the tool API file's values. The tool API file is the `.json` you were given (for a case folder, the case's service contract), otherwise `tools/openapi.json`. Every tool URL (`servers` plus path, or `$MOCK_URL` plus path when it is set), field, required list and allowed value comes from it.
 2. Before any JSON, write a rule list as a comment block at the top of your generator: the call variables and which one is the call's clock; who may hear what before identity is verified; the identity questions with their order, formats and limits; every number, limit, time window and calendar rule; every "once", "at most" and "never"; every outcome, reason, note and queue code with its trigger and precedence; the exact sentences the brief prescribes. Every prompt line and code value must trace back to this list.
 3. Read `examples/base-agent.json` (a minimal valid workflow). Look things up in `docs/workflow-format.md` and `docs/tools-and-code.md` only when you need them: what follows is verified on the hosted platform.
-4. Write a generator `builders/<slot>.py` that writes `out/<slot>.workflow.json` in the shape below. `<slot>` is the brief's file name without `.md` (with two briefs, the last one's). Keep each hook and code step as a plain Python string in the generator. Before it writes the file, the generator asserts that no code contains `{{` or `}}` and runs `compile()` on every snippet.
+4. Write a generator `builders/<slot>.py` that writes `out/<slot>.workflow.json` in the shape below. `<slot>` is the slot the prompt names, otherwise the brief's file name without `.md` (with two briefs, the last one's). Keep each hook and code step as a plain Python string in the generator. Before it writes the file, the generator asserts that no code contains `{{` or `}}` and runs `compile()` on every snippet.
 5. Check locally before saving. Run every code step and hook with `exec(code, {"vars": v})`, `exec(post, {"result": r, "vars": v})` and `exec(pre, {"config": c, "vars": v})` on made-up values: a made-up customer, never a practice case. Use clocks on a weekday morning, a Friday, a weekend, the day before a holiday and after every time window. Use one product and the most products the brief allows. Feed failed and malformed tool results. Print the texts the prompts will show and check them against the brief.
 6. Save it, and save the same slot a second time right away, before any test, chat or export: the first save of a slot only creates the workflow, without the event's model in its agent config, so chat and real calls cannot start (simulations override the model and hide this); the second save sets the model and publishes. Save again after every change. Each save prints `workflow_id` and `agent_id`; the same slot updates the same workflow:
    `python3 -c "import freya,json,sys; print(json.dumps(freya.save_workflow(sys.argv[1], json.load(open(sys.argv[2])))))" <slot> out/<slot>.workflow.json`
@@ -219,14 +228,16 @@ Speaking nodes
 
 ### Practice cases
 
-Practice cases exist only for the kit's own Brief A and Brief B (the `brief` field of `public-test-set.json`). Use them unless `SELF_TEST_ONLY=1`; otherwise go to the self-test. Never read the cases' scripts, checks or expected records: build from the brief only.
+Practice cases exist only for the kit's own Brief A and Brief B (the `brief` field of `public-test-set.json`). Use them unless `SELF_TEST_ONLY=1` or `MOCK_URL` is set; otherwise go to the self-test. Never read the cases' scripts, checks or expected records: build from the brief only.
 - Smoke test first: `FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent_id> --brief A --only <ids> --out results/smoke.json` (use `--brief B` for Brief B). Pick 3 or 4 ids of this brief, each from a different family, from `python3 -c "import json; [print(c['id'], c['brief'], c['family']) for c in json.load(open('public-test-set.json'))]"`. If the brief has 4 customers or fewer, run them all.
 - Then all customers of the brief: the same command without `--only`, with `--out results/full.json`.
 - If both runs are green before minute 16, run the self-test set once for robustness.
 
-### Self-test (no practice cases, or `SELF_TEST_ONLY=1`)
+### Self-test (no practice cases, `SELF_TEST_ONLY=1`, or a mock)
 
-The practice bank knows only the 13 seed customers of `public-test-set.json` (`PUB-01` to `PUB-13`); any other id gets "unknown practice case". A seed fixes the customer on the bank side: the session variables (name, title, clock), the identity answers, the products and any injected faults. A seed with `faults` fails that tool the first n times, whatever the script says. Your cases reuse the seeds; from this brief, you write what the caller does and what the records must show.
+The practice bank knows only the seed customers listed in `public-test-set.json` (the command below prints their ids); any other id gets "unknown practice case". A seed fixes the customer on the bank side: the session variables (name, title, clock), the identity answers, the products and any injected faults. A seed with `faults` fails that tool the first n times, whatever the script says. Your cases reuse the seeds; from this brief, you write what the caller does and what the records must show.
+
+With `MOCK_URL` set, the seeds are the case's test customers, from which the mock was built, not `public-test-set.json`. A seed's id is the customer id in the test-customer document, and its facts (session variables, identity answers, products, injected faults) come from that document. `curl -s $FREYA_BANK_HOST/_mock/health` lists the mock's operations and its number of customers. `python3 -c "import json,sys; sys.path.insert(0,'tools'); from score import http; print(json.dumps(http('/v1/practice/sessions', dict(case=sys.argv[1]))))" <id>` shows the session variables the mock gives one customer ("unknown case" means a wrong id). In your cases, `variables` holds those variables plus `first_name` and `last_name` (`run_cases.py` names the simulated caller with them), and `identity` maps each identity field of the contract to the customer's answer. Write each script in the language the case's customers speak. The mock serves this case's own contract, so step 5 applies only to the practice bank. `score.py` compares the ledger's `outcome`, `reason`, `promises`, `notes`, `callbacks` and `transfers`; judge records of other write operations from the ledger's calls.
 
 1. Print the seed facts, never their scripts, checks or expected records:
    `python3 -c "import json; [print(json.dumps({k: c[k] for k in ('id', 'variables', 'identity', 'products', 'faults') if k in c})) for c in json.load(open('public-test-set.json'))]"`
@@ -309,7 +320,7 @@ After the last test, change only what a FAIL clearly shows, keep the change smal
 
 1. Export the final version. What you export is what is scored:
    `python3 -c "import freya,sys; freya.export_workflow(sys.argv[1], sys.argv[2])" <workflow_id> out/<slot>.export.json`
-2. The builder writes every message to `traces/<start>.jsonl`. Next to the newest one, write a plain-text file with the same name and `.txt`, with:
+2. The builder writes every message to `traces/<start>.jsonl`. Next to the newest one, write a plain-text file with the same name and `.txt` (or the trace-notes file the prompt names), with:
    - the start and end time;
    - the builder model and what its calls did, in one line (for example: "one Claude session: read the brief, wrote builders/<slot>.py, fixed it after 2 tests");
    - what you created on Freya: the slot, `workflow_id`, `agent_id` and each saved version;

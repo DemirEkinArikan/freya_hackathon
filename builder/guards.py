@@ -21,7 +21,12 @@ from .validation import extraction_entry_errors
 PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
 CONTROLLED_ENTRY_LIMIT = 2048
-DEFAULT_CONVERSATION_TURNS = 10
+# Caller turns per stay in one node (the kit's `current_turns` resets on every
+# transition). The kit sizes a negotiating step at 20 and says to size caps from
+# real conversations; its caller styles split numbers over two turns and ask back.
+DEFAULT_CONVERSATION_TURNS = 20
+# Kernel-owned close with no proposal inputs: budget stops close from recorded facts.
+BUDGET_CLOSE = PREFIX + "budget_close"
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _INPUTS = {
     "verify_identity": {"field", "answer"}, "get_account": set(),
@@ -1975,7 +1980,7 @@ def _literal(value: Any) -> str:
 
 
 def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
-          maps: dict, result_vars: dict) -> str:
+          maps: dict, result_vars: dict, bounded: bool = True) -> str:
     spec = {"phase": phase, "action": action, "inputs": inputs, "profile": profile,
             "catalog": {k: {n: v for n, v in op.items() if n != "tool"} for k, op in catalog.items()},
             "maps": maps, "result_vars": result_vars}
@@ -1992,7 +1997,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
             tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        entry_count = " + str(CONTROLLED_ENTRY_LIMIT + 1) + "\n    else:\n        entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
         else:
             tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry count is unavailable')\n    entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
-        if phase != "result":
+        # The budget close is the one terminal step after an exhausted budget.
+        if phase != "result" and bounded:
             tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry budget exhausted')\n"
         if phase == "prepare":
             tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
@@ -2071,39 +2077,30 @@ def _terminal() -> dict:
                     "message_mode": {"type": "string", "default": "none"}}}}}, "transitions": []}
 
 
-def _entry_budget_code(*, abort: bool = False) -> str:
-    """Small controller-only gate; never changes a permitted bank action."""
-    source = ("import json\nvars['bg_budget_route'] = 'stop'\ntry:\n"
-              "    count = vars.get('bg_control_entries')\n"
-              "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
-              "        raise ValueError('controller entry count is unavailable')\n"
-              "    count = int(count) + 1\n"
-              "    vars['bg_control_entries'] = str(count)\n")
-    source += ("    raise ValueError('conversation turn budget exhausted')\n" if abort else
-               "    if count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n"
-               "        raise ValueError('controller entry budget exhausted')\n"
-               "    vars['bg_budget_route'] = 'continue'\n")
-    source += ("except Exception:\n"
-               "    vars['bg_budget_route'] = 'stop'\n"
-               "    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n"
-               "    vars['bg_budget_exhausted'] = 'yes'\n"
-               "    vars['bg_quarantined'] = 'yes'\n"
-               "    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n"
-               "    vars['bg_consent'] = 'unclear'\n"
-               "    try:\n"
-               "        state = json.loads(str(vars.get('bg_state') or ''))\n"
-               "        state['quarantined'] = True\n"
-               "        vars['bg_state'] = json.dumps(state, allow_nan=False)\n"
-               "    except Exception:\n"
-               "        pass\n")
-    return source
+def _entry_budget_code() -> str:
+    """Small controller-only gate; never changes a permitted bank action.
+
+    A stop goes to the budget close, whose sealed checks refuse (and flag) an
+    unreadable count, an in-flight write or any close the recorded facts lack.
+    """
+    return ("vars['bg_budget_route'] = 'stop'\ntry:\n"
+            "    count = vars.get('bg_control_entries')\n"
+            "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
+            "        raise ValueError('controller entry count is unavailable')\n"
+            "    count = int(count) + 1\n"
+            "    vars['bg_control_entries'] = str(count)\n"
+            "    if count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n"
+            "        raise ValueError('controller entry budget exhausted')\n"
+            "    vars['bg_budget_route'] = 'continue'\n"
+            "except Exception:\n"
+            "    vars['bg_budget_route'] = 'stop'\n"
+            "    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n")
 
 
 def _bound_entries(nodes: dict, public_names: list[str]) -> None:
     """Bound both unattended-node waits and cycles through multiple nodes."""
     gates = {name: PREFIX + "gate_" + str(index)
              for index, name in enumerate(sorted(public_names))}
-    needs_turn_stop = False
     for node in nodes.values():
         for transition in node.get("transitions", []):
             target = transition.get("target_node")
@@ -2115,21 +2112,17 @@ def _bound_entries(nodes: dict, public_names: list[str]) -> None:
         if node.get("node_type") == "conversation":
             if "max_node_turns" not in node:
                 node["max_node_turns"] = DEFAULT_CONVERSATION_TURNS
-            # Omitted source caps use the kit's documented default, with a
-            # definite abort rather than the engine's unbounded normal route.
+            # An omitted fallback ends through the facts-only budget close
+            # rather than the engine's unbounded normal route.
             if not node.get("max_turn_transition"):
-                node["max_turn_transition"] = "bg_turn_budget_stop"
-                needs_turn_stop = True
-    if needs_turn_stop:
-        nodes["bg_turn_budget_stop"] = _code_node(
-            "bg_turn_budget_stop", _entry_budget_code(abort=True), [_transition("bg_terminal")])
+                node["max_turn_transition"] = BUDGET_CLOSE
     for name, gate in gates.items():
         if gate in nodes:
             raise GuardCompileError(["controller entry-gate name collision"])
         continue_route = {"target_node": name, "description": "within controller budget",
                           "condition": {"logic": "or", "conditions": [
                               {"variable": "bg_budget_route", "operator": "equals", "operand": "continue"}]}}
-        nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition("bg_terminal")])
+        nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition(BUDGET_CLOSE)])
 
 
 def _prompt_enforced(contract: dict, plan: dict, catalog: dict, nodes: dict) -> str:
@@ -2227,7 +2220,11 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                         "condition": {"logic": "or", "conditions": [{"variable": "bg_quarantined",
                             "operator": "equals", "operand": "yes"}]}}
     entries = []
-    for name, node in sorted(plan["nodes"].items()):
+    # Plan names never start with PREFIX, so the budget close's derived names
+    # (bg_bg_budget_close_api, ...) cannot collide with a plan node's.
+    budget = {"node_type": "guard_action", "action": "close_call", "inputs": {},
+              "success_node": BUDGET_CLOSE, "blocked_node": BUDGET_CLOSE, "failure_node": BUDGET_CLOSE}
+    for name, node in sorted(plan["nodes"].items()) + [(BUDGET_CLOSE, budget)]:
         if node["node_type"] != "guard_action":
             continue
         action = node["action"]
@@ -2259,8 +2256,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             # close is quarantined above and ends at the quarantine terminal,
             # without fabricating a bank close or persistence claim.
             routes = [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition("bg_terminal")]
-        nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
-        entries.append(name)
+        nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars,
+                                             bounded=name != BUDGET_CLOSE), routes)
+        entries += [name] if name != BUDGET_CLOSE else []
         if not operation:
             continue
         tool = copy.deepcopy(catalog[operation]["tool"])

@@ -468,6 +468,30 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if len(normalized) != len(selected):
             raise GuardCompileError(["product-resolution selector keys collide through frozen code bindings"])
         resolution["by_value"] = normalized
+    scope = result.get("goal_close", {})
+    if "selector" in scope:
+        # Rows close only calls whose sealed initial goal code is listed; the
+        # kernel keeps those calls from every promise, note and transfer role.
+        selector = scope["selector"]
+        provenance = contract["active_rules"]["goal_close"].get("provenance", [])
+        if selector not in declared_call_variables(contract) or not provenance or any(
+                not isinstance(source.get("quote"), str)
+                or not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", source["quote"]) for source in provenance):
+            raise GuardCompileError(["per-goal close selector must be a source-declared read-only call input named literally in its own sourced rule"])
+        codes = result.get("wire_codes", {}).get(selector, {})
+        if any(key in codes.values() and codes.get(key, key) != key for key in scope["goals"]):
+            raise GuardCompileError(["per-goal close code is ambiguous between semantic and wire selector codes"])
+        scope["goals"] = [codes.get(key, key) for key in scope["goals"]]
+        if len(set(scope["goals"])) != len(scope["goals"]):
+            raise GuardCompileError(["per-goal close codes collide through frozen code bindings"])
+        if codes and set(scope["goals"]) - set(codes.values()):
+            raise GuardCompileError(["per-goal close goals must be keys or codes of the wire_codes category named by selector"])
+        # A goal that must resolve products is a collecting goal: it closes on
+        # its protected fact, never on a goal row.
+        rule = result.get("resolve_all_products", False) if loads_account else False
+        if rule is not False and not (isinstance(rule, dict) and rule.get("selector") == selector
+                                      and all(rule["by_value"].get(code) is False for code in scope["goals"])):
+            raise GuardCompileError(["per-goal close goals must map to false in the same-selector resolve_all_products rule"])
     # Decode controller-verified wire categories only for internal semantics.
     categories = (bindings or {}).get("categories", {})
     def decode(group: str, value: str) -> str:
@@ -491,7 +515,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
              if key in {"outcome", "reason"} else value for key, value in choice.items()}
             for choice in choices] for scope, choices in result["identity_close_choices"].items()}
     if "goal_close" in result:
-        result["goal_close"] = {phase: [
+        result["goal_close"] = {phase: rows if phase in ("selector", "goals") else [
             {key: decode("outcomes" if key == "outcome" else "reasons", value)
              if key in {"outcome", "reason"} else value for key, value in row.items()}
             for row in rows] for phase, rows in result["goal_close"].items()}
@@ -560,11 +584,13 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                                  "requiring otherwise is an unsupported constraint"])
     # Goal rows close only phases with no protected collections fact. Payment,
     # note and transfer goals keep their evidence-only closing semantics.
-    if result.get("goal_close") and selected_actions & COLLECTION_ROLES:
-        raise GuardCompileError(["goal_close cannot be combined with promise, note or transfer roles"])
-    for rows in result.get("goal_close", {}).values():
+    goal_close = result.get("goal_close", {})
+    if goal_close and "selector" not in goal_close and selected_actions & COLLECTION_ROLES:
+        raise GuardCompileError(["goal_close cannot be combined with promise, note or transfer roles "
+                                 "unless selector and goals scope it to goals that use none of them"])
+    for phase in set(goal_close) - {"selector", "goals"}:
         seen = set()
-        for row in rows:
+        for row in goal_close[phase]:
             allowed = result.get("close_reasons", {}).get(row["outcome"])
             reason = row.get("reason", "")
             if (row["outcome"] in {"transferred", "promise", "paid", "no_promise"} or allowed is None
@@ -1029,6 +1055,13 @@ def guard_resolve_all_products(state, profile, finalizing=False):
         return [p for p in state['products'] if p['days_late'] >= 1]
     return list(state['products'])
 
+def guard_goal_close(state, profile):
+    # Per-goal rows serve only calls whose sealed initial goal code is listed.
+    table = profile.get('goal_close', dict())
+    if 'selector' in table and state['call_inputs'][table['selector']] not in table['goals']:
+        return dict()
+    return table
+
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
     facts = dict()
@@ -1120,7 +1153,7 @@ def guard_close(state, proposed, profile, maps):
             # alone apply, whatever is said later.
             phase = 'account_loaded' if state['account_loaded'] else 'account_failed' if state['account_failed'] else 'verified'
             # A recorded callback closes only through a recorded_callback row.
-            rows = [row for row in profile.get('goal_close', dict()).get(phase, list())
+            rows = [row for row in guard_goal_close(state, profile).get(phase, list())
                     if (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
             if not rows:
                 raise ValueError('closing lacks protected evidence')
@@ -1344,6 +1377,8 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     else:
         if action not in ('close_call', 'schedule_callback', 'stage_transfer', 'commit_transfer') and (state['identity_status'] != 'verified' or not state['account_loaded']):
             raise ValueError('action requires trusted identity and account results')
+        if action not in ('close_call', 'schedule_callback') and guard_goal_close(state, profile):
+            raise ValueError('a goal closed by goal rows uses no promise, note or transfer role')
         if state['transfer'] and action in ('stage_promise', 'commit_promises', 'stage_note', 'finalize_notes'):
             raise ValueError('transfer takes precedence over commitments and notes')
         if action == 'stage_promise':
@@ -1765,7 +1800,7 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):
-            if 'account_failed' in profile.get('goal_close', dict()):
+            if 'account_failed' in guard_goal_close(state, profile):
                 # Only an exact declared non-2xx receipt valid for that status
                 # schema is definite; any other negative receipt raises, and
                 # the result handler quarantines it.

@@ -212,9 +212,13 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
               for kind in missing]
     # Aggregate malformed recognized inputs so extraction need not discover
     # each independent shape failure in a separate long model repair.
+    paired = {"confirmation_question": "confirmation_question_actions",
+              "confirmation_question_actions": "confirmation_question"}
     for kind in sorted(set(active) & set(guidance)):
+        # A paired kind checked alone always reports its partner missing.
+        group = {name: active[name]["value"] for name in (kind, paired.get(kind)) if name in active}
         try:
-            compile_execution_policy({kind: active[kind]["value"]})
+            compile_execution_policy(group)
         except PolicyError as exc:
             errors.append(str(exc))
     if errors:

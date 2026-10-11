@@ -1,0 +1,19 @@
+From: Service Operations <operations@example.invalid>
+To: Account Information Team <account-info@example.invalid>
+Subject: Account-information identity limit amendment O-17
+
+Colleagues,
+
+This email is synthetic development input. It has authority over exactly the
+base-policy.md identity_wrong_limit rule, on every call in this service. Replace
+the base limit of 3 with a cumulative limit of 2 wrong identity answers across
+both factors. Keep passed factors, their order F21 then F22, and the no-exempt-
+hint rule unchanged. Returned remaining reflects this limit of 2; no retry or
+budget replenishment is authorized. The maximum answer submissions is therefore
+2 plus two successful factors. This is an explicit same-rule amendment, not a
+dated condition. Every other base rule remains operative.
+
+The memo privacy-memo.txt has authority over disclosure fields only and cannot
+undo this identity amendment. No collections operation is added.
+
+Operations

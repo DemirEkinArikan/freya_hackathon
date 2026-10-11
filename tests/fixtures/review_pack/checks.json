@@ -1,0 +1,21 @@
+{
+ "rules": [
+  {
+   "text": "Verify identity before discussing the account.",
+   "source": "BRIEF.md",
+   "quote": "The agent must verify identity before it discusses the account."
+  },
+  {
+   "text": "Minimum promise 100 TL.",
+   "source": "policy.md",
+   "quote": "The agent may accept a promise of at least 500 TL."
+  }
+ ],
+ "violations": [
+  {
+   "call": "C-SPOUSE",
+   "rule": "No account tools for a third party",
+   "detail": "get_account called while a spouse was on the line"
+  }
+ ]
+}

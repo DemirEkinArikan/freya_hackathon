@@ -1,0 +1,17 @@
+{
+ "id": "x",
+ "messages": [
+  {
+   "role": "assistant",
+   "message": "Merhaba, Ayse Hanim ile mi gorusuyorum?"
+  },
+  {
+   "role": "user",
+   "message": "Evet benim."
+  },
+  {
+   "role": "assistant",
+   "message": "Dogum tarihinizi alabilir miyim?"
+  }
+ ]
+}

@@ -84,6 +84,10 @@ name-to-description mapping is also accepted; descriptions are never target
 values or defaults. The rule is optional
 when the source declares none. Keep controller credentials and protected state
 out of this declaration; existing customer_id/now restrictions still apply.
+Those restrictions do not stop declaring a source-declared clock such as now.
+When a source requires an initial input to be a date and time with an explicit
+UTC offset, declare it here and map it to offset_datetime in call_input_formats;
+a descriptive extension alone leaves an offset-less value unchecked.
 
 The supplied execution_interface is controller format metadata, not bank policy.
 Select all sealed action roles needed to implement the supplied goal in a

@@ -12,7 +12,7 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _active_rules, _profile_errors, _scoped_value_errors, validate_policy
+from .policy import _active_rules, _profile_errors, _scoped_value_errors, offset_datetime_inputs, validate_policy
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
 from .policy_conflicts import ConditionalConflictError, compile_conditional_conflicts
@@ -364,7 +364,21 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
         contract["conditional_conflicts"] = conditional
     contract["sha256"] = digest(contract)
     try:
-        declared_call_variables(contract)
+        declared = declared_call_variables(contract)
     except CallVariablesError as exc:
         raise PolicyContractError([str(exc)]) from exc
+    # Completeness backstop: a clock that plain source wording requires to carry
+    # an offset must reach the sealed format check (or stay an explicit unsupported
+    # constraint). Other phrasings rely on the extraction guidance.
+    formats = active.get("call_input_formats", {}).get("value")
+    formats = formats if isinstance(formats, dict) else {}
+    if set(formats) - set(declared):
+        errors.append("call_input_formats names must also be declared in the source-backed call_variables rule")
+    if any(formats.get(name) != "offset_datetime" for name in offset_datetime_inputs(documents.values(), {"now", *declared})):
+        errors.append("a source statement requires an initial call input to be a date-time with an explicit UTC offset, "
+                      "but call_input_formats does not map it to offset_datetime; declare that input in call_variables "
+                      "and map it in call_input_formats, or keep a requirement this typed format cannot express as an "
+                      "unsupported constraint")
+    if errors:
+        raise PolicyContractError(errors)
     return contract

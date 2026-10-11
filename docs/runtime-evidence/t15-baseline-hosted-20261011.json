@@ -1,0 +1,592 @@
+{
+  "version": 1,
+  "kind": "t15_hosted_wording_lane_baseline_record",
+  "recorded_at": "2026-10-11T10:06:14.485257+00:00",
+  "method": "baseline",
+  "plan": "docs/runtime-evidence/t15-rapid-development-plan-20261011.json",
+  "selection": {
+    "declared": {
+      "git_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+      "selection_files_sha256": "c1a066bb3b0806e3365819b5577eb81c1aa66ae94415de8c52b05124367ad033"
+    },
+    "reselected_before_any_hosted_call": {
+      "git_commit": "07583ed5d3ebb16bbe543404e0758333d5d43a25",
+      "git_tree": "a97983ca",
+      "runtime_files": 36,
+      "selection_files_sha256": "384664e7ed144dcfa65144d1f75113e0e996f3a19c5e55cfb8d79fa2f9ffb9d9",
+      "difference_from_declared": "builder/platform.py and builder/stored_workflow.py taken unchanged from 6c9ab1e (PR #149, integral float stored as int on read-back); policy, guards, prompts, validation, runtime, provenance and build.py unchanged",
+      "reason": "declared 2d09c31 could not publish on the current platform (type-strict read-back), shared adapter defect fixed on main by PR #149",
+      "record": "https://github.com/DemirEkinArikan/freya_hackathon/issues/16#issuecomment-6106828064"
+    },
+    "builder_source_sha256_07583ed": "b3244e7ddfbb15d5e4b9387a45ae1223797418d8b1a30cd0ff329d0c2a4d064f"
+  },
+  "approved_inputs_raw_sha256": {
+    "brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+    "brief-b.md": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+    "openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8"
+  },
+  "build_settings": {
+    "model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "mode": "live",
+    "deadline_seconds": 1800,
+    "export_reserve_seconds": 300,
+    "test_cases": null,
+    "simulation_lease": "artifacts/.simulation.lock (canonical, main checkout)",
+    "one_build_per_input_and_source": true
+  },
+  "builds": {
+    "A-2d09c31": {
+      "run_id": "20261011T071836290580Z",
+      "status": "failed",
+      "failure_kind": "builder",
+      "error": "Platform read-back changed or stripped an authored workflow field",
+      "builder_source_sha256": "b9eac2a1561e61087dcdee83e57b94cfbc507c7eb4af037ff0f36b8e17f7cf12",
+      "elapsed_seconds": null,
+      "trace_first": "2026-10-11T07:18:36.291081+00:00",
+      "trace_last": "2026-10-11T07:40:27.750230+00:00",
+      "end": {
+        "event": "end",
+        "status": "failed",
+        "error": "Platform read-back changed or stripped an authored workflow field",
+        "remaining_seconds": 488.57813391699983
+      },
+      "deployment": null,
+      "export_sha256": null,
+      "files_sha256": {
+        "action-bindings.json": "75edfbd1f2f880814b1d0722085435a9c49725fff24c0ef951bdb13a5ebd0f9e",
+        "builder-source.json": "1e6876b37050113aea8a43284d8e54cb0118b99577e0a445cc4ab8e30589caa9",
+        "execution-policy.json": "9e0e2af3a22b074787c0fcf2908ccd69f39e04d4c424a1cc4456cf8e27408915",
+        "execution-requirements.json": "e869cf456c57fef65b7fe3c26647a04928f676997ba87ec25fcd379863e7ed1f",
+        "guard-manifest.json": "8e1292b237774a5996b3215fdc016118b3b5efbe94daa5d619a5eec6afd24b65",
+        "manifest.json": "7152894f1010ecc49b4c70f93f27581c6bd026a1c25c3ade83d0052abab29be6",
+        "plan.json": "3c346702df08ffdad408e408a07ec2574df5b3a96177f81d1385de9272db9b6b",
+        "policy.contract.json": "950be89f018b0b3ecee2a1132ef896ed600159dc7c97dd6f6b9825d1235cc58b",
+        "policy.json": "d207c906e9fef037e0214285bce461b2fab5fddceed90b908763af2e84cad733",
+        "policy.rejected-1.json": "c7ad77cad6bbd017cbece2ed85b083e9bc8809e5ddb9a434fe31e41b9ed1c3c4",
+        "policy.rejected-2.json": "4c460a6bef658604fb8b96f323726fa13b1ba5ac5853a77efd6f85ea6d89c724",
+        "trace.jsonl": "0d6ec52cebe977054d834492735fc05e982cabdc51578577f6f2b69fd1905907",
+        "workflow.json": "796e1b1cb1c651be0573ee6f04da31c9e0237b7e2bcfccf06987381657deeeb4"
+      }
+    },
+    "B-2d09c31": {
+      "run_id": "20261011T071840314623Z",
+      "status": "failed",
+      "failure_kind": "builder",
+      "error": "Codex generation exceeded its allocated time; bounded sanitized partial output is in the trace",
+      "builder_source_sha256": "b9eac2a1561e61087dcdee83e57b94cfbc507c7eb4af037ff0f36b8e17f7cf12",
+      "elapsed_seconds": null,
+      "trace_first": "2026-10-11T07:18:40.315063+00:00",
+      "trace_last": "2026-10-11T07:36:10.354294+00:00",
+      "end": {
+        "event": "end",
+        "status": "failed",
+        "error": "Codex generation exceeded its allocated time; bounded sanitized partial output is in the trace",
+        "remaining_seconds": 749.9904500410003
+      },
+      "deployment": null,
+      "export_sha256": null,
+      "files_sha256": {
+        "builder-source.json": "78c7504411483c7e584b71500add74d6b8739590f7b33b3b03137b87bc99cee7",
+        "manifest.json": "f6ba1ac026f86f073831d15cda5b5273313ef006c43e2c45d5b995650b37f486",
+        "policy.rejected-1.json": "e400d3f3ad7aa4c74e037eface4415198bda70e7234c13b5eaf0b3696ee4287d",
+        "policy.rejected-2.json": "bddce684a09dc88ca6eb6f8bc6324aa8a58b339261e14c9d423db34ba4447d1b",
+        "trace.jsonl": "9b44db93ec96a227ada9c1ff7f6783992fa630f87578edeafcc5e1789ed6ccb7"
+      }
+    },
+    "A-07583ed": {
+      "run_id": "20261011T080044454002Z",
+      "status": "failed",
+      "failure_kind": "builder",
+      "error": "Policy extraction failed after bounded repairs: policy contains unsupported constraints",
+      "builder_source_sha256": "b3244e7ddfbb15d5e4b9387a45ae1223797418d8b1a30cd0ff329d0c2a4d064f",
+      "elapsed_seconds": null,
+      "trace_first": "2026-10-11T08:00:44.454650+00:00",
+      "trace_last": "2026-10-11T08:14:33.130852+00:00",
+      "end": {
+        "event": "end",
+        "status": "failed",
+        "error": "Policy extraction failed after bounded repairs: policy contains unsupported constraints",
+        "remaining_seconds": 971.2685644159992
+      },
+      "deployment": null,
+      "export_sha256": null,
+      "files_sha256": {
+        "builder-source.json": "8b44b3b468f8c4d31829014d0589ad212d94516de8a261ee1acd487b76689592",
+        "manifest.json": "a5bbd5e772f94d7978d313816c2ff683357ab3ed4d98a0eaf1ed746f28bdf178",
+        "policy.rejected-1.json": "aa862e606b4480751df978538831ff7cecb0fb619cd105f1becaff85c88546de",
+        "policy.rejected-2.json": "4c3d2871199d3207ed433ea528d74d186eb8319428a05d73cae1d1d85c467d63",
+        "policy.rejected-3.json": "0361b644c27773d544d0a957d4c8bff33458a0c5982197552c2173b745b9b2fe",
+        "trace.jsonl": "57388994772c05313997a3bc6e69ce3acc15a94ddc53d2c2f428d8241d863a01"
+      }
+    },
+    "B-07583ed": {
+      "run_id": "20261011T080048530411Z",
+      "status": "exported",
+      "failure_kind": null,
+      "error": null,
+      "builder_source_sha256": "b3244e7ddfbb15d5e4b9387a45ae1223797418d8b1a30cd0ff329d0c2a4d064f",
+      "elapsed_seconds": 1337.34,
+      "trace_first": "2026-10-11T08:00:48.534306+00:00",
+      "trace_last": "2026-10-11T08:23:05.860661+00:00",
+      "end": {
+        "event": "end",
+        "status": "exported",
+        "error": null,
+        "remaining_seconds": 462.66036724999867
+      },
+      "deployment": {
+        "workflow_id": "78549564-c7e8-413f-b68f-51aa1e3f358e",
+        "agent_id": "e94bcf35-d85a-4ae0-bce3-2b736ef95fa3",
+        "version_id": "1cf8b48a-cb1a-462f-a97d-50e23c28987d",
+        "version_number": 1,
+        "published": true
+      },
+      "export_sha256": "680b10c4af107c0bd1e576afaaa6872e70b23e7235ebaeae9be616177cf743dc",
+      "files_sha256": {
+        "action-bindings.json": "d3b1330accde015ebba18c46698b6c7c05521eae30307ee4d8b34d9a9931f39a",
+        "build-provenance.json": "4768909a9be45bc5165738a57680b15ad2b6d002ef324b1860bc4fa4317916db",
+        "builder-source.json": "d2397f3b5604a77314ea36798507ff49e5d5af0b570f73293f4039a2dd847027",
+        "execution-policy.json": "a48ad002e1055ceb360e63a3ab98185c846acfa10c161e8c4fc4f2fc61cbe85c",
+        "execution-requirements.json": "a43b2311be3e60bb821e40968d75b0f51f18508c3039119f7893ec3648f13208",
+        "guard-manifest.json": "e96682914ba7d4dbb04717178c02fb0ad271866ea6341e1614c7c07e7a8cc706",
+        "manifest.json": "6de1d4b7025cc765f6fabc3e60f60db051c109125457f1196311ec09d8d68dc8",
+        "plan.json": "5d141bc4d1e737993864a1543c4768f39f0cf53dddf8293bc153d07567612071",
+        "policy.contract.json": "61a8e39489466adfc80171ae6b358d26bb15c778dd44c49c9742034f725a6638",
+        "policy.json": "449c5467155d90d61647fa41e986eee53240dee0859b6709af72a6a85d59ad17",
+        "policy.rejected-1.json": "cf9a701fd1052b788cde7747c04e898a0f6f5a33f68b6b64bae882e2bd97879f",
+        "submission.workflow.json": "a3580dfb08777f84c7d94d18720bd75f4373246335f21b4729608f7ae790fb51",
+        "trace.jsonl": "35ceee8a6915d332bd69341deaa674524807ade4381be2beaf97bcb4c0ce4ad9",
+        "workflow.json": "3b00b6ee6004729aead078cf3026be83bd60298c6f765006b2bcb7bdb6d6faeb"
+      }
+    }
+  },
+  "hosted_conditions": {
+    "reps": 3,
+    "concurrency": 5,
+    "budget_seconds": 9000,
+    "max_call_seconds": 420,
+    "agent_llm": "experimental-5/experimental-5",
+    "persona_llm": "google/gemini-3-flash-preview",
+    "analysis_llm": "google/gemini-3-flash-preview",
+    "platform_gateway_retries": "5 from evaluator ae40623 (PR #156); absent in 991847f attempts",
+    "bank_route": "attempts 1-2 system_dns; attempt 3 onward --bank-connect-address 188.114.96.7 (decision issue 16 comment 6107469173)",
+    "evaluator": "attempts 1-2 detached main 991847f; attempt 3 onward detached main ae40623 (benchmarks/ identical to later main until changed)",
+    "manifests_raw_sha256": {
+      "hosted-train-A.json": "68bd208ad8620314ae5ec27102d0bba7386c4883f9f301159d4fb678878ed67f",
+      "hosted-train-B.json": "87840e34233ef4f5da016ff9d650c9f63eb4406969e7f6d2ab791b45d8b680bd",
+      "hosted-validation-A.json": "6ebb7c7efb80bf26d997cec1438218f45eaabb15e010caa3569dcdeed2013914",
+      "hosted-validation-B.json": "e65b11df254308b1cc128832765a3538d5933b773367b41f00eb3b75ab871863"
+    }
+  },
+  "trials": [
+    {
+      "trial": "B-train-20261011T082423Z",
+      "evaluator_dir": "s06-eval-991847f",
+      "trial_record": "artifacts/t15-baseline-hosted/B-train-20261011T082423Z/evidence/1270dc9901204d8391d961cfc45aceaa/trial.json",
+      "results_sha256": "48ab4501c4dd986af5ac53ec88f6abe419fe0ce7ade6d410938dc924d891aa5e",
+      "trial_sha256": "dc60584169d616d1aba3badb5d3015f06187d6e3887b2969a54a575e3cbc7010",
+      "started_at": "2026-10-11T08:24:29.767125+00:00",
+      "ended_at": "2026-10-11T08:26:15.723284+00:00",
+      "elapsed_seconds": 105.95611754099991,
+      "record_status": "recorded",
+      "report_status": "infrastructure_failure",
+      "case_manifest_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906",
+      "fixtures": 10,
+      "reps": 3,
+      "strict_fixture_passes": 0,
+      "call_rows": 10,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_infrastructure_or_evidence": 10,
+      "failure_categories": {
+        "infrastructure": 10
+      },
+      "infrastructure_messages": [
+        "PlatformError: GET /api/v2/simulations/a10f333d-583d-4a2a-aead-4f93f9ae6347: HTTP 504: error code: 504"
+      ],
+      "simulations": [
+        {
+          "repetition": 1,
+          "interrupted": true,
+          "simulation_id": "a10f333d-583d-4a2a-aead-4f93f9ae6347",
+          "iteration_id": null,
+          "status": "active"
+        }
+      ],
+      "platform_retries": null,
+      "calendar_rows": 10,
+      "calendar_complete": false,
+      "pin_verified": true,
+      "bank_transport": {
+        "mode": "system_dns",
+        "certificate_verification": true,
+        "hostname_verification": true,
+        "redirects": false,
+        "retries": 0,
+        "proxies": false
+      },
+      "conditions": {
+        "builder_model": "gpt-6.1-sol",
+        "reasoning_effort": "high",
+        "reps": 3,
+        "concurrency": 5,
+        "budget_seconds": 9000,
+        "max_call_seconds": 420,
+        "agent_llm": {
+          "provider": "experimental-5",
+          "model": "experimental-5"
+        },
+        "persona_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "analysis_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "platform_base_url": "https://staging-app.freyavoice.ai",
+        "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev",
+        "bank_transport": {
+          "mode": "system_dns",
+          "certificate_verification": true,
+          "hostname_verification": true,
+          "redirects": false,
+          "retries": 0,
+          "proxies": false
+        }
+      }
+    },
+    {
+      "trial": "B-train-20261011T084530Z",
+      "evaluator_dir": "s06-eval-991847f",
+      "trial_record": "artifacts/t15-baseline-hosted/B-train-20261011T084530Z/evidence/49ba25e2066446a7a5cc1195326f0559/trial.json",
+      "results_sha256": "81fc33280abfb35c5b7e78b66cb78c8fea6800b891a54fc2c6563234e3305b73",
+      "trial_sha256": "ea11985db742a4be6df97c73067f86e175acb1322fe4ab34a3d8a9fa39302548",
+      "started_at": "2026-10-11T08:45:50.174479+00:00",
+      "ended_at": "2026-10-11T08:47:41.324031+00:00",
+      "elapsed_seconds": 111.1481595410005,
+      "record_status": "recorded",
+      "report_status": "infrastructure_failure",
+      "case_manifest_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906",
+      "fixtures": 10,
+      "reps": 3,
+      "strict_fixture_passes": 0,
+      "call_rows": 10,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_infrastructure_or_evidence": 10,
+      "failure_categories": {
+        "infrastructure": 10
+      },
+      "infrastructure_messages": [
+        "PlatformError: GET /api/v2/simulations/7c699918-154d-40ac-9d67-b352e3c09e57: HTTP 502: error code: 502"
+      ],
+      "simulations": [
+        {
+          "repetition": 1,
+          "interrupted": true,
+          "simulation_id": "7c699918-154d-40ac-9d67-b352e3c09e57",
+          "iteration_id": null,
+          "status": "active"
+        }
+      ],
+      "platform_retries": null,
+      "calendar_rows": 10,
+      "calendar_complete": false,
+      "pin_verified": true,
+      "bank_transport": {
+        "mode": "system_dns",
+        "certificate_verification": true,
+        "hostname_verification": true,
+        "redirects": false,
+        "retries": 0,
+        "proxies": false
+      },
+      "conditions": {
+        "builder_model": "gpt-6.1-sol",
+        "reasoning_effort": "high",
+        "reps": 3,
+        "concurrency": 5,
+        "budget_seconds": 9000,
+        "max_call_seconds": 420,
+        "agent_llm": {
+          "provider": "experimental-5",
+          "model": "experimental-5"
+        },
+        "persona_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "analysis_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "platform_base_url": "https://staging-app.freyavoice.ai",
+        "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev",
+        "bank_transport": {
+          "mode": "system_dns",
+          "certificate_verification": true,
+          "hostname_verification": true,
+          "redirects": false,
+          "retries": 0,
+          "proxies": false
+        }
+      }
+    },
+    {
+      "trial": "B-train-20261011T091257Z",
+      "evaluator_dir": "s06-eval-ae40623",
+      "trial_record": "artifacts/t15-baseline-hosted/B-train-20261011T091257Z/evidence/4887d580b96b4445921cc7427126b9b1/trial.json",
+      "results_sha256": "78df3d7b77299e8cde0473313745ecf7030908789510de67cb647b448cde9a73",
+      "trial_sha256": "8b50c1329e44a022e1a6dda14a8afe8ac5c9d748ca7a0934359f2c27046df837",
+      "started_at": "2026-10-11T09:13:00.861859+00:00",
+      "ended_at": "2026-10-11T09:52:26.257850+00:00",
+      "elapsed_seconds": 2365.4110781670006,
+      "record_status": "recorded",
+      "report_status": "infrastructure_failure",
+      "case_manifest_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906",
+      "fixtures": 10,
+      "reps": 3,
+      "strict_fixture_passes": 0,
+      "call_rows": 10,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_infrastructure_or_evidence": 10,
+      "failure_categories": {
+        "infrastructure": 20
+      },
+      "infrastructure_messages": [
+        "PlatformError: GET /api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7: HTTP 504: error code: 504",
+        "deployment pin verification failed: PlatformError"
+      ],
+      "simulations": [
+        {
+          "repetition": 1,
+          "interrupted": true,
+          "simulation_id": "4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "iteration_id": null,
+          "status": "active"
+        }
+      ],
+      "platform_retries": [
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "status": 504,
+          "attempt": 1,
+          "at": "2026-10-11T09:38:29.221837+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "status": 504,
+          "attempt": 2,
+          "at": "2026-10-11T09:39:39.477566+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "status": 503,
+          "attempt": 3,
+          "at": "2026-10-11T09:40:35.505426+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "status": 504,
+          "attempt": 4,
+          "at": "2026-10-11T09:41:45.735367+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/simulations/4322498a-c041-4ca0-8a6c-75b881f06ea7",
+          "status": 504,
+          "attempt": 5,
+          "at": "2026-10-11T09:42:55.944227+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 1,
+          "at": "2026-10-11T09:45:06.453292+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/versions/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 1,
+          "at": "2026-10-11T09:46:34.984902+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/versions/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 2,
+          "at": "2026-10-11T09:47:45.254097+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/versions/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 3,
+          "at": "2026-10-11T09:48:55.522877+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/versions/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 4,
+          "at": "2026-10-11T09:50:05.771980+00:00"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v2/versions/workflow/78549564-c7e8-413f-b68f-51aa1e3f358e",
+          "status": 504,
+          "attempt": 5,
+          "at": "2026-10-11T09:51:16.007070+00:00"
+        }
+      ],
+      "calendar_rows": 10,
+      "calendar_complete": false,
+      "pin_verified": false,
+      "bank_transport": {
+        "mode": "explicit_connect_address",
+        "hostname": "freya-bank-mock.freyavoice.workers.dev",
+        "port": 443,
+        "connect_address": "188.114.96.7",
+        "certificate_verification": true,
+        "hostname_verification": true,
+        "redirects": false,
+        "proxies": false,
+        "retries": 0
+      },
+      "conditions": {
+        "builder_model": "gpt-6.1-sol",
+        "reasoning_effort": "high",
+        "reps": 3,
+        "concurrency": 5,
+        "budget_seconds": 9000,
+        "max_call_seconds": 420,
+        "platform_gateway_retries": 5,
+        "agent_llm": {
+          "provider": "experimental-5",
+          "model": "experimental-5"
+        },
+        "persona_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "analysis_llm": {
+          "provider": "google",
+          "model": "gemini-3-flash-preview"
+        },
+        "platform_base_url": "https://staging-app.freyavoice.ai",
+        "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev",
+        "bank_transport": {
+          "mode": "explicit_connect_address",
+          "hostname": "freya-bank-mock.freyavoice.workers.dev",
+          "port": 443,
+          "connect_address": "188.114.96.7",
+          "certificate_verification": true,
+          "hostname_verification": true,
+          "redirects": false,
+          "proxies": false,
+          "retries": 0
+        }
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "brief": "A",
+      "split": "train",
+      "declared_fixtures": 26,
+      "repetitions": 3,
+      "declared_calls": 78,
+      "agent": null,
+      "attempted_call_rows": 0,
+      "calls_with_behavioral_verdict": 0,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_uncovered": 78,
+      "fixtures_completed": 0,
+      "note": "uncovered: no baseline A agent (A-07583ed build failed in policy extraction; A-2d09c31 failed at publication)"
+    },
+    {
+      "brief": "A",
+      "split": "validation",
+      "declared_fixtures": 14,
+      "repetitions": 3,
+      "declared_calls": 42,
+      "agent": null,
+      "attempted_call_rows": 0,
+      "calls_with_behavioral_verdict": 0,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_uncovered": 42,
+      "fixtures_completed": 0,
+      "note": "uncovered: no baseline A agent; validation also gated on structured training"
+    },
+    {
+      "brief": "B",
+      "split": "train",
+      "declared_fixtures": 10,
+      "repetitions": 3,
+      "declared_calls": 30,
+      "agent": {
+        "workflow_id": "78549564-c7e8-413f-b68f-51aa1e3f358e",
+        "agent_id": "e94bcf35-d85a-4ae0-bce3-2b736ef95fa3",
+        "version_id": "1cf8b48a-cb1a-462f-a97d-50e23c28987d",
+        "version_number": 1,
+        "published": true
+      },
+      "attempted_call_rows": 30,
+      "calls_with_behavioral_verdict": 0,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_uncovered": 30,
+      "fixtures_completed": 0,
+      "note": "uncovered/incomparable: every attempt ended as platform infrastructure failure in repetition 1"
+    },
+    {
+      "brief": "B",
+      "split": "validation",
+      "declared_fixtures": 10,
+      "repetitions": 3,
+      "declared_calls": 30,
+      "agent": {
+        "workflow_id": "78549564-c7e8-413f-b68f-51aa1e3f358e",
+        "agent_id": "e94bcf35-d85a-4ae0-bce3-2b736ef95fa3",
+        "version_id": "1cf8b48a-cb1a-462f-a97d-50e23c28987d",
+        "version_number": 1,
+        "published": true
+      },
+      "attempted_call_rows": 0,
+      "calls_with_behavioral_verdict": 0,
+      "calls_passed": 0,
+      "calls_behavior_failed": 0,
+      "calls_uncovered": 30,
+      "fixtures_completed": 0,
+      "note": "uncovered: gated until both methods finish training (validation_preceded_paired_training)"
+    }
+  ],
+  "totals": {
+    "declared_calls": 180,
+    "calls_with_behavioral_verdict": 0,
+    "calls_passed": 0,
+    "calls_behavior_failed": 0,
+    "infrastructure_call_rows": 30,
+    "declared_fixtures": 60,
+    "fixtures_completed": 0
+  },
+  "comparable_bundles": [],
+  "non_claims": [
+    "no baseline hosted pass or fail verdict",
+    "no comparison",
+    "no candidate freeze",
+    "no holdout use",
+    "no issue closure"
+  ]
+}

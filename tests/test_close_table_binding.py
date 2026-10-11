@@ -3,13 +3,18 @@ declined and failed outcome codes), while a booking code still needs a recorded 
 
 Invented codes only; no model, network, bank or platform I/O.
 """
+import json
 import unittest
+from unittest.mock import patch
 
-from builder.action_bindings import compile_action_bindings
+import test_builder
+from builder.action_bindings import compile_action_bindings, unguarded_close_codes
+from builder.build import PROJECT, execute
 from builder.execution_requirements import ExecutionRequirementsError, compile_execution_requirements
+from builder.guards import _catalogue, _profile, run_guard_step
 from test_execution_requirements import rule
-from test_goal_requirements import witness
-from test_goal_terminal_close import GoalTerminalCloseTests, goal
+from test_goal_requirements import compiled, witness
+from test_goal_terminal_close import GoalTerminalCloseTests, extend_enum, goal
 
 UNBOUND = "a goal with schedule_callback leaves close codes unbound only when"
 
@@ -60,10 +65,18 @@ class CloseTableBindingTests(unittest.TestCase):
         policy, sources, api = callback_table()
         rule(policy, "identity_close")["value"]["unreached"] = {"outcome": "booked"}  # a fixed row claiming a booking
         witness(policy, sources)
-        _, _, session = self.session((policy, sources, api))
-        session.action("close_call", outcome="booked", reason="")
-        self.assert_refused(session)  # the kernel refuses the callback outcome without its record
-        for code in ("No-Promise", "paid"):  # spelled like a protected outcome: never an unbound code
+        with self.assertRaisesRegex(ExecutionRequirementsError, "identity_close outcomes cannot be bound to callback"):
+            compile_execution_requirements(policy, sources, api)
+        # Past the compile checks, the kernel itself refuses the callback outcome without its record.
+        _, context, _ = compiled(*callback_table())
+        profile = _profile(context["contract"], context["execution_policy"], context["plan"], context["bindings"])
+        catalog = _catalogue(context["contract"], context["openapi"], context["bindings"])
+        state = run_guard_step("init", None, profile=profile, catalog=catalog, customer_id="invented", now="2031-05-02T10:00:00")[0]
+        state["identity_status"], profile["identity_close"]["failed"] = "failed", {"outcome": "callback"}
+        with self.assertRaisesRegex(ValueError, "callback-success closing requires a recorded callback"):
+            run_guard_step("prepare", state, "close_call", {}, profile=profile, catalog=catalog, maps=context["bindings"]["categories"])
+        # Spelled like a protected outcome, or named like a handoff: never an unbound code.
+        for code in ("No-Promise", "paid", "human", "general"):
             policy, sources, api = callback_table()
             rule(policy, "close_reasons")["value"][code] = []
             witness(policy, sources)
@@ -77,6 +90,46 @@ class CloseTableBindingTests(unittest.TestCase):
         binding = compile_action_bindings(policy, api, declarations="relaxed")
         self.assertEqual(binding["declaration_mode"], "relaxed")
         self.assertEqual(binding["categories"]["outcomes"]["unbound_codes"], ["booked", "declined", "failed"])
+
+    def test_strict_unbound_codes_beyond_identity_only_goals_are_listed_as_unguarded(self):
+        # A second booking code left unbound compiles, as any unbound code does, but is listed;
+        # its row's requires is what the kernel checks.
+        policy, sources, api = callback_table()
+        rule(policy, "close_reasons")["value"]["booked_sms"] = []
+        extend_enum(api, "outcome", "booked_sms")
+        rule(policy, "goal_close")["value"]["verified"].append({"outcome": "booked_sms", "requires": "recorded_callback"})
+        witness(policy, sources)
+        binding = compile_action_bindings(policy, api)
+        self.assertNotIn("declaration_mode", binding)
+        self.assertEqual(unguarded_close_codes(policy, binding)["outcomes"], ["booked_sms", "declined", "failed"])
+        _, _, session = self.session((policy, sources, api))
+        self.verify(session)
+        session.action("close_call", outcome="booked_sms", reason="")
+        self.assert_refused(session)  # no recorded callback
+        values = goal(["verify_identity", "close_call"], {"GOAL_DONE": []})
+        self.assertEqual(unguarded_close_codes(values[0], compile_action_bindings(values[0], values[2])), {})
+
+
+class UnguardedBuildRecordTests(unittest.TestCase):
+    setUp = test_builder.BuilderTests.setUp
+    tearDown = test_builder.BuilderTests.tearDown
+    args = test_builder.BuilderTests.args
+
+    def generator(self):
+        generator = test_builder.BuilderTests.generator(self)
+        generator.generate.return_value = test_builder.fixture()
+        return generator
+
+    def test_a_strict_export_lists_its_unguarded_close_codes(self):
+        listed = {"reasons": ["SYS_DOWN"]}
+        with patch("builder.build.unguarded_close_codes", return_value=listed):
+            manifest = execute(self.args(), generator=self.generator(), client_factory=lambda **kw: test_builder.FakeClient())
+        self.assertEqual((manifest["status"], manifest["unguarded_close_codes"]), ("exported", listed))
+        self.assertNotIn("declaration_mode", manifest)
+        events = [json.loads(line) for line in (PROJECT / manifest["run_directory"] / "trace.jsonl").read_text().splitlines()]
+        self.assertEqual([event["unguarded_close_codes"] for event in events if event["event"] == "unguarded_close_codes"], [listed])
+        manifest = execute(self.args(), generator=self.generator(), client_factory=lambda **kw: test_builder.FakeClient())
+        self.assertNotIn("unguarded_close_codes", manifest)  # an identity-only goal lists none
 
 
 if __name__ == "__main__":

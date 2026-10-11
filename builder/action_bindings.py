@@ -32,6 +32,9 @@ COLLECTION_ROLES = {"stage_promise", "commit_promises", "stage_note", "finalize_
 # Outcome meanings and the callback-evidence meanings: no outcome, reason or
 # note code may be spelled like one of them unless bound to that meaning.
 GUARDED = CANONICAL["outcomes"]
+# Handoff meanings (queues and the human transfer reason): no unbound code is named
+# like one, since it would read as the protected transferred fact.
+HANDOFF = CANONICAL["queues"] | {"human"}
 # The kernel's own evidence names for the callback meanings; no other synonyms.
 _SYNONYMS = {"recordedcallback": "callback", "norecordedcallback": "nocallback"}
 
@@ -105,17 +108,18 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool,
         # A declared semantic key resolves to its unique wire code; the check
         # above makes that resolution unambiguous. Anything else is unbound.
         loose = {mapping.get(value, value) for value in values} - set(mapping.values())
-        # The brief's own close codes may stay unbound in every goal: the kernel sends an
-        # unbound code only from a sourced row, never as a protected fact.
+        # The brief's own close codes may stay unbound in every goal. The kernel sends one
+        # only from a sourced row and checks only that row's requires, never what the code
+        # claims, so builds list them as unguarded outside identity-only goals.
         if loose and (canonical_only or category not in ("outcomes", "reasons")
-                      or loose & CANONICAL[category] or {_name(v) for v in loose} & guarded
+                      or loose & (CANONICAL[category] | HANDOFF) or {_name(v) for v in loose} & guarded
                       or not (relaxed or roles)):
             raise ActionBindingError(
                 "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
                 + " API value nor one of its declared meanings; only a close_call outcome or reason code whose source"
-                " meaning is not a builder meaning, and which is neither a builder " + category[:-1] + " meaning name"
-                " nor spelled like an outcome meaning, callback or no_callback in any case or separators, may stay"
-                " unbound, in a goal that declares its execution_actions")
+                " meaning is not a builder meaning, and which is neither a builder " + category[:-1] + " meaning name,"
+                " a queue name or human, nor spelled like an outcome meaning, callback or no_callback in any case or"
+                " separators, may stay unbound, in a goal that declares its execution_actions")
         if canonical_only and any(meaning != wire for meaning, wire in mapping.items()):
             raise ActionBindingError("opaque values require API-validated bindings")
         maps[category] = deepcopy(mapping)
@@ -187,10 +191,9 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declara
     Close outcome and reason codes the API accepts (members of its enum when it has
     one) that are no builder meaning and not spelled like a guarded one may stay
     unbound in every goal; with schedule_callback only once the code reporting a
-    recorded callback is bound to callback. Relaxed declarations (last-resort
-    attempts) waive that and record the codes of goals with roles beyond identity,
-    account reads and the close as unguarded. The kernel sends unbound codes only
-    through a sourced close row, so guarded meanings keep their protection.
+    recorded callback is bound to callback, which relaxed declarations (last-resort
+    attempts) waive. The kernel sends unbound codes only through a sourced close row,
+    so guarded meanings keep their protection; see unguarded_close_codes.
     """
     if declarations not in ("strict", "relaxed"):
         raise ActionBindingError("declaration mode must be strict or relaxed")
@@ -224,6 +227,17 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declara
         if category in unbound:
             categories[category]["unbound_codes"] = unbound[category]
     return _finish(policy, categories, digest(openapi), "api_validated", relaxed=unguarded and bool(unbound))
+
+
+def unguarded_close_codes(policy: Mapping[str, Any], binding: Mapping[str, Any]) -> dict[str, list[str]]:
+    """Unbound close codes of a goal with roles beyond identity, account reads and the close.
+
+    Builds list them in either declaration mode and never claim them as enforced: the
+    kernel checks only their rows' requires, not what the codes report.
+    """
+    if _unbound_permitted(policy):
+        return {}
+    return {category: data["unbound_codes"] for category, data in binding["categories"].items() if "unbound_codes" in data}
 
 
 def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = None) -> dict:

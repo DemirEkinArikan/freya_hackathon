@@ -574,6 +574,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
     for scope, proposal in result.get("identity_close", {}).items():
+        if proposal["outcome"] == "callback":
+            # Every row of a phase shares its outcome, and the phase also closes without a callback.
+            raise GuardCompileError(["identity_close outcomes cannot be bound to callback: that phase also closes without "
+                                     "a recorded callback; a callback reason in identity_close_choices requiring "
+                                     "recorded_callback can report one"])
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed and "reason" not in proposal:
             # A reasonless phase row refined by sourced choices only supplies

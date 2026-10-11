@@ -30,7 +30,7 @@ from .runtime import (CodexGenerator, Deadline, DeadlineExceeded, GenerationErro
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
-from .action_bindings import compile_action_bindings
+from .action_bindings import compile_action_bindings, unguarded_close_codes
 from .policy import compile_execution_policy, PolicyError, MissingExecutionRules, normalise_policy
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 from .stored_workflow import assert_equivalent_stored_workflow
@@ -620,15 +620,17 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         _write_json(run_dir / "execution-requirements.json", requirements)
         trace.emit("policy_frozen", policy_sha256=policy_sha256, contract_sha256=contract_sha256,
                    execution_requirements_sha256=requirements["sha256"])
+        # Listed in either mode, never claimed as controller enforcement.
+        unguarded = unguarded_close_codes(frozen_policy, compile_action_bindings(frozen_policy, openapi, declarations=declarations))
         if declarations == "relaxed":
-            # Listed, never claimed as controller enforcement: these hold only as dialogue rules.
-            unguarded = compile_action_bindings(frozen_policy, openapi, declarations=declarations)
+            # These hold only as dialogue rules.
             relaxed_record.update({"prompt_enforced_limitations": [
                 {"category": entry["category"], "rule_ids": entry["rule_ids"], "enforced_by": "dialogue_prompt"}
-                for entry in compiled["prompt_enforced_limitations"]],
-                "unguarded_close_codes": {category: data["unbound_codes"] for category, data in unguarded["categories"].items()
-                                          if "unbound_codes" in data and unguarded.get("declaration_mode") == "relaxed"}})
+                for entry in compiled["prompt_enforced_limitations"]], "unguarded_close_codes": unguarded})
             trace.emit("relaxed_declarations", **relaxed_record)
+        elif unguarded:
+            relaxed_record["unguarded_close_codes"] = unguarded
+            trace.emit("unguarded_close_codes", unguarded_close_codes=unguarded)
         if mode == "extract-policy-only":
             deadline.require()
             manifest = {"mode": mode, "status": "policy_extracted", "sources": source_manifest,

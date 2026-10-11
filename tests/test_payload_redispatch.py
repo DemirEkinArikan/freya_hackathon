@@ -102,8 +102,10 @@ class PayloadTests(unittest.TestCase):
         session, sizes = SealedSession(source, workflow), []
         for attempt in range(25):
             session.action("verify_identity", field="postal_code", answer="answer %d" % attempt)
-            self.assertEqual(session.variables["bg_route"], "allow")
-            session.result("verify_identity", {"ok": False, "error": "answer is not in the expected format"})
+            # Three unread results end identity sending (hosted round 1, K2); refusals keep running the step.
+            self.assertEqual(session.variables["bg_route"], "allow" if attempt < 3 else "blocked")
+            if attempt < 3:
+                session.result("verify_identity", {"ok": False, "error": "answer is not in the expected format"})
             sizes.append(len(json.dumps(session.variables).encode()))
         self.assertLessEqual(sizes[-1] - sizes[0], 64)  # no variable grows with the loop
         self.assertLessEqual(largest + sizes[-1], PLATFORM_LIMIT - RUNTIME_RESERVE)

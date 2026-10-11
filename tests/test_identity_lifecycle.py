@@ -206,7 +206,7 @@ class IdentityLifecycleTests(unittest.TestCase):
         _, _, session = self.session(values(identity_failure_classes=CLASSES))
         self.assertEqual(self.check(session, F1, {"ok": False, "error": "BAD_FORM"}), "failure")
         self.assertEqual((session.state["identity_status"], session.state["wrong_answers"]), ("pending", 0))
-        self.assertEqual(self.check(session, F1, self.match(4)), "done")  # a new complete answer
+        self.assertEqual(self.check(session, F1, self.match(4), answer="invented-new-answer"), "done")  # a new complete answer
         for name, data, status in (("unlisted error", {"ok": False, "error": "UNLISTED"}, 200),
                                    ("unwitnessed status", {}, 503), ("missing flag", {"error": "RETRY_LATER"}, 200)):
             with self.subTest(name=name):
@@ -218,7 +218,7 @@ class IdentityLifecycleTests(unittest.TestCase):
         _, _, session = self.session(values())
         self.assertEqual(self.check(session, F1, {"ok": False, "error": "DENIED"}), "failure")
         self.assertEqual(session.state["identity_status"], "pending")
-        self.assertEqual(self.check(session, F1, {}, 500), "failure")
+        self.assertEqual(self.check(session, F1, {}, 500, answer="invented-new-answer"), "failure")
         self.assertEqual(session.state["identity_status"], "uncertain")  # bodyless: never a repeat
         _, _, session = self.session(values(choices=(SPOKEN,)))
         self.assertEqual(self.check(session, F1, {}, 500), "failure")

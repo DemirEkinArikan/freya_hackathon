@@ -648,6 +648,40 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     return result
 
 
+_COUNT_WORDS = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+
+
+def _answer_formats(text: Any, factors: Any) -> dict:
+    """Each factor's identity answer format, only where the tool API states exactly one.
+
+    The text after a factor's name, up to the next factor's name, qualifies when
+    it names the YYYY-MM-DD date mask and no other mask, or one plain count of
+    digits and no other number. Anything else adds no check (hosted round 1, K2).
+    """
+    if (not isinstance(text, str) or not isinstance(factors, list) or not factors
+            or any(not isinstance(factor, str) or not factor for factor in factors)):
+        return {}
+    names = "|".join(re.escape(factor) for factor in sorted(set(factors), key=len, reverse=True))
+    pieces = re.split(r"(?<![\w-])(" + names + r")(?![\w-])", text)
+    clauses: dict[str, str] = {}
+    for factor, clause in zip(pieces[1::2], pieces[2::2]):
+        clauses[factor] = clauses.get(factor, "") + " " + clause
+    number = r"\b(?:[0-9]+|" + "|".join(_COUNT_WORDS) + r")\b"
+    formats: dict[str, Any] = {}
+    for factor, clause in clauses.items():
+        masks = re.findall(r"\b[YMD]{2,4}(?:[-/. ][YMD]{2,4})+\b", clause)
+        numbers = re.findall(number, clause, re.I)
+        digits = re.findall(r"\b([0-9]+|" + "|".join(_COUNT_WORDS) + r")(?: ASCII)?[ -]digits?\b", clause, re.I)
+        if set(masks) == {"YYYY-MM-DD"}:
+            formats[factor] = "calendar_date"
+        elif (not masks and len(numbers) == len(digits) == 1
+              and not re.search(r"\b(?:least|most|up to|more|fewer|less|minimum|maximum|between)\b", clause, re.I)):
+            count = int(digits[0]) if digits[0].isdigit() else _COUNT_WORDS.index(digits[0].lower()) + 1
+            if 1 <= count <= 32:
+                formats[factor] = count
+    return formats
+
+
 def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
     actual_catalogue = _operation_catalogue(openapi, [op["name"] for op in contract["permitted_operations"]])
     if canonical_json(actual_catalogue) != canonical_json(contract["permitted_operations"]):
@@ -739,6 +773,10 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
             budget = response["properties"][results["wrong_answers_left"]].get("maximum")
             if type(budget) is int and budget >= 1:
                 catalog[name]["wrong_answers_budget"] = budget
+            formats = _answer_formats(request["properties"][fields["answer"]].get("description"),
+                                      rules.get("identity_fields", {}).get("value"))
+            if formats:
+                catalog[name]["answer_formats"] = formats
         if name == "get_account":
             product_schema = response["properties"][results["products"]].get("items", {})
             keys = product_schema.get("properties", {})
@@ -913,6 +951,7 @@ def guard_dated(state, profile, kind):
     return dated['on_or_after'] if guard_date(state['now']) >= guard_date(dated['date']) else dated['before']
 
 GUARD_IDENTITY_EVIDENCE = dict(uncertain='uncertain_verification', fault='definite_verification_failure')
+GUARD_UNREAD_LIMIT = 3
 
 def guard_identity_end(state, profile, status):
     # A protected verification terminal latches identity; only its sourced
@@ -1050,7 +1089,7 @@ def guard_new(customer_id, now, call_inputs=None):
     day = guard_date(text[:10]).isoformat()
     clock = datetime.datetime.fromisoformat(text.replace('Z', '+00:00')).strftime('%H:%M') if len(text) > 10 else ''
     return dict(customer_id=customer_id, now=day, now_time=clock, verified_fields=list(), wrong_answers=0,
-                identity_status='pending', products=list(), account_loaded=False, account_failed=False,
+                identity_status='pending', unread=dict(count=0, last=list()), products=list(), account_loaded=False, account_failed=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
                 attempt_counts=dict(),
@@ -1279,7 +1318,7 @@ GUARD_REFUSALS = dict(
            'no valid staged promises', 'policy requires separate product confirmation',
            'all products need resolved promises or staged dispositions', 'no requested staged transfer'),
     missing_input=('invalid amount', 'amount must have at most two decimal places', 'expected an ISO date',
-                   'missing required request value'),
+                   'missing required request value', 'identity answer is not new or not in the tool answer format'),
     out_of_policy=('promise amount outside policy floor or past due', 'promise date outside policy calendar',
                    'product id must come from the account result', 'invalid or already recorded disposition',
                    'transfer not permitted in current state', 'a goal closed by goal rows uses no promise, note or transfer role',
@@ -1464,7 +1503,9 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         raise ValueError('a staged or recorded transfer permits only handoff and final close')
     if action == 'verify_identity':
         fields = profile['identity_fields']
-        if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit'):
+        # Answers the bank did not read are bounded per call, like any controller resource.
+        if (state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit')
+                or state['unread']['count'] >= GUARD_UNREAD_LIMIT):
             raise ValueError('identity is complete or exhausted')
         expected = next(f for f in fields if f not in state['verified_fields'])
         # The controller checks the next factor in policy order itself.
@@ -1477,10 +1518,21 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         field = proposed if recheck else expected
         if proposed in fields and proposed not in state['verified_fields'] and proposed != expected or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
+        # The tool API's exact answer format for this factor, unchanged text only;
+        # the answer the bank just returned unread is never resent.
+        answer = str(inputs['answer'])
+        check = catalog['verify_identity'].get('answer_formats', dict()).get(field)
+        try:
+            readable = check is None or (guard_date(answer) and re.fullmatch('[0-9]{4}-[0-9]{2}-[0-9]{2}', answer) if check == 'calendar_date'
+                                         else re.fullmatch('[0-9]{' + str(check) + '}', answer))
+        except ValueError:
+            readable = None
+        if not readable or [field, answer] == state['unread']['last']:
+            raise ValueError('identity answer is not new or not in the tool answer format')
         if recheck:
             state['verified_fields'].remove(field)
         operation = action
-        semantic = dict(customer_id=state['customer_id'], field=field, answer=str(inputs['answer']))
+        semantic = dict(customer_id=state['customer_id'], field=field, answer=answer)
     elif action == 'get_account':
         if state['identity_status'] != 'verified' or state['account_loaded'] or state['account_failed']:
             raise ValueError('account requires verified identity and is read once')
@@ -1826,6 +1878,7 @@ def guard_result(state, data, profile, catalog, expected_action):
         if not definite:
             return guard_identity_end(state, profile, 'uncertain')
         state['inflight'] = dict()
+        state['unread'] = dict(count=state['unread']['count'] + 1, last=[tx['semantic']['field'], tx['semantic']['answer']])
         return state, 'failure', dict(), ''
     # Every close result is terminal, including malformed or negative evidence.
     # Attempting a close does not establish that the bank recorded it.
@@ -1926,6 +1979,9 @@ def guard_result(state, data, profile, catalog, expected_action):
             # noncounting retries such as unreadable answers or hints.
             state['wrong_answers'] = min(limit, max(state['wrong_answers'], budget - remaining))
             state['identity_status'] = 'failed' if state['wrong_answers'] >= limit or remaining == 0 else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'
+        else:
+            # ok=false: the bank did not carry out this check (e.g. an unreadable answer, not counted).
+            state['unread'] = dict(count=state['unread']['count'] + 1, last=[tx['semantic']['field'], tx['semantic']['answer']])
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):

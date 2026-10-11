@@ -33,6 +33,16 @@ def _text(value: Any) -> str:
     return re.sub(r"([{}])(?=[{}])", r"\1 ", value if isinstance(value, str) else canonical_json(value))
 
 
+def _answer_format(contract: dict) -> str:
+    """The tool API's own description of the identity answer (each factor's format)."""
+    rules = contract["active_rules"]
+    name = rules.get("tool_aliases", {}).get("value", {}).get("verify_identity", "verify_identity")
+    field = rules.get("action_fields", {}).get("value", {}).get("verify_identity", {}).get("answer", "answer")
+    operation = next((op for op in contract.get("permitted_operations", []) if op["name"] == name), {})
+    description = operation.get("request_schema", {}).get("properties", {}).get(field, {}).get("description")
+    return description.strip() if isinstance(description, str) else ""
+
+
 def _entry(name: str, kind: str, description: str, enum: Any = None, pattern: str | None = None) -> dict:
     entry = {"name": name, "type": kind, "description": description, "min_confidence": 0.8}
     if isinstance(enum, list) and enum and all(isinstance(item, str) and item for item in enum):
@@ -77,7 +87,11 @@ def deterministic_plan(contract: dict, requirements: dict) -> dict:
                 if profile.get("identity_factor_state") == "latest_check":
                     extraction.append(_entry("proposal_identity_field", "string", "Security factor the caller is answering now, in the bank's factor order.", profile.get("identity_fields")))
                     node_inputs["field"] = "proposal_identity_field"
-                extraction.append(_entry("proposal_identity_answer", "string", "The customer's own answer to the current security question, in the format the bank rules require; never a third party's answer."))
+                # Hosted round 1 (K2): without the API format the extractor kept spoken words, which the bank does not count.
+                answer_format = _answer_format(contract)
+                extraction.append(_entry("proposal_identity_answer", "string", "The customer's own answer to the current security question; never a third party's answer. " + (
+                    "Write it exactly in the bank tool's answer format, converting words the caller says into that format. The tool API states: " + _text(answer_format)
+                    if answer_format else "Write it in the format the bank rules require.")))
             elif action == "stage_promise":
                 extraction += [_entry(f"proposal_promise_product_{index}", "string", f"Internal product reference from the runtime context for product {index} covered by the caller's agreement; never spoken."),
                                _entry(f"proposal_promise_amount_{index}", "float", f"Agreed payment amount for that product {index}."),

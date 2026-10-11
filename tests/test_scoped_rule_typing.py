@@ -1,4 +1,4 @@
-"""Closed date-selector typing is inspection, never a runtime-selection claim.
+"""Closed date-selector typing; selection needs retained, explicitly overridden rules.
 
 Inputs here are independently fictional source/API packets. No generated
 policies, evaluator cases, model calls, or hosted actions are used.
@@ -7,14 +7,14 @@ import copy
 import json
 import unittest
 
+from builder.contract import PolicyContractError
 from builder.execution_requirements import ExecutionRequirementsError, compile_execution_requirements
-from builder.guards import GuardCompileError, compile_guarded_workflow
 from builder.policy import PolicyError, compile_execution_policy, execution_rule_guidance
 from builder.safety import digest
-from test_disclosure_applicability import context, fictional, rehash
+from test_disclosure_applicability import context, fictional
 
 
-REFUSAL = "scoped execution rules lack protected runtime selection"
+REFUSAL = "effective_date selector must reference two distinct same-kind rules that it explicitly overrides"
 DATE = {"effective_date": {"before_rule": "fictional-original-limit",
         "on_or_after": {"date": "2040-02-29", "rule": "fictional-replacement-limit"}}}
 
@@ -133,30 +133,26 @@ class ScopedRuleTypingTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.rejects(kind, DATE)
 
-    def test_public_guidance_marks_scopes_as_inspection_not_available_consumers(self):
+    def test_public_guidance_describes_call_date_selection_of_overridden_rules(self):
         guidance = execution_rule_guidance()
         for kind, tag in (("identity_wrong_limit", "effective_date"), ("deadline_days", "effective_date")):
             with self.subTest(kind=kind):
                 self.assertIn(tag, guidance[kind])
-                self.assertIn("runtime", guidance[kind])
+                self.assertIn("call date", guidance[kind])
+                self.assertIn("overrides both distinct referenced rules", guidance[kind])
+                self.assertNotIn("inspection only", guidance[kind])
 
-    def test_guard_and_prefreeze_requirements_refuse_scopes_even_with_asserted_consumer_flag(self):
+    def test_unretained_selector_references_are_refused_before_freeze(self):
+        # The fictional references name no overridden rule, so nothing can be
+        # retained for runtime selection; both compilers refuse the selector.
         for kind, value in (("identity_wrong_limit", DATE), ("deadline_days", DATE)):
             with self.subTest(kind=kind):
                 values = scoped_packet(kind, value)
                 before = copy.deepcopy(values)
-                compiled = context(values)
-                frozen = copy.deepcopy(compiled)
-                for claimed in (False, True):
-                    changed = copy.deepcopy(compiled)
-                    if claimed:
-                        changed["execution_policy"]["runtime_selection_verified"] = True
-                        rehash(changed["execution_policy"])
-                    with self.assertRaisesRegex(GuardCompileError, REFUSAL):
-                        compile_guarded_workflow(**changed)
+                with self.assertRaisesRegex(PolicyContractError, REFUSAL):
+                    context(values)
                 with self.assertRaisesRegex(ExecutionRequirementsError, REFUSAL):
                     compile_execution_requirements(*values[:3])
-                self.assertEqual(compiled, frozen)
                 self.assertEqual(values, before)
 
 

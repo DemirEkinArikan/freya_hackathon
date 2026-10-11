@@ -37,12 +37,13 @@ def input_bindings(workflow, context, openapi, script):
 
 def _operations(openapi):
     names = []
-    for methods in openapi.get("paths", {}).values():
+    for path, methods in openapi.get("paths", {}).items():
         for method, operation in methods.items():
             if method.lower() in {"get", "post", "put", "patch", "delete", "head", "options", "trace"}:
-                name = operation.get("operationId")
+                # Same naming as builder/toolbindings.py: the kit OpenAPI has no operationId.
+                name = operation.get("operationId") or path.rstrip("/").rsplit("/", 1)[-1]
                 if not isinstance(name, str) or not name:
-                    raise AcceptanceError("API operation requires an operationId")
+                    raise AcceptanceError("API operation requires an operationId or a named path")
                 names.append(name)
     if len(names) != len(set(names)):
         raise AcceptanceError("API operation IDs must be unique")

@@ -16,7 +16,7 @@ when it has a behavioral verdict from a complete capture.
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | A | train | 26 | 78 | 0 | 0 | 0 | 78 | no baseline A agent: the build failed |
 | A | validation | 14 | 42 | 0 | 0 | 0 | 42 | no baseline A agent; validation also gated |
-| B | train | 10 | 30 | 0 | 0 | 0 | 30 | all three attempts ended as platform infrastructure failures (incomparable) |
+| B | train | 10 | 30 | 0 | 0 | 0 | 30 | all four attempts ended as platform infrastructure failures (incomparable) |
 | B | validation | 10 | 30 | 0 | 0 | 0 | 30 | gated: both methods must finish training first |
 | **Total** | | **60** | **180** | **0** | **0** | **0** | **180** | |
 
@@ -26,9 +26,9 @@ How the counts are made:
   selection gets one build per input, so A is uncovered. The build failure is
   recorded as the baseline method's result for brief A. It is not a pass, not
   a weaker result and not a hosted call failure.
-- **B training was attempted three times, and every attempt ended in
+- **B training was attempted four times, and every attempt ended in
   repetition 1 on a staging platform failure.** Each attempt opened 10 fresh
-  bank sessions and one simulation, so 30 call rows exist. All 30 are
+  bank sessions and one simulation, so 40 call rows exist. All 40 are
   `infrastructure` rows with no behavioral verdict. They are incomparable, not
   failures, and the 30 declared calls stay uncovered.
 - **Validation is gated for both briefs.** The declared stage order is "all
@@ -102,8 +102,8 @@ issue 16. Structured trials must use identical values.
 | `--budget-seconds` | 9000 (an abort bound only) |
 | Models | phone `experimental-5`; persona and analysis `gemini-3-flash-preview` |
 | Selections | dedicated `hosted-{train,validation}-{A,B}.json`, raw hashes `68bd208a…`, `87840e34…`, `6ebb7c7e…`, `e65b11df…` |
-| Evaluator | clean detached main `ae40623`, with the deployment manifest read back before, after and on every call |
-| Platform gateway retries | `platform_gateway_retries: 5` (PR #156) |
+| Evaluator | clean detached main `a03e2b9` from attempt 5, for every remaining trial of both methods, with the deployment manifest read back before, after and on every call |
+| Platform GET retries | `platform_get_retry: {"max_retries": 5, "statuses": [500, 502, 503, 504]}` (PR #156, extended by PR #168) |
 | Bank route | `--bank-connect-address 188.114.96.7`, checked by exact-IP verified TLS before each trial |
 
 Two changes were recorded on issue 16 before use, during this lane:
@@ -114,6 +114,11 @@ Two changes were recorded on issue 16 before use, during this lane:
   or 504 are now retried up to five times, 10 s apart. Each retry is recorded
   in the report's `platform_retries`, and the policy is recorded in the
   conditions. Writes, other statuses and bank calls are unchanged.
+- **PR #168** (head `5d8800d2…`, merge `a03e2b93…`). Attempt 4 recovered from
+  two recorded 504s, then lost repetition 1 to one status-poll HTTP 500. GET
+  retries now also cover 500. The recorded condition became
+  `platform_get_retry {max_retries, statuses}`, so trials on `ae40623` and on
+  `a03e2b9` never compare as equal.
 - **Bank route** (comment 6107469173). System DNS returned two answer sets for
   the bank host: `188.114.96.7`/`.97.7` verified, while `188.114.96.3`/`.97.3`
   timed out. Main's T11 diagnostic therefore passed and failed
@@ -128,6 +133,13 @@ Two changes were recorded on issue 16 before use, during this lane:
 | 1 | `B-train-20261011T082423Z` | `991847f` / system DNS | `a10f333d…` | infrastructure: status poll HTTP 504 after 93 s; 0 retries available |
 | 2 | `B-train-20261011T084530Z` | `991847f` / system DNS | `7c699918…` | infrastructure: status poll HTTP 502 after 90 s; 0 retries available |
 | 3 | `B-train-20261011T091257Z` | `ae40623` / `188.114.96.7` | `4322498a…` | infrastructure: about 25 min of clean polling, then a sustained staging outage from 09:38Z. Five recorded poll retries (504/503) and five recorded pin read-back retries (504) all failed |
+| 4 | `B-train-20261011T102739Z` | `ae40623` / `188.114.96.7` | `c5e138ea…` | infrastructure: two recorded 504 retries recovered, then one status-poll HTTP 500 about 19 min in (not retried on `ae40623`) |
+
+Staging stayed unstable after attempt 4. The attempt-4 simulation
+`c5e138ea…` was still `running` on the server at 11:16Z; its iteration had not
+been updated since 10:46Z. Read-only authenticated probes timed out again from
+11:18Z to at least 11:24Z. Attempt 5 could not start while that simulation was
+active.
 
 During the attempt 3 outage, unauthenticated staging requests answered in
 under 0.3 s (`/api/health` 200, `/api/v2/workspaces` 401). Authenticated
@@ -148,8 +160,10 @@ calendar and every fixture and repetition). No baseline trial is complete.
 
 ## Remaining for this method
 
-1. Baseline B training: a fresh attempt under the same conditions once
-   simulation `4322498a…` is terminal on the server and staging is stable.
+1. Baseline B training: a fresh attempt on `a03e2b9` once the attempt-4
+   simulation `c5e138ea…` is terminal on the server and staging is stable.
+   Repetitions have taken 15 to 25 minutes each, so a complete 3-repetition
+   trial needs roughly 60 to 75 minutes of stable staging.
 2. Baseline B validation, after structured B training completes, with the
    same evaluator and route.
 3. Baseline A stays uncovered for this comparison. Its re-selected source and

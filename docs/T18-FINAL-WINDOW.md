@@ -138,8 +138,9 @@ builder still stops itself at 1,800 s.
   `anthropic` package for its Python. All Claude attempts share the key's rate
   limit with any other Claude work on it (Plan B, tests), so other lanes start
   no build on that key after 19:30. At most four of tonight's builders run at
-  once, two per brief, because a brief's next round waits for all of its
-  attempts; `--max-running` (default 8) is a backstop. Tonight's attempts never
+  once, two per brief (eight and four with the Codex cells), because a brief's
+  next round waits for all of its attempts; `--max-running` (default 8) is a
+  backstop. Tonight's attempts never
   wait for other builds. Builds take up to 30 minutes.
 - **Optional Codex cells.** Only `--providers claude codex` (or `--providers codex`
   alone, if Claude is unavailable) adds them. The launcher spreads them over the

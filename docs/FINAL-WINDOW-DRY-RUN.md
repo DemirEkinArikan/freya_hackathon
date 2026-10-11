@@ -130,11 +130,11 @@ baseline builds.
   5 minutes: under 15 s of tools, about 2 minutes to commit, push, open and merge the
   evidence PR, and about 2 minutes to copy and hash the attachments. That fits inside
   the 15-minute buffer, but the buffer is kept for sending and the receipt only.
-- With both builds started at about 20:05, two first-attempt successes mean ready to
-  send at about 20:45. Each failed attempt adds up to 30 minutes for that brief.
-- The latest start for a final attempt is **22:00**. It ends by 22:30, which leaves
-  15 minutes for packaging before 22:45. T18-FINAL-WINDOW.md's sequential bounds
-  (21:15 and 21:45) remain the fallback if the builds must run one at a time.
+- With three attempts per brief started together at about 20:02, all of them end by
+  about 20:32. If each brief has one eligible attempt, the package is ready to send
+  by about 21:00.
+- The latest start for a retry round is **21:45**. It ends by 22:15, which leaves
+  30 minutes to select, package and verify before 22:45 (T18-FINAL-WINDOW.md).
 
 ## Friction points
 
@@ -163,7 +163,8 @@ baseline builds.
 4. **Failed builds are slow.** All four builds on current runtime failed at 16–18
    minutes, and a live build can still fail at publication after 22 minutes. In parallel, each brief can have up to four attempts of at most 30 minutes
    started by 22:00 (20:05, 20:35, 21:05 and 21:35). One after the other, each brief
-   gets about two.
+   gets about two. Tonight's plan instead starts three attempts per brief at once,
+   and the latest retry start is 21:45.
 5. **The credential scan depends on the process environment.** The frozen checkout has
    no `.env`, which is correct. But the packager and bundle verifier, run plainly,
    then know no credential values and fall back to pattern checks. Run them through
@@ -228,36 +229,15 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    python3.11 -m builder.preflight
    ```
 
-3. Write the helper scripts. They live under ignored `artifacts/final-window/` and are
-   never committed. This is the launcher:
+3. Write the two helper scripts. They live under ignored `artifacts/final-window/` and
+   are never committed. `tools/final_attempts.py` replaces the earlier `launch.py`,
+   `inspect_runs.py` and `write_manifest.py` helpers: it launches the parallel
+   attempts, selects one run per brief by the declared order in
+   [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order) and writes the
+   manifest. This writes the pins:
 
    ```sh
    mkdir -p artifacts/final-window artifacts/hidden-inputs/hidden-1 artifacts/hidden-inputs/hidden-2
-   cat > artifacts/final-window/launch.py <<'PY'
-   import json, os, sys
-   from pathlib import Path
-   sys.path.insert(0, os.getcwd())
-   from builder.config import load_local_environment
-   label, env_file, model, effort, lease = sys.argv[1:]
-   spec = json.loads(Path("artifacts/hidden-inputs/spec.json").read_text())[label]
-   out = Path("artifacts/final") / label
-   argv = [sys.executable, "builder/build.py"]
-   for brief in spec["briefs"]:
-       argv += ["--brief", brief]
-   argv += ["--tool-api", spec["tool_api"], "--output-dir", out.as_posix(), "--slot", "final-" + label,
-            "--simulation-lease", lease, "--model", model, "--reasoning-effort", effort]
-   out.mkdir(parents=True, exist_ok=True)
-   (out / "argv.json").write_text(json.dumps(argv[1:]))
-   print(json.dumps({"label": label, "argv": argv[1:]}), flush=True)
-   load_local_environment(Path(env_file))
-   os.environ.pop("OPENAI_API_KEY", None)
-   os.execv(sys.executable, argv)
-   PY
-   ```
-
-   This writes the pins and inspects the runs:
-
-   ```sh
    cat > artifacts/final-window/pins.py <<'PY'
    import hashlib, json
    from pathlib import Path
@@ -267,50 +247,12 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    Path("artifacts/official-pins.json").write_text(json.dumps(pins, indent=2) + "\n")
    print(json.dumps(pins, indent=2))
    PY
-   cat > artifacts/final-window/inspect_runs.py <<'PY'
-   import json
-   from pathlib import Path
-   for label in ("hidden-1", "hidden-2"):
-       for run in sorted(p for p in (Path("artifacts/final") / label).iterdir() if (p / "trace.jsonl").is_file()):
-           m = json.loads((run / "manifest.json").read_text()) if (run / "manifest.json").is_file() else {"status": "running"}
-           events = [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines() if line.strip()]
-           audit = [e.get("status") for e in events if e.get("event") == "generation_isolation_audit"]
-           print(json.dumps({"label": label, "run": run.as_posix(), "status": m.get("status"), "elapsed_seconds": m.get("elapsed_seconds"),
-                             "error": m.get("error"), "audit": audit, "selected_attempt": m.get("selected_attempt_directory"),
-                             "builder_source_sha256": m.get("builder_source_sha256"), "export": (run / "submission.workflow.json").is_file(),
-                             "last_event": events[-1].get("event") if events else None}))
-   PY
    ```
 
-   This writes the manifest from the newest exported run per label, and the pre-check
-   lists the files the packager will retain:
+   This pre-check lists the files the packager will retain, including both
+   `selection.json` records:
 
    ```sh
-   cat > artifacts/final-window/write_manifest.py <<'PY'
-   import json, shlex, subprocess, sys
-   from pathlib import Path
-   team = sys.argv[1]
-   spec = json.loads(Path("artifacts/hidden-inputs/spec.json").read_text())
-   runs, commands = {}, []
-   for label in ("hidden-1", "hidden-2"):
-       eligible = [p for p in sorted((Path("artifacts/final") / label).iterdir()) if (p / "manifest.json").is_file()
-                   and json.loads((p / "manifest.json").read_text()).get("status") == "exported"]
-       if not eligible:
-           raise SystemExit(f"{label}: no exported run yet")
-       runs[label] = eligible[-1].as_posix()  # newest eligible run; failed runs stay on disk untouched
-       argv = json.loads((Path("artifacts/final") / label / "argv.json").read_text())
-       commands.append("python3.11 " + " ".join(shlex.quote(a) for a in argv))
-   manifest = {"team": team, "repo": "https://github.com/DemirEkinArikan/freya_hackathon",
-               "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-               "run_command": "\n".join(commands),
-               "workflows": {k: f"{v}/submission.workflow.json" for k, v in runs.items()},
-               "traces": {k: f"{v}/trace.jsonl" for k, v in runs.items()},
-               "runs": {k: f"{v}/manifest.json" for k, v in runs.items()},
-               "inputs": {k: spec[k] for k in runs}}
-   Path("artifacts/submission").mkdir(parents=True, exist_ok=True)
-   Path("artifacts/submission/manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-   print(json.dumps({"commit": manifest["commit"], "runs": runs}, indent=2))
-   PY
    cat > artifacts/final-window/precheck.py <<'PY'
    import json
    from pathlib import Path
@@ -343,41 +285,40 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    Record the receipt time and the sender of the files in a separate local note, not in
    `official-pins.json`.
 
-### About 20:05 (17:05 UTC): start both builds at once
+### About 20:02 (17:02 UTC): start three attempts per brief at once
 
-6. Start both builds:
+6. Start the attempts. That is six builders, each in its own
+   `artifacts/final/<label>/attempt-<k>/` with its own new slot:
 
    ```sh
-   for L in hidden-1 hidden-2; do
-     nohup /opt/homebrew/bin/python3.11 -I - "$L" "$MAIN/.env" "$T18_BUILDER_MODEL" "$T18_REASONING_EFFORT" "$LEASE" \
-       < artifacts/final-window/launch.py > "artifacts/final-window/$L-$(date -u +%H%M%S).log" 2>&1 &
-     echo "$L launcher PID $!"
-   done
+   python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \
+     --model "$T18_BUILDER_MODEL" --reasoning-effort "$T18_REASONING_EFFORT"
    ```
 
-   Each build stops itself at 1,800 s. Neither takes the simulation lease, because
-   neither has its own hosted tests.
-7. While they run, poll `python3.11 - < artifacts/final-window/inspect_runs.py`. If a run
-   ends `failed`, start that label again at once with the same command. That makes a
-   new run directory, reuses the slot from `artifacts/final/<label>/.freya-slots.json`,
-   and keeps the failed run untouched. Start no attempt after **22:00**. The first
-   attempt creates the slot's workflow. Adopting a preassigned workflow
-   (`--adopt-workflow`, T18-FINAL-WINDOW.md) is optional.
+   Each builder stops itself at 1,800 s, so all of them end by about 20:32. None
+   takes the simulation lease, because none runs its own hosted tests.
+7. While they run, poll about once a minute with `withenv tools/final_attempts.py select`.
+   It prints one JSON line per attempt (status and the five criteria) and exits 2
+   while any attempt still runs. Exit 3 means a brief has no eligible attempt. Only
+   then, and no later than **21:45**, start a retry round for that brief alone:
+   add `--labels hidden-N` to the launch command. The new attempts continue the
+   numbering (4, 5, 6), and every earlier attempt stays untouched. Never retry a
+   brief that already has an eligible selection.
 
-### When both labels have an exported run
+### When `select` exits 0 (about 20:35)
 
-8. Check the inspect output. Each selected run needs `status: exported`, an elapsed time
-   of at most 1,800 s, audit `pass` and an export file. Both runs need the same
-   `builder_source_sha256`. Then write the manifest and run the pre-check. The
-   manifest commit is still the frozen HEAD at this point.
+8. `select` has written `artifacts/final/<label>/selection.json` for both briefs,
+   naming the selected attempt k of N. Both selected runs need the same
+   `builder_source_sha256`, which the pre-check checks. Then write the manifest and
+   run the pre-check. The manifest commit is still the frozen HEAD at this point.
 
    ```sh
-   python3.11 - "<organizer team identifier>" < artifacts/final-window/write_manifest.py
+   python3.11 tools/final_attempts.py manifest --team "<organizer team identifier>"
    withenv - < artifacts/final-window/precheck.py
    ```
 
-   If the pre-check fails, read the packager's message. Never edit generated files;
-   rerun the build if the cause is in the run.
+   If the pre-check fails, read the packager's message. Never edit generated files
+   or a selection record; rerun `select`, or retry the brief if the cause is in its runs.
 9. Make the evidence commit and run the evidence-PR gates locally:
 
    ```sh
@@ -392,7 +333,8 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 10. Package and verify on `$EVID` (under 15 s):
 
     ```sh
-    python3.11 - "<organizer team identifier>" < artifacts/final-window/write_manifest.py
+    withenv tools/final_attempts.py select
+    python3.11 tools/final_attempts.py manifest --team "<organizer team identifier>"
     withenv tools/package_submission.py --check --manifest artifacts/submission/manifest.json
     withenv tools/package_submission.py --manifest artifacts/submission/manifest.json --output artifacts/submission/final.zip
     python3.11 -m zipfile -t artifacts/submission/final.zip
@@ -402,9 +344,12 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
     python3.11 tools/verify_hidden_release.py --archive artifacts/submission/final.zip --official-pins artifacts/official-pins.json
     ```
 
-    Running `write_manifest.py` again sets the commit to `$EVID`. If a newer exported
-    run appeared in the meantime, it is not in the evidence commit, and the check fails
-    closed. Send nothing unless both verifiers pass.
+    Running `select` again recomputes the declared order from the kept attempts.
+    It must reproduce the committed records byte for byte; a changed record is not
+    in the evidence commit, and the packager check fails closed. Running `manifest`
+    again sets the commit to `$EVID`. The bundle verifier reports
+    `attempt_selection`; post it with the reports. Send nothing unless both
+    verifiers pass.
 11. Push the evidence commit and merge its PR on the matching head (about 2 minutes).
     Then post both verifier reports, the ZIP SHA-256, `$EVID` and the PR on issue 19.
 
@@ -415,7 +360,8 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
     gh pr merge <number> -R DemirEkinArikan/freya_hackathon --merge --match-head-commit "$EVID"
     ```
 
-12. Copy the attachments byte for byte, using the organizer's file names:
+12. Copy the attachments byte for byte, using the organizer's file names. Each
+    `<hidden-N run>` is that label's `runs` directory in `artifacts/submission/manifest.json`:
 
     ```sh
     mkdir -p artifacts/submission/attachments

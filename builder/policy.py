@@ -70,7 +70,7 @@ _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_boun
 _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
-                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "call_variables", "call_input_formats",
+                         "promise_readback", "account_disclosure_fields", "identity_close_choices", "goal_close", "call_variables", "call_input_formats",
                          "attempt_scopes", "definite_failure_resume",
                          "confirmation_question", "confirmation_question_actions"}
 
@@ -93,7 +93,7 @@ _SHAPE_GUIDANCE = {
     "floor_fields": "an object mapping nonempty product-type names to nonempty field names",
     "callback_window": "an object with start/end local HH:MM strings, start <= end; optional allow_today is boolean and next_business_days is a nonnegative integer",
     "note_reasons": "a nonempty array of unique nonempty strings",
-    "close_reasons": "a nonempty object mapping outcome names to arrays of nonempty reason strings; arrays may be empty",
+    "close_reasons": "a nonempty object mapping exact API close outcome codes (wire_codes.outcomes values) to arrays of exact API reason codes; arrays may be empty. A declared wire_codes semantic key may stand for its code. An API close code that the source gives no supported meaning stays out of wire_codes (unbound); this is accepted only in goals that select no promise, note or transfer role",
     "transfer_reasons": "an object mapping nonempty queue names to nonempty reason strings",
     "require_confirmation": "a boolean, not a string or integer",
     "promise_failure_limit": "a positive integer; booleans are not integers",
@@ -110,7 +110,7 @@ _SHAPE_GUIDANCE = {
     "action_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "result_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
     "product_fields": "an object of nonempty string aliases or nonempty nested string-alias objects",
-    "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique",
+    "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique. In outcomes/reasons/notes/queues the keys are builder meanings only, each mapped to its exact API code: outcomes promise/paid/transferred/no_promise/not_verified/not_reached; reasons support/human/restructuring/refused/hardship/dispute/service_error/failed/declined/callback/no_callback/wrong_number/deceased/unclear; notes refused/hardship/dispute/paid/service_error; queues support/general/restructuring. Bind only meanings the source supplies; never rebind a code to a collections meaning it does not have. Other categories, such as product_types or a declared selector, keep their source names",
     "nonpersistent_failures": "an object mapping actual operation names to arrays of unique objects containing http_status (integer 100..599), optional error (nonempty string), and optional api_source containing exactly pointer and quote (nonempty strings); controller execution requires a literal OpenAPI witness scoped to that operation's exact response status",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
     "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent',
@@ -119,6 +119,7 @@ _SHAPE_GUIDANCE = {
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
     "identity_close": "an optional object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
+    "goal_close": 'an optional object with only verified and/or account_loaded keys, for goals that select no promise, note or transfer role. verified applies once identity is verified and no account is loaded; account_loaded after positive account evidence. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons; collections meanings (promise, paid, transferred, no_promise) are never permitted. One eligible row is fixed; several rows require a matching closing proposal. Other evidence conditions are unsupported constraints',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
     "resolve_all_products": "a boolean, or exactly {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution; selector occurs literally in this rule's quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only the every-product closing prerequisite, never allowed outcomes, actions or note finalization",
@@ -368,6 +369,12 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                         and choice.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
                         and ("reason" not in choice or text(choice["reason"]))
                         for choices in value.values() for choice in choices)
+    elif kind == "goal_close":
+        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"verified", "account_loaded"}
+                 and all(isinstance(rows, list) and bool(rows) and all(
+                     isinstance(row, dict) and set(row) <= {"outcome", "reason", "requires"} and text(row.get("outcome"))
+                     and row.get("requires") in ("none", "recorded_callback", "no_recorded_callback")
+                     and ("reason" not in row or text(row["reason"])) for row in rows) for rows in value.values()))
     elif kind == "identity_close":
         valid = (isinstance(value, dict) and set(value) == {"failed", "incomplete", "unreached"}
                  and all(isinstance(proposal, dict) and set(proposal) <= {"outcome", "reason"}

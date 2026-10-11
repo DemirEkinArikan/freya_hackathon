@@ -98,7 +98,7 @@ class PackageProvenanceTests(unittest.TestCase):
             source, run, events = self.records()
             if which == 'source': source['limitations'] = 'later rewrite'
             if which == 'run': run['model'] = 'changed-model'
-            if which == 'trace': events[5]['purpose'] = 'later rewrite'
+            if which == 'trace': events[6]['purpose'] = 'later rewrite'
             self.rewrite(source, run, events, refresh=False)
             if which == 'binding':
                 path = self.root / 'hidden-1/build-provenance.json'
@@ -128,7 +128,7 @@ class PackageProvenanceTests(unittest.TestCase):
             self.manifest = self.helper.evidence()
             source, run, events = self.records()
             if kind == 'source': events[2], events[3] = events[3], events[2]
-            if kind == 'audit': events[4], events[5] = events[5], events[4]; events[5]['time'] = events[4]['time']
+            if kind == 'audit': events[4], events[6] = events[6], events[4]; events[6]['time'] = events[4]['time']
             if kind == 'missing_audit': events.pop(4)
             self.rewrite(source, run, events)
             with self.subTest(kind=kind), self.assertRaises(ValueError):
@@ -150,7 +150,7 @@ class PackageProvenanceTests(unittest.TestCase):
         for key, value in [('model', 'changed-model'), ('reasoning_effort', 'low')]:
             self.manifest = self.helper.evidence()
             source, run, events = self.records()
-            events[5][key] = value
+            events[6][key] = value
             self.rewrite(source, run, events)
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'model calls differ'):
                 package.check_manifest(self.manifest)

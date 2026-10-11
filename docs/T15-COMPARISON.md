@@ -19,6 +19,11 @@ or incomplete comparisons return `comparable: false` and a fixed rejection code;
 the command exits with status 1. Missing evidence is never ranked as a weaker
 behavioral result.
 
+Use a fresh output path for each attempt. The command exclusively creates
+`--out`; an existing path raises `FileExistsError` and preserves its bytes,
+including when that path is either input bundle. Original failed evidence and
+earlier comparison results must remain available.
+
 Inputs have a 32 MiB resource limit. Invalid native containers, recursive values,
 impossible repetition inventories and extreme money exponents are rejected with
 fixed codes. The money magnitude bound is a normalization resource guard and

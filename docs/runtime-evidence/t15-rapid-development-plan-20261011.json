@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "kind": "development_comparison_preparation",
+  "recorded_at": "2026-10-11T05:57:47.670576+00:00",
+  "scope_checkpoint": "https://github.com/DemirEkinArikan/freya_hackathon/issues/16#issuecomment-6106014388",
+  "comparison": "earlier_guarded_builder_vs_current_structured_builder",
+  "sources": {
+    "baseline": {
+      "label": "earlier guarded-builder algorithm",
+      "git_commit": "2d09c31d2f2d25a0e01466e707f560127634cad3",
+      "git_tree": "14da16add0333d876dffdbf3afa3b258c19f9017",
+      "runtime_file_count": 36,
+      "selection_files_sha256": "c1a066bb3b0806e3365819b5577eb81c1aa66ae94415de8c52b05124367ad033",
+      "invocation_provenance_available": false,
+      "status": "selected_algorithm_requires_fresh_live_build"
+    },
+    "structured": {
+      "label": "current structured-builder algorithm",
+      "git_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+      "git_tree": "6fd0708a2b74edb842be58b23a762bb9fc59b7a4",
+      "runtime_file_count": 39,
+      "selection_files_sha256": "014294fdbfadf44f867356e3827138cd08503b60f790a0ee4f0c5f12b143109b",
+      "invocation_provenance_available": false,
+      "status": "selected_algorithm_requires_fresh_live_build"
+    }
+  },
+  "source_fingerprint_limit": "selection_files_sha256 fingerprints selected Git source bytes only; it is not builder_source_sha256 and cannot replace a fresh invocation snapshot/config/trace binding",
+  "approved_inputs": [
+    {
+      "path": "build-the-builder/briefs/brief-a.md",
+      "raw_sha256": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+      "canonical_sha256": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+    },
+    {
+      "path": "build-the-builder/briefs/brief-b.md",
+      "raw_sha256": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+      "canonical_sha256": "7eeb6464eabd2e57aff916488f3bba1e2c1c35077c29fd6dac7b764385fce123"
+    },
+    {
+      "path": "build-the-builder/tools/openapi.json",
+      "raw_sha256": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8",
+      "canonical_sha256": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+    }
+  ],
+  "brief_order": {
+    "A": [
+      "build-the-builder/briefs/brief-a.md"
+    ],
+    "B": [
+      "build-the-builder/briefs/brief-a.md",
+      "build-the-builder/briefs/brief-b.md"
+    ]
+  },
+  "development_inventory": [
+    {
+      "brief": "A",
+      "split": "train",
+      "path": "benchmarks/fixtures/hosted-train-A.json",
+      "raw_sha256": "68bd208ad8620314ae5ec27102d0bba7386c4883f9f301159d4fb678878ed67f",
+      "manifest_sha256": "2c68248972c658ad7f40a3d44015c810ac2c00f6ffb963b5ee531dcabd25a9aa",
+      "declared_rows_sha256": "4c58e9ae7f6a9065bb52e011b4cd4d8b920f23a13b3a768d3849e726025a37c4",
+      "cases": 26,
+      "repetitions": 3,
+      "planned_calls_per_method": 78,
+      "actual_calls_this_lane": 0,
+      "dry_run": "passed"
+    },
+    {
+      "brief": "B",
+      "split": "train",
+      "path": "benchmarks/fixtures/hosted-train-B.json",
+      "raw_sha256": "87840e34233ef4f5da016ff9d650c9f63eb4406969e7f6d2ab791b45d8b680bd",
+      "manifest_sha256": "cedddf7f0db8be26bf9112f867aae3712badb770c6f193adaab6f076f0810b93",
+      "declared_rows_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906",
+      "cases": 10,
+      "repetitions": 3,
+      "planned_calls_per_method": 30,
+      "actual_calls_this_lane": 0,
+      "dry_run": "passed"
+    },
+    {
+      "brief": "A",
+      "split": "validation",
+      "path": "benchmarks/fixtures/hosted-validation-A.json",
+      "raw_sha256": "6ebb7c7efb80bf26d997cec1438218f45eaabb15e010caa3569dcdeed2013914",
+      "manifest_sha256": "52dd37b7e8f5e7237fe7eb319beac3e511302eb6beb7af4f6abae0e0832bfcd3",
+      "declared_rows_sha256": "cc0f8fc33f4ec76215b363d3136d8ce9ba9419285a8b549dea3591d919a67f24",
+      "cases": 14,
+      "repetitions": 3,
+      "planned_calls_per_method": 42,
+      "actual_calls_this_lane": 0,
+      "dry_run": "passed"
+    },
+    {
+      "brief": "B",
+      "split": "validation",
+      "path": "benchmarks/fixtures/hosted-validation-B.json",
+      "raw_sha256": "e65b11df254308b1cc128832765a3538d5933b773367b41f00eb3b75ab871863",
+      "manifest_sha256": "0843317b0979f634b0452e2d3244afc012e34850e49c5b6980580dac59b81bb6",
+      "declared_rows_sha256": "b1b10bca31557496586397d9e64d2d510dc81d4458128a9d49da9b2b56956906",
+      "cases": 10,
+      "repetitions": 3,
+      "planned_calls_per_method": 30,
+      "actual_calls_this_lane": 0,
+      "dry_run": "passed"
+    }
+  ],
+  "conditions_to_enforce": {
+    "builder_model": "gpt-6.1-sol",
+    "reasoning_effort": "high",
+    "builder_deadline_seconds": 1800,
+    "export_reserve_seconds": 300,
+    "reps": 3,
+    "concurrency": 5,
+    "evaluation_budget_seconds": 1800,
+    "max_call_seconds": 420,
+    "agent_llm": {
+      "provider": "experimental-5",
+      "model": "experimental-5"
+    },
+    "persona_llm": {
+      "provider": "google",
+      "model": "gemini-3-flash-preview"
+    },
+    "analysis_llm": {
+      "provider": "google",
+      "model": "gemini-3-flash-preview"
+    },
+    "platform_base_url": "https://staging-app.freyavoice.ai",
+    "bank_base_url": "https://freya-bank-mock.freyavoice.workers.dev",
+    "bank_calendar": "record actual server values per fixture/repetition; exact peer equality required",
+    "bank_transport": "select same verified route for peers at execution; do not infer current route"
+  },
+  "stage_order": [
+    "accepted structured A/B fresh live builds",
+    "baseline A/B fresh live builds with same approved inputs and conditions",
+    "baseline A train",
+    "structured A train",
+    "baseline B train",
+    "structured B train",
+    "baseline A validation",
+    "structured A validation",
+    "baseline B validation",
+    "structured B validation",
+    "bundle original train/validation records per method and brief",
+    "compare A separately from B"
+  ],
+  "planned_total_calls": 360,
+  "actual_comparison_calls_this_lane": 0,
+  "baseline_selected_run": null,
+  "structured_selected_runs": {},
+  "baseline_failure_policy": "retain complete behavioral failures as failures; missing source/provenance/capture remains incomparable",
+  "candidate_freeze": false,
+  "holdout_evaluations": 0,
+  "t16_handoff_status": "blocked_on_actual_T15_and_T14_acceptance",
+  "simulation_lease": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock",
+  "simulation_lease_observation": {
+    "checked": "local_metadata_only",
+    "creation_pending": true,
+    "agent_id": "bdac34f5-ab89-47c0-a46a-57600279aa52",
+    "started_at": "2026-10-11T00:16:11.164552+00:00",
+    "simulation_id": null,
+    "server_reconciled": false,
+    "lease_claimed": false
+  },
+  "remaining": [
+    "fresh accepted structured A/B live builds and original provenance/export",
+    "fresh controlled historical-baseline A/B live builds and original provenance/export",
+    "server reconcile pending simulation creation before any lease replacement",
+    "all declared both-method training then validation calls with full evidence",
+    "generic failure-family fixes/regressions with original failures retained",
+    "T14 acceptance and dependencies",
+    "accepted exact source/config/artifacts before T16 freeze proposal"
+  ],
+  "non_claims": [
+    "no actual baseline/structured ranking",
+    "no hosted banking pass",
+    "no unseen-policy adaptation pass",
+    "no candidate freeze",
+    "no issue closure"
+  ],
+  "holdout_access_limitation": {
+    "mixed_manifest_parsed_once_for_aggregate_hashes_and_counts": true,
+    "reserved_script_or_oracle_details_inspected_or_output": false,
+    "holdout_evaluations": 0,
+    "reserved_content_sent_to_generation": false
+  }
+}

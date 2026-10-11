@@ -100,6 +100,105 @@ class HoldoutLifecycleTests(unittest.TestCase):
         self.assertFalse(result["acceptance"])
         self.assertEqual(self.fixture_bytes(), before)
 
+    def assert_readiness_rejected_without_mutation(self):
+        before = self.fixture_bytes()
+        with ExitStack() as stack:
+            self.prohibit_generation(stack)
+            stack.enter_context(patch.object(Path, "write_text", side_effect=AssertionError("write attempted")))
+            stack.enter_context(patch.object(Path, "mkdir", side_effect=AssertionError("mkdir attempted")))
+            stack.enter_context(patch.object(freeze, "verify_freeze", side_effect=AssertionError("freeze not created")))
+            with self.assertRaises(ValueError):
+                freeze.readiness_inventory(self.candidate, self.directory, self.config)
+        self.assertEqual(self.fixture_bytes(), before)
+        self.assertFalse(self.record.exists())
+
+    def test_readiness_rejects_reserved_payloads_outside_metadata_schema(self):
+        originals = deepcopy(self.offline), deepcopy(self.hosted)
+        variants = (
+            ("offline unknown payload", "offline", {"expected_records": {"synthetic_answer": 1}}),
+            ("offline nested arbitrary payload", "offline", {"payload": {"nested": {"script": "Synthetic text."}}}),
+            ("hosted unknown payload", "hosted", {"expected_records": {"synthetic_answer": 1}}),
+            ("hosted nested arbitrary payload", "hosted", {"payload": {"nested": {"script": "Synthetic text."}}}),
+            ("hosted non-text claim", "hosted", {"claim": {"expected": {"synthetic_answer": 1}}}),
+            ("hosted non-text oracle audit", "hosted", {"oracle_audit": ["Synthetic expected answer."]}),
+        )
+        for label, name, payload in variants:
+            self.offline, self.hosted = deepcopy(originals)
+            manifest = self.offline if name == "offline" else self.hosted
+            manifest["cases"][0].update(payload)
+            self.write_manifests()
+            with self.subTest(label=label):
+                self.assert_readiness_rejected_without_mutation()
+
+    def test_readiness_rejects_nested_or_extra_hosted_reservation_payloads(self):
+        original = deepcopy(self.hosted)
+        variants = (
+            ("unknown reservation key", {"payload": {"expected": {"synthetic_answer": 1}}}),
+            ("nested seed", {"seed": {"script": "Synthetic text."}}),
+            ("nested style", {"style": ["Synthetic text."]}),
+            ("nested compound index", {"compound_index": {"expected": {"synthetic_answer": 1}}}),
+        )
+        for label, payload in variants:
+            self.hosted = deepcopy(original)
+            self.hosted["cases"][0]["reservation"].update(payload)
+            self.write_manifests()
+            with self.subTest(label=label):
+                self.assert_readiness_rejected_without_mutation()
+
+    def test_readiness_rejects_already_authored_reserved_profile_with_independent_id(self):
+        profile_id = "synthetic-independently-named-profile"
+        self.offline["cases"][0]["profile_id"] = profile_id
+        self.offline["profiles"] = [{"profile_id": profile_id, "synthetic_input": "already authored"}]
+        self.write_manifests()
+        self.assert_readiness_rejected_without_mutation()
+
+    def test_readiness_rejects_malformed_reserved_and_authored_profile_ids(self):
+        original = deepcopy(self.offline)
+        for profile_id in ([], {}, None, "", " \t"):
+            for location in ("reservation", "profiles"):
+                self.offline = deepcopy(original)
+                if location == "reservation":
+                    self.offline["cases"][0]["profile_id"] = profile_id
+                else:
+                    self.offline["profiles"] = [{"profile_id": profile_id}]
+                self.write_manifests()
+                with self.subTest(location=location, profile_id=profile_id):
+                    self.assert_readiness_rejected_without_mutation()
+
+    def test_readiness_allows_metadata_and_unrelated_authored_profiles(self):
+        self.offline["cases"][0].update(number=1, bucket="synthetic", description="Synthetic reservation.")
+        self.offline["profiles"] = [{"profile_id": "synthetic-unrelated-profile"}]
+        self.hosted["cases"][0].update(claim="Synthetic metadata.", oracle_audit="Synthetic audit note.")
+        self.write_manifests()
+        before = self.fixture_bytes()
+        with ExitStack() as stack:
+            self.prohibit_generation(stack)
+            stack.enter_context(patch.object(Path, "write_text", side_effect=AssertionError("write attempted")))
+            stack.enter_context(patch.object(Path, "mkdir", side_effect=AssertionError("mkdir attempted")))
+            stack.enter_context(patch.object(freeze, "verify_freeze", side_effect=AssertionError("freeze not created")))
+            result = freeze.readiness_inventory(self.candidate, self.directory, self.config)
+        self.assertEqual(result["manifests"]["offline"]["reserved_holdout_rows"], 2)
+        self.assertEqual(result["manifests"]["hosted"]["reserved_holdout_rows"], 1)
+        self.assertFalse(result["acceptance"])
+        self.assertEqual(self.fixture_bytes(), before)
+        self.assertFalse(self.record.exists())
+
+    def test_readiness_rejects_blank_materialized_scripts(self):
+        originals = deepcopy(self.offline), deepcopy(self.hosted)
+        for name in ("offline", "hosted"):
+            for script in ("", " \t\n"):
+                self.offline, self.hosted = deepcopy(originals)
+                manifest = self.offline if name == "offline" else self.hosted
+                row = manifest["cases"][0]
+                row["status"] = "materialized_after_freeze"
+                if name == "offline":
+                    row.update(script=script, expected={})
+                else:
+                    row["case"] = {"script": script}
+                self.write_manifests()
+                with self.subTest(name=name, script=repr(script)):
+                    self.assert_readiness_rejected_without_mutation()
+
     def test_missing_or_changed_freeze_stops_before_generation_and_preserves_manifests(self):
         before = self.fixture_bytes()
         with ExitStack() as stack:

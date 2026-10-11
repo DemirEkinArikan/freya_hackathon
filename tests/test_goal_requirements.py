@@ -206,14 +206,13 @@ class GoalRequirementsTests(unittest.TestCase):
         session.result("close_call", {"ok": True})
         self.assertTrue(session.state["closed"])
 
-    def test_callback_claim_without_bank_record_refuses_close_and_terminates(self):
+    def test_callback_claim_without_bank_record_closes_through_the_no_callback_row(self):
         _, _, session = self.session(self.callback_values())
         session.action("close_call", outcome="not_reached", reason="callback")
-        self.assertEqual(session.variables["bg_route"], "blocked")
-        self.assertFalse(session.variables["bg_body"])
-        self.assertFalse(session.state["close_attempted"])
+        # The absent callback decides the claim; no callback success is claimed or created.
+        self.assertEqual((session.variables["bg_route"], session.body["reason"]), ("allow", "no_callback"))
+        self.assertTrue(session.state["close_attempted"])
         self.assertEqual(session.state["callbacks"], [])
-        self.assert_silent_terminal(session, session.entries["close_call"])
 
     def test_preidentity_transfer_uses_sole_protected_fact_without_invented_priority(self):
         _, _, session = self.session(synthetic(["stage_transfer", "commit_transfer", "close_call"]))
@@ -326,7 +325,7 @@ class GoalRequirementsTests(unittest.TestCase):
         self.assertFalse(session.state["closed"])
         self.assertEqual(session.state["recorded_promises"], before["recorded_promises"])
         self.assertEqual(session.state["transfer"], before["transfer"])
-        self.assert_silent_terminal(session, session.entries["close_call"])
+        self.assert_silent_terminal(session, session.entries["close_call"], "bg_quarantine")
 
 
 if __name__ == "__main__":

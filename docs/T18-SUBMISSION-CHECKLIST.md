@@ -58,6 +58,10 @@ the channel the instructions came from. Do not guess an address.
       removed or edited. A relaxed selection is named as relaxed in the issue 19 post, and a deterministic fallback selection as a fallback. The manifest came from `final_attempts.py manifest`, so it
       has `selections`. `health.jsonl` and every attempt's `launch.json` are in the
       evidence commit.
+- [ ] A relaxed selection's `trace.jsonl` lists its prompt-enforced limitations: one
+      `relaxed_declarations` event with `prompt_enforced_limitations` (each
+      `enforced_by: dialogue_prompt`) and `unguarded_close_codes`, the same lists as its
+      `manifest.json`. The issue 19 post names them as not enforced by the controller.
 - [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
       the extraction check in SUBMISSION-PACKAGE.md all pass.
 - [ ] On that ZIP, `verify_submission_bundle.py --commit <evidence commit>` and

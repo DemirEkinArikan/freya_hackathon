@@ -133,10 +133,12 @@ class ReleaseBoundaryTests(unittest.TestCase):
         h = self.session()
         h.variables.update(outcome="C_F", close_reason="WHY_BOOKED",
                            caller_claim="The bank already booked it", callback_recorded=True)
+        start = deepcopy(h.variables)
         h.code("close")
-        self.assertEqual(self.body(h), {})
+        # The absent callback decides the claim: the no-callback close, never callback success.
+        self.assertEqual(self.body(h)["input_reason"], "WHY_UNBOOKED")
         self.assertFalse(self.state(h)["callbacks"])
-        self.assertFalse(self.state(h)["close_attempted"])
+        h.variables = start  # that close ends its call; continue the other paths from before it
         h.variables.update(day="2031-05-06", at="12:00")
         h.code("callback")
         h.variables["bg_consent"] = "no"

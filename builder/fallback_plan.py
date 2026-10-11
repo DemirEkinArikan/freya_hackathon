@@ -19,7 +19,7 @@ _DESCRIPTIONS = {
     "verify_identity": "Submit the caller's own readable answer to the current security factor while verification is incomplete and attempts remain.",
     "get_account": "Identity is verified in the runtime context and the account is not loaded yet.",
     "stage_promise": "Stage the complete current payment proposal in promise slot {slot} (product, amount, date) that the caller agreed to, unless it is already staged unchanged or the product is already recorded.",
-    "commit_promises": "Promises are staged and the caller agreed to them; the controller reads them back and asks for confirmation before recording.",
+    "commit_promises": "Promises are staged and the caller agreed to them; the controller reads them back and asks for confirmation before recording. When the bank rules confirm each product separately, commit right after staging each product.",
     "stage_note": "Stage the disposition in note slot {slot} (product, reason) that the caller's answer supports, unless it is already staged or the product is already recorded.",
     "finalize_notes": "Every product is resolved by a recorded promise or a staged disposition and no promise is pending; record the dispositions.",
     "stage_transfer": "The caller qualifies for and accepts a handoff to the proposed queue under the bank rules.",

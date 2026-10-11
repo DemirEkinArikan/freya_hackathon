@@ -241,8 +241,9 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                 # fallback must agree before the compiler seals public targets.
                 if (not isinstance(default, str) or default not in nodes
                         or fallback.get("condition") != {"operator": "always"}
+                        or fallback.get("is_tool_call", False) is not False
                         or fallback.get("target_node") != default):
-                    errors.append(name + ": passthrough requires a public default and matching final always fallback")
+                    errors.append(name + ": passthrough requires a public default and matching ordinary final always fallback")
             for entry in extraction:
                 if not isinstance(entry, dict) or not variable(entry.get("name")):
                     errors.append(name + ": extraction cannot write protected or engine variables")

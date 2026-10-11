@@ -112,6 +112,30 @@ class AuthoredPassthroughTests(unittest.TestCase):
         context["plan"]["nodes"]["close"]["passthrough_default_transition"] = "talk"
         self.reject(context)
 
+    def test_immediate_fallback_cannot_depend_on_an_agent_tool_call(self):
+        self.router()
+        original = deepcopy(self.context)
+        for value in (True, None, "false", 0):
+            with self.subTest(value=value):
+                context = deepcopy(original)
+                context["plan"]["nodes"]["talk"]["transitions"][-1]["is_tool_call"] = value
+                self.reject(context)
+        self.context["plan"]["nodes"]["talk"]["transitions"][-1]["is_tool_call"] = False
+        workflow = compile_guarded_workflow(**self.context)["workflow"]
+        self.assertEqual(validate_guarded_workflow(workflow, **self.context), [])
+
+    def test_waiting_speaking_node_keeps_its_agent_completion_transition(self):
+        node = self.context["plan"]["nodes"]["talk"]
+        node["on_enter"] = {"type": "llm"}
+        node["transitions"].append({"target_node": "close", "description": "complete required farewell",
+                                    "condition": {"operator": "always"}, "is_tool_call": True})
+        workflow = compile_guarded_workflow(**self.context)["workflow"]
+        compiled = workflow["nodes"]["talk"]
+        self.assertFalse(compiled.get("passthrough", False))
+        self.assertIs(compiled["transitions"][-1]["is_tool_call"], True)
+        self.assertEqual(validate_guarded_workflow(workflow, **self.context), [])
+        self.assertEqual(validate_workflow(workflow, self.context["openapi"]), [])
+
     def test_wire_schema_keeps_plan_inside_frozen_contract_json_string(self):
         self.router()
         schema = plan_generation_schema(self.context["contract"]["sha256"])

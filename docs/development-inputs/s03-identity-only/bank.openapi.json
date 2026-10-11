@@ -1,0 +1,650 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Alder Quay synthetic identity-only bank tools",
+    "version": "1.0.0",
+    "description": "Self-contained approved development input; no customer facts, expected records, credentials or live target. Semantic-prefixed descriptions explicitly map renamed fields. Only verify_identity and close_call are authorized by the paired brief; five other API capabilities remain forbidden. Fresh calls begin with an unsealed session. A verify HTTP409 or exact done_flag=false/fault_tag=session_sealed is permanent no-processing evidence of an already sealed session; it forbids further bank calls, including another close. This is the sole exception to the paired brief's one final close attempt."
+  },
+  "servers": [
+    {
+      "url": "https://alder-quay-bank.invalid/v1"
+    }
+  ],
+  "security": [],
+  "components": {},
+  "paths": {
+    "/verify_identity": {
+      "post": {
+        "operationId": "verify_identity",
+        "summary": "Permitted only for identity checking under brief R03-R08. Each well-formed mismatch consumes one shared slot. bad_shape consumes none. try_later or HTTP 500 guarantees no processing and allows one exact-request repeat; check_denied is permanent. Unknown or ambiguous processing prohibits repeat. A received close attempt rejects further checks. HTTP409 or HTTP200 done_flag=false/fault_tag=session_sealed is permanent no-processing failure: do not retry or invoke close_call; finish locally under brief R08/R11.",
+        "description": "Permitted only for identity checking under brief R03-R08. Each well-formed mismatch consumes one shared slot. bad_shape consumes none. try_later or HTTP 500 guarantees no processing and allows one exact-request repeat; check_denied is permanent. Unknown or ambiguous processing prohibits repeat. A received close attempt rejects further checks. HTTP409 or HTTP200 done_flag=false/fault_tag=session_sealed is permanent no-processing failure: do not retry or invoke close_call; finish locally under brief R08/R11.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "factor_key": {
+                    "type": "string",
+                    "description": "Semantic request field: field. birth_calendar means date_of_birth; mobile_tail means phone_last4. Both must match exactly.",
+                    "enum": [
+                      "birth_calendar",
+                      "mobile_tail"
+                    ]
+                  },
+                  "supplied_value": {
+                    "type": "string",
+                    "description": "Semantic request field: answer. birth_calendar: real Gregorian YYYY-MM-DD; mobile_tail: exactly four ASCII digits, preserving zeros."
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "factor_key",
+                  "supplied_value"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    },
+                    "factor_match": {
+                      "type": "boolean",
+                      "description": "Semantic result field: verified. Latest requested factor exact match only. On processed mismatch consumes one shared slot."
+                    },
+                    "wrong_slots": {
+                      "type": "integer",
+                      "description": "Semantic result field: wrong_answers_left. Shared FOUR-wrong-answer allowance remaining, starts at 4, never resets; required for every processed result.",
+                      "minimum": 0,
+                      "maximum": 4
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/get_account": {
+      "post": {
+        "operationId": "get_account",
+        "summary": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "description": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "party_token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    },
+                    "facilities": {
+                      "type": "array",
+                      "description": "Semantic result field: products. Full account products; available in API, forbidden in this brief.",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "facility_key": {
+                            "type": "string",
+                            "description": "Semantic result field: product_id. "
+                          },
+                          "facility_kind": {
+                            "type": "string",
+                            "description": "Semantic result field: type. Respectively credit_card, personal_loan, car_loan.",
+                            "enum": [
+                              "aq_card",
+                              "aq_loan",
+                              "aq_vehicle"
+                            ]
+                          },
+                          "plastic_tail": {
+                            "type": "string",
+                            "description": "Semantic result field: card_last4. ",
+                            "pattern": "^[0-9]{4}$"
+                          },
+                          "arrears_sum": {
+                            "type": "number",
+                            "description": "Semantic result field: past_due. ",
+                            "minimum": 0
+                          },
+                          "overdue_days": {
+                            "type": "integer",
+                            "description": "Semantic result field: days_late. ",
+                            "minimum": 0
+                          },
+                          "floor_sum": {
+                            "type": "number",
+                            "description": "Semantic result field: minimum_payment. ",
+                            "minimum": 0
+                          },
+                          "regular_sum": {
+                            "type": "number",
+                            "description": "Semantic result field: instalment_amount. ",
+                            "minimum": 0
+                          }
+                        },
+                        "required": [
+                          "facility_key",
+                          "facility_kind",
+                          "arrears_sum",
+                          "overdue_days"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/create_promise": {
+      "post": {
+        "operationId": "create_promise",
+        "summary": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "description": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "facility_key": {
+                    "type": "string",
+                    "description": "Semantic request field: product_id. ",
+                    "minLength": 1
+                  },
+                  "pledged_sum": {
+                    "type": "number",
+                    "description": "Semantic request field: amount. ",
+                    "minimum": 0
+                  },
+                  "pledged_day": {
+                    "type": "string",
+                    "description": "Semantic request field: date. ",
+                    "format": "date"
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "facility_key",
+                  "pledged_sum",
+                  "pledged_day"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    },
+                    "pledge_receipt": {
+                      "type": "string",
+                      "description": "Semantic result field: promise_id. Nonempty persisted promise identifier.",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/add_note": {
+      "post": {
+        "operationId": "add_note",
+        "summary": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "description": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "facility_key": {
+                    "type": "string",
+                    "description": "Semantic request field: product_id. ",
+                    "minLength": 1
+                  },
+                  "note_kind": {
+                    "type": "string",
+                    "description": "Semantic request field: reason. Respectively refused, hardship, dispute, paid, service_error.",
+                    "enum": [
+                      "aq_decline",
+                      "aq_distress",
+                      "aq_contest",
+                      "aq_settled",
+                      "aq_fault"
+                    ]
+                  },
+                  "note_words": {
+                    "type": "string",
+                    "description": "Semantic request field: text. "
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "facility_key",
+                  "note_kind",
+                  "note_words"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/schedule_callback": {
+      "post": {
+        "operationId": "schedule_callback",
+        "summary": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "description": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "return_day": {
+                    "type": "string",
+                    "description": "Semantic request field: date. ",
+                    "format": "date"
+                  },
+                  "return_clock": {
+                    "type": "string",
+                    "description": "Semantic request field: time. 24-hour HH:MM",
+                    "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "return_day",
+                  "return_clock"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/transfer_to_agent": {
+      "post": {
+        "operationId": "transfer_to_agent",
+        "summary": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "description": "API capability exists, but this operation is FORBIDDEN on every path of the supplied identity-only brief.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "desk_code": {
+                    "type": "string",
+                    "description": "Semantic request field: queue. Respectively restructuring, general, support queues.",
+                    "enum": [
+                      "aq_adjust",
+                      "aq_service",
+                      "aq_help"
+                    ]
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "desk_code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite no-processing service failure: no identity counter or write changed; identity-only brief permits one exact-request verify repeat and forbids all other operations."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    },
+    "/close_call": {
+      "post": {
+        "operationId": "close_call",
+        "summary": "Exactly one attempted final close under brief R10-R11; no retry or later tool invocation. The first received close request irreversibly seals the session, regardless of persistence. done_flag=true persists the disposition once; done_flag=false or HTTP 500 persists nothing. A lost response is uncertain. All later requests are rejected with session_sealed. No client retry is authorized even when close did not reach the server.",
+        "description": "Exactly one attempted final close under brief R10-R11; no retry or later tool invocation. The first received close request irreversibly seals the session, regardless of persistence. done_flag=true persists the disposition once; done_flag=false or HTTP 500 persists nothing. A lost response is uncertain. All later requests are rejected with session_sealed. No client retry is authorized even when close did not reach the server.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "party_token": {
+                    "type": "string",
+                    "description": "Semantic request field: customer_id. Opaque supplied call variable customer_id; copy unchanged, never infer from speech.",
+                    "minLength": 1
+                  },
+                  "finish_code": {
+                    "type": "string",
+                    "description": "Semantic request field: outcome. Identity-only outcome table in brief R10; success, incomplete identity, no intended customer contact respectively.",
+                    "enum": [
+                      "aq_attested",
+                      "aq_unattested",
+                      "aq_unattended"
+                    ]
+                  },
+                  "finish_detail": {
+                    "type": "string",
+                    "description": "Semantic request field: reason. Required exact reason paired with finish_code per brief R10.",
+                    "enum": [
+                      "pair_matched",
+                      "other_person",
+                      "check_ambiguous",
+                      "check_fault",
+                      "quota_used",
+                      "declined_check",
+                      "no_contact",
+                      "unfinished_pair"
+                    ]
+                  }
+                },
+                "required": [
+                  "party_token",
+                  "finish_code",
+                  "finish_detail"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "done_flag=true is completed success; for identity factor_match and wrong_slots are then required, for account lookup facilities is required, and for promise pledge_receipt is required. done_flag=false requires fault_tag and guarantees no requested identity check or business write occurred; a received close request still seals the session regardless of disposition persistence. Success must never include fault_tag. Unknown or contradictory combinations are uncertain. A failed close still seals the session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "done_flag": {
+                      "type": "boolean",
+                      "description": "Semantic result field: ok. true means completed (persisted for writes); false means no processing or persistence."
+                    },
+                    "fault_tag": {
+                      "type": "string",
+                      "description": "Semantic result field: error. Declared definite no-processing faults; session_sealed rejects any request after a received close attempt.",
+                      "enum": [
+                        "bad_shape",
+                        "try_later",
+                        "check_denied",
+                        "session_sealed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "done_flag"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Definite close persistence failure: no disposition recorded; received request still seals the session. Never retry."
+          },
+          "409": {
+            "description": "The bank session was already sealed by a received close request. No requested identity check or new business write occurred. This is permanent definite failure, never retry. No further bank invocation, including close_call, is permitted. Paired brief R08/R11 selects a local check-failure ending without another close if verification receives this status."
+          }
+        }
+      }
+    }
+  }
+}

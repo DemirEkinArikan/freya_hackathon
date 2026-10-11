@@ -112,11 +112,12 @@ class EvidenceCloseChoiceTests(unittest.TestCase):
         state, profile, catalog, maps = kernel_context()
         profile["identity_close_choices"]["incomplete"] = [
             {"outcome": "not_verified", "reason": reason, "requires": "none"} for reason in ("declined", "failed")]
-        for proposal in ({"outcome": "Z_REACH"}, {"outcome": "Z_REACH", "reason": "Q_BOOKED"}):
-            with self.subTest(proposal=proposal), self.assertRaisesRegex(ValueError, "callback evidence|declared eligible choice"):
-                self.close(state, profile, catalog, maps, proposal)
+        with self.assertRaisesRegex(ValueError, "callback evidence|declared eligible choice"):
+            self.close(state, profile, catalog, maps, {"outcome": "Z_REACH"})
         # No proposal at all: the unreached phase's own fixed row, never another eligible choice.
         self.assertEqual(self.close(state, profile, catalog, maps)[2]["cause_wire"], "Q_UNKNOWN")
+        # A callback claim is decided by the absent callback: the one no_recorded_callback row.
+        self.assertEqual(self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_BOOKED"})[2]["cause_wire"], "Q_UNBOOKED")
         self.assertEqual(self.close(state, profile, catalog, maps, {"outcome": "Z_REACH", "reason": "Q_UNKNOWN"})[2]["cause_wire"], "Q_UNKNOWN")
 
     def test_a_scope_without_an_eligible_choice_never_borrows_another_scopes_choice(self):

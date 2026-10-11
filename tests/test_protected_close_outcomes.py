@@ -55,9 +55,11 @@ class CompiledProtectedOutcomeTests(unittest.TestCase):
             self.session(identity_row("unreached", "promise", actions=("close_call",)))
 
     def test_identity_choice_rows_cannot_use_protected_outcomes(self):
+        # A choice must share its fixed row's outcome, so the open path was a
+        # reasonless protected fixed row refined by matching choices.
         policy, sources, api = synthetic(["verify_identity", "close_call"])
-        add_rule(policy, "identity_close_choices", {"unreached": [{"outcome": "not_reached", "requires": "none"},
-                                                                  {"outcome": "promise", "requires": "none"}]})
+        rule(policy, "identity_close")["value"]["unreached"] = {"outcome": "no_promise"}
+        add_rule(policy, "identity_close_choices", {"unreached": [{"outcome": "no_promise", "reason": "refused", "requires": "none"}]})
         witness(policy, sources)
         with self.assertRaisesRegex(ExecutionRequirementsError, REFUSED):
             compile_execution_requirements(policy, sources, api)

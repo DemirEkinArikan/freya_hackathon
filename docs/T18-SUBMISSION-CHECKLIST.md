@@ -34,8 +34,8 @@ From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
     pass rate, then the shortest elapsed time.
   - **Fallback.** Only a brief without a Plan B export gets the big builder's
     [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix) from `tools/final_attempts.py launch`.
-    Its round 1 is strict high + strict medium. Round 2, relaxed high + relaxed medium,
-    runs only for a brief that round 1 left without a selected attempt, or with a
+    Its round 1 is two strict Claude attempts (`claude-opus-5-5`, `high`). Round 2, two
+    relaxed ones, runs only for a brief that round 1 left without a selected attempt, or with a
     selected deterministic fallback export. `select` picks one by the order declared in
     [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order), which
     prefers a model-plan export, then a strict one. Every attempt stays on disk.
@@ -92,6 +92,10 @@ Fallback runs only:
       removed or edited. A relaxed selection is named as relaxed in the issue 19 post, and a deterministic fallback selection as a fallback. The manifest came from `final_attempts.py manifest`, so it
       has `selections`. `health.jsonl` and every attempt's `launch.json` are in the
       evidence commit.
+- [ ] Each selected run's `builder-source.json` and trace name its provider, model and
+      effort, and its `launch.json` argv (the manifest's `run_command`) passes
+      `--provider` and `--model`. The organizers may rerun it with `FREYA_API_KEY` and
+      their own `ANTHROPIC_API_KEY`; no key is in any evidence file.
 - [ ] A relaxed selection's `trace.jsonl` lists its prompt-enforced limitations: one
       `relaxed_declarations` event with `prompt_enforced_limitations` (each
       `enforced_by: dialogue_prompt`) and `unguarded_close_codes`, the same lists as its
@@ -136,7 +140,8 @@ issue 19 without credentials or transcripts.
   rate.
 - **A brief has no eligible attempt (`select` exits 3).** After round 1, launch
   `--round 2 --labels hidden-N` for that brief alone. If every strict attempt ended
-  on a platform error, launch another `--round 1` instead. After round 2, one more
+  on a platform error (or a Claude API rate-limit or overload error), launch another
+  `--round 1` instead. After round 2, one more
   round may start, no later than 18:45 UTC / 21:45 Istanbul. Each round adds new
   attempt numbers, and every earlier attempt stays. Then run `select` again.
 - **A brief's selected attempt is a deterministic fallback export.** It stays
@@ -147,6 +152,9 @@ issue 19 without credentials or transcripts.
   with `package_submission.py --source-only` code, and state that the other brief
   failed. Never submit an over-time or failed run as eligible. T18 is then not
   complete as specified; record the exact failure.
+- **Claude unavailable (key rejected, API down).** Launch the round with
+  `--providers codex` for the old Codex cells, as the attempt matrix describes.
+  Never put a key in a command line or a file in the repository.
 - **Channel still absent at 19:45 UTC.** Keep the verified ZIP and attachments,
   post the blocker on issue 19 with times, and send nothing to a guessed address.
 - **Upload fails or no receipt.** Retry through the same channel; record each

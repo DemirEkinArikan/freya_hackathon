@@ -282,6 +282,8 @@ def validate_provenance(path, run, events):
     if source.get('files') != _source_files(ROOT):
         raise ValueError('Invocation runtime source inventory differs from the submitted source')
     config = source.get('resolved_config')
+    # The builder's Claude provider (builder/runtime.ClaudeGenerator) records its own audit and catalog.
+    claude = isinstance(config, dict) and config.get('provider') == 'claude'
     if (not isinstance(config, dict) or config.get('mode') != 'live'
             or config.get('controller_dependency_injection') is not False
             or type(config.get('deadline_seconds')) not in (int, float) or config['deadline_seconds'] != 1800
@@ -290,7 +292,7 @@ def validate_provenance(path, run, events):
             or not re.fullmatch(r'3\.11\.[0-9]+', config['python_version'])
             or config.get('python_implementation') != 'CPython'
             or not _nonempty(config.get('model')) or not _nonempty(config.get('codex_executable'))
-            or config.get('reasoning_effort') not in {'low', 'medium', 'high', 'xhigh'}
+            or config.get('reasoning_effort') not in {'low', 'medium', 'high', 'xhigh', *(['max'] if claude else [])}
             or type(config.get('max_repairs')) is not int or config['max_repairs'] != 2):
         raise ValueError('Invocation resolved configuration requires real live Python 3.11 generation and 1800/300 budget')
     if (run.get('model') != config['model'] or run.get('reasoning_effort') != config['reasoning_effort']
@@ -315,39 +317,51 @@ def validate_provenance(path, run, events):
     except (KeyError, TypeError, ValueError):
         raise ValueError('Original source capture timestamp must precede its trace snapshot inside the run') from None
     retry_effort = None  # A recorded policy retry names the effort of the next model call only.
+    models = {config['model']}
     for event in events:
         if _event_name(event) == 'policy_generation_retry':
             retry_effort = event.get('reasoning_effort')
+        elif claude and _event_name(event) == 'model_fallback' and _nonempty(event.get('to_model')):
+            models.add(event['to_model'])  # Recorded before the calls it serves.
         elif _event_name(event) == 'model_call':
-            if event.get('model') != config['model'] or (
+            if event.get('model') not in models or (
                     event.get('reasoning_effort') != config['reasoning_effort']
                     and (retry_effort is None or event.get('reasoning_effort') != retry_effort)):
                 raise ValueError('Trace model calls differ from the invocation generation configuration')
             retry_effort = None
     audits = [event for event in events if _event_name(event) == 'generation_isolation_audit']
     substantive = [event for event in calls if type(event.get('prompt_characters')) is int and event['prompt_characters'] > 0]
+    # The Codex audit is a model call of its own; Claude's checks the request shape with no call.
     if (len(audits) != 1 or events.index(audits[0]) >= events.index(substantive[0])
-            or events.index(audits[0]) <= events.index(calls[0])):
+            or (not claude and events.index(audits[0]) <= events.index(calls[0]))):
         raise ValueError('Mandatory tool-free isolation audit must pass before substantive generation')
     audit = audits[0]
-    if (audit.get('status') != 'pass' or audit.get('failures') != [] or audit.get('canary_exposure') != []
-            or audit.get('response_valid') is not True or audit.get('model_reported_tools') != []
-            or any(type(audit.get(key)) is not int or audit[key] != expected for key, expected in (
-                ('returncode', 0), ('model_reported_tool_count', 0), ('unrecognized_tool_name_count', 0),
-                ('omitted_skill_count', 0), ('completed_turn_count', 1)))
-            or not isinstance(audit.get('observed_item_types'), list)
-            or any(kind not in {'reasoning', 'agent_message', 'error'} for kind in audit['observed_item_types'])
-            or not isinstance(audit.get('model_catalog'), dict)):
+    if claude:  # A Messages API request is the model's whole context: it must carry no tools.
+        failed = audit.get('request_tools') != [] or audit.get('isolation_mode') != 'api_no_tools'
+    else:
+        failed = (audit.get('canary_exposure') != []
+                  or audit.get('response_valid') is not True or audit.get('model_reported_tools') != []
+                  or any(type(audit.get(key)) is not int or audit[key] != expected for key, expected in (
+                      ('returncode', 0), ('model_reported_tool_count', 0), ('unrecognized_tool_name_count', 0),
+                      ('omitted_skill_count', 0), ('completed_turn_count', 1)))
+                  or not isinstance(audit.get('observed_item_types'), list)
+                  or any(kind not in {'reasoning', 'agent_message', 'error'} for kind in audit['observed_item_types']))
+    if failed or audit.get('status') != 'pass' or audit.get('failures') != [] or not isinstance(audit.get('model_catalog'), dict):
         raise ValueError('Mandatory generation isolation audit lacks passing tool-free evidence')
     catalog = audit['model_catalog']
     restrictions = {'shell_type': 'disabled', 'apply_patch_tool_type': None,
                     'experimental_supported_tools': [], 'node_repl_disabled': True,
                     'tool_mode': 'direct', 'supports_search_tool': False}
+    if claude:
+        unrestricted = (catalog.get('source') != 'anthropic_messages_api' or catalog.get('tools') != []
+                        or catalog.get('isolation_mode') != 'api_no_tools')
+    else:
+        unrestricted = (catalog.get('source') != 'installed_cli_bundled'
+                        or digest(catalog.get('restricted_capabilities')) != digest(restrictions))
     catalog_events = [event for event in events if _event_name(event) == 'generation_model_catalog']
-    if (catalog.get('source') != 'installed_cli_bundled' or catalog.get('model') != config['model']
-            or digest(catalog.get('restricted_capabilities')) != digest(restrictions)
+    if (unrestricted or catalog.get('model') != config['model']
             or any(not isinstance(catalog.get(key), str) or not re.fullmatch(r'[0-9a-f]{64}', catalog[key])
-                   for key in ('source_model_sha256', 'generation_catalog_sha256'))
+                   for key in ('generation_catalog_sha256', *([] if claude else ['source_model_sha256'])))
             or len(catalog_events) != len(substantive)
             or any(digest({key: event.get(key) for key in catalog}) != digest(catalog) for event in catalog_events)):
         raise ValueError('Generation model catalog differs from the tool-free audit/configuration')

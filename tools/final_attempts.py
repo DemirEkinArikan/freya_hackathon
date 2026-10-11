@@ -2,12 +2,15 @@
 """T18 final window: parallel builder attempts per hidden brief, declared-order selection.
 
 launch    Start one round of the attempt matrix per label from this frozen checkout,
-          interleaved and --stagger-seconds apart. Round 1 is strict high + strict
-          medium; round 2, only where round 1 left no selected attempt, is relaxed high
-          + relaxed medium (the builder's relaxed declaration option). Each attempt is
-          one unattended builder/build.py run with its own output directory and new
-          slot, inside the builder's own 1,800-second deadline. Attempts are spread over
-          the logged-in Codex accounts, and a staging health probe before each start is recorded.
+          interleaved and --stagger-seconds apart. Every attempt runs Claude
+          (--provider claude --model claude-opus-5-5) with ANTHROPIC_API_KEY from
+          ~/.freya-anthropic-key. Round 1 is two strict attempts; round 2, only where
+          round 1 left no selected attempt, is two relaxed attempts (the builder's relaxed
+          declaration option). The old Codex cells (high + medium) run only with
+          --providers claude codex, spread over the logged-in Codex accounts. Each attempt
+          is one unattended builder/build.py run with its own output directory and new
+          slot, inside the builder's own 1,800-second deadline. A staging health probe
+          before each start is recorded.
 select    Rank every attempt of a label by package_submission.ATTEMPT_ORDER and write
           artifacts/final/<label>/selection.json. Exit 2 while an attempt still runs,
           3 when no attempt is eligible. Attempt directories are never changed.
@@ -19,6 +22,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -41,8 +45,12 @@ from tools import verify_submission_bundle as verifier
 FINAL = 'artifacts/final'
 LABELS = ('hidden-1', 'hidden-2')
 DIAGNOSTIC_EVENTS = {'policy_validation', 'validation', 'policy_format_validation', 'workflow_format_validation'}
-# Tonight's attempt matrix per brief: (declaration mode, reasoning effort) for each round.
-ROUNDS = {1: (('strict', 'high'), ('strict', 'medium')), 2: (('relaxed', 'high'), ('relaxed', 'medium'))}
+# Tonight's attempt matrix per brief: (provider, declaration mode, reasoning effort) for each round.
+# Claude everywhere (founder, 18:05 Istanbul): the Codex cells run only with --providers ... codex.
+# high is the strongest Claude effort that fits 30 minutes: the first policy call on public A+B took 353 s
+# at high and 808 s at xhigh, against the builder's 900 s policy cap; max returned no policy (issue 19).
+ROUNDS = {1: (('claude', 'strict', 'high'), ('claude', 'strict', 'high'), ('codex', 'strict', 'high'), ('codex', 'strict', 'medium')),
+          2: (('claude', 'relaxed', 'high'), ('claude', 'relaxed', 'high'), ('codex', 'relaxed', 'high'), ('codex', 'relaxed', 'medium'))}
 
 
 def _spec():
@@ -95,6 +103,12 @@ def _env(env_file):
     load_local_environment(env_file, env)
     env.pop('OPENAI_API_KEY', None)
     return env
+
+
+def _anthropic_key(env):
+    """The Claude API key: ~/.freya-anthropic-key, else ANTHROPIC_API_KEY. Never printed or recorded."""
+    path = Path.home() / '.freya-anthropic-key'
+    return (path.read_text(encoding='utf-8').strip() if path.is_file() else '') or env.get('ANTHROPIC_API_KEY', '').strip()
 
 
 def _codex_builds():
@@ -156,7 +170,8 @@ def evaluate(directory, inputs):
     policy = _read(run_dir / 'policy.json', package.strict_json) if run_dir else None
     declared = policy.get('unsupported_constraints') if isinstance(policy, dict) else None
     launched = _read(directory / 'launch.json', json.loads) or {}
-    entry = {'attempt': int(directory.name[8:]), 'mode': launched.get('mode'), 'reasoning_effort': launched.get('reasoning_effort'),
+    entry = {'attempt': int(directory.name[8:]), 'provider': launched.get('provider'), 'mode': launched.get('mode'),
+             'reasoning_effort': launched.get('reasoning_effort'),
              'run': run_dir.relative_to(ROOT).as_posix() if run_dir else None,
              'status': 'running' if running else run.get('status') if run else 'no_manifest',
              'exported': False, 'local_validation': False, 'package_validation': False,
@@ -199,45 +214,58 @@ def launch(args):
     relaxed = _relaxed_option() if args.round == 2 else []
     if relaxed is None:
         raise ValueError('This builder has no relaxed declaration option, so round 2 cannot run from this checkout')
+    cells = [cell for cell in ROUNDS[args.round] if cell[0] in args.providers]
+    choices = {action.dest: action.choices or () for action in builder_parser()._actions}
+    if any(provider not in choices.get('provider', ()) or effort not in choices['reasoning_effort'] for provider, _, effort in cells):
+        raise ValueError('This builder cannot run every attempt of the round (--provider or effort missing); '
+                         'freeze a commit with the Claude generator')
     env = _env(args.env_file)
     if not env.get('FREYA_API_KEY', '').strip():
         raise ValueError('FREYA_API_KEY is not available to the builders')
-    if shutil.which('codex', path=env.get('PATH')) is None:
+    key = _anthropic_key(env) if 'claude' in args.providers else ''
+    if 'claude' in args.providers and (not key or importlib.util.find_spec('anthropic') is None):
+        raise ValueError('Claude attempts need ~/.freya-anthropic-key (or ANTHROPIC_API_KEY) and the anthropic package')
+    if 'codex' in args.providers and shutil.which('codex', path=env.get('PATH')) is None:
         raise ValueError('The Codex CLI is not on PATH')
     running = sum(_state(directory)[4] for label in LABELS for directory in _attempts(label))
-    requested = len(ROUNDS[args.round]) * len(args.labels)
+    requested = len(cells) * len(args.labels)
     if running + requested > args.max_running:
         raise ValueError(f'{running} builders are running; {requested} more would exceed --max-running {args.max_running}')
     accounts = _codex_accounts()
     # Interleaved and spread, so one platform blip cannot reach every attempt at the same moment.
-    for index, ((mode, effort), label) in enumerate((cell, label) for cell in ROUNDS[args.round] for label in args.labels):
+    for index, ((provider, mode, effort), label) in enumerate((cell, label) for cell in cells for label in args.labels):
         if index:
             time.sleep(args.stagger_seconds)
         inputs, existing = spec[label], _attempts(label)
         number = int(existing[-1].name[8:]) + 1 if existing else 1
-        # A brief's attempts of one round use different accounts, so one account's outage cannot fail the brief.
-        account = accounts[(number - 1 + LABELS.index(label)) % len(accounts)] if accounts else None
+        # A brief's Codex attempts of one round use different accounts, so one account's outage cannot fail the brief.
+        account = accounts[(number - 1 + LABELS.index(label)) % len(accounts)] if provider == 'codex' and accounts else None
         relative = f'{FINAL}/{label}/attempt-{number}'
         (ROOT / relative).mkdir(parents=True)  # Never reuses an attempt directory.
         health = _probe(env)
         started = dt.datetime.now(dt.timezone.utc)
+        model = args.model if provider == 'claude' else args.codex_model
         argv = [sys.executable, 'builder/build.py', *(item for brief in inputs['briefs'] for item in ('--brief', brief)),
                 '--tool-api', inputs['tool_api'], '--output-dir', relative,
                 '--slot', f'final-{label}-a{number}-{started:%Y%m%dT%H%M%SZ}',
-                '--simulation-lease', str(args.simulation_lease),
-                '--model', args.model, '--reasoning-effort', effort, *(relaxed if mode == 'relaxed' else [])]
+                '--simulation-lease', str(args.simulation_lease), '--provider', provider,
+                '--model', model, '--reasoning-effort', effort, *(relaxed if mode == 'relaxed' else [])]
         builds = _codex_builds()
+        # A Claude attempt gets the key and no Codex account; the key is never printed or recorded.
+        extra = {'ANTHROPIC_API_KEY': key} if provider == 'claude' else {'CODEX_HOME': str(account)} if account else {}
         with open(ROOT / relative / 'builder.log', 'wb') as log:
-            process = subprocess.Popen(argv, cwd=ROOT, env={**env, 'CODEX_HOME': str(account)} if account else env,
+            process = subprocess.Popen(argv, cwd=ROOT, env={**env, **extra},
                                        stdin=subprocess.DEVNULL, stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
-        record = {'label': label, 'attempt': number, 'round': args.round, 'mode': mode, 'reasoning_effort': effort,
+        record = {'label': label, 'attempt': number, 'round': args.round, 'provider': provider, 'model': model,
+                  'mode': mode, 'reasoning_effort': effort,
                   'pid': process.pid, 'started_at': started.isoformat(), 'argv': argv,
                   'codex_account': account.name if account else None,
                   'builder_processes_before_start': builds, 'staging_health': health}
         (ROOT / relative / 'launch.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
-        print(json.dumps({'label': label, 'attempt': number, 'mode': mode, 'reasoning_effort': effort, 'pid': process.pid,
-                          'codex_account': record['codex_account'], 'output_dir': relative, 'staging_health': health}),
+        print(json.dumps({'label': label, 'attempt': number, 'provider': provider, 'mode': mode, 'reasoning_effort': effort,
+                          'pid': process.pid, 'codex_account': record['codex_account'], 'output_dir': relative,
+                          'staging_health': health}),
               flush=True)
     return 0
 
@@ -253,7 +281,7 @@ def select(args):
         for directory in directories:
             entry, notes = evaluate(directory, spec[label])
             entries.append(entry)
-            print(json.dumps({'label': label, **{key: entry[key] for key in ('attempt', 'status', 'reasoning_effort',
+            print(json.dumps({'label': label, **{key: entry[key] for key in ('attempt', 'status', 'provider', 'reasoning_effort',
                                                                               *package.ATTEMPT_ORDER)}, 'notes': notes}))
         if any(entry['status'] == 'running' for entry in entries):
             print(json.dumps({'label': label, 'selection': 'waiting for running attempts'}))
@@ -305,11 +333,14 @@ def main(argv=None):
     commands = parser.add_subparsers(dest='command', required=True)
     start = commands.add_parser('launch')
     start.add_argument('--env-file', type=Path, required=True, help="Private .env, read by the data-only parser")
-    start.add_argument('--model', required=True)
+    start.add_argument('--model', default='claude-opus-5-5', help='Model of the Claude attempts')
+    start.add_argument('--providers', nargs='+', choices=('claude', 'codex'), default=['claude'],
+                       help='Claude everywhere by default; add codex for the optional Codex cells (high + medium)')
+    start.add_argument('--codex-model', default='gpt-6.1-sol', help='Model of the optional Codex attempts')
     start.add_argument('--simulation-lease', type=Path, required=True)
     start.add_argument('--round', type=int, required=True, choices=sorted(ROUNDS),
-                       help='1: strict high + strict medium per label; 2: relaxed high + relaxed medium, only after round 1')
-    start.add_argument('--max-running', type=int, default=6, help='Machine cap on concurrently running builders')
+                       help='1: two strict Claude attempts per label; 2: two relaxed ones, only after round 1')
+    start.add_argument('--max-running', type=int, default=8, help='Machine cap on concurrently running builders')
     start.add_argument('--stagger-seconds', type=float, default=60, help='Pause between consecutive starts')
     start.add_argument('--labels', nargs='+', choices=LABELS, default=list(LABELS))
     pick = commands.add_parser('select')

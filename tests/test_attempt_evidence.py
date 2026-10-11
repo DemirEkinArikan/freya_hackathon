@@ -91,8 +91,9 @@ class AttemptEvidenceTests(unittest.TestCase):
         for path, proposed in zip(paths, (first_plan, final_plan)):
             self.assertEqual(read(path / "plan.json"), proposed)
             self.assertEqual(read(path / "guard-context.json")["plan"], proposed)
-            self.assertEqual(read(path / "deployment.json")["workflow"]["nodes"]["start"]["task_message"],
-                             proposed["nodes"]["start"]["task_message"])
+            # The compiler appends the kit's per-node tool rule after the authored text.
+            self.assertTrue(read(path / "deployment.json")["workflow"]["nodes"]["start"]["task_message"].startswith(
+                proposed["nodes"]["start"]["task_message"] + "\n\n"))
         self.assertEqual(read(run / "benchmark-results.json"), read(paths[1] / "tests.json"))
         self.assertEqual(read(run / "plan.json"), final_plan)
         self.assertEqual(result["selected_attempt"], 2)

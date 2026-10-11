@@ -2,20 +2,23 @@
 """Independent check of a phone agent on the final case: our own reading of the bank's documents, not the builder's.
 
     python3 tools/case_folder.py <case folder or .zip> <bundle>       # the documents as text, once
-    export ANTHROPIC_API_KEY=...                                       # never print it; needs the anthropic SDK 1.x
+    # Claude steps: ANTHROPIC_API_KEY in the environment (never printed) and the anthropic SDK 1.x
     python3 tools/independent_check.py rules <bundle> --out <dir>      # 1. rules.json + rules.md
     python3 tools/independent_check.py cases <bundle> --out <dir>      # 2. cases.json + cases.md (reads <dir>/rules.json)
-    FREYA_BANK_HOST=<mock url> python3 build-the-builder/tools/run_cases.py <agent_id> --cases <dir>/cases.json --out <dir>/run.json
-    python3 tools/independent_check.py grade <bundle> --out <dir> --run <dir>/run.json --mock-url <mock url> \
-        [--cases <dir>/cases.json] [--env-file <main checkout>/.env]  # 3 + 4. report.md + report.json
+    # one simulation per scenario, holding the workspace lease (planb/freya.py), FREYA_SIM_CONCURRENCY at most 10:
+    FREYA_LEASE=<main checkout>/artifacts/.simulation.lock FREYA_BANK_HOST=<mock url> FREYA_SIM_CONCURRENCY=10 \
+        python3 planb/tools/run_cases.py <agent_id> --cases <dir>/cases-<scenario>.json --out <dir>/run-<scenario>.json
+    python3 tools/independent_check.py grade <bundle> --out <dir>/<scenario> --rules <dir>/rules.json --run <dir>/run-<scenario>.json \
+        --mock-url <mock url> --cases <dir>/cases-<scenario>.json [--env-file <main checkout>/.env]   # 3 + 4. report.md + report.json
 
 1. rules: a numbered checklist of every rule in the documents, each with an exact quote; code marks every quote it
    cannot find verbatim. 2. cases: for every test customer, six scenarios (cooperative, wrong_answer, third_party,
    pressure, injection, correction) in the public-test-set.json format: the expected bank records and the judge's
-   checks, each check citing its rule. A case id is <customer id>-<scenario> and `customer` names the test customer,
-   so the mock can map a case to its customer. 3. grade: every call of a run_cases.py result file, from its
-   transcript (GET /api/v2/call/{callId}) and the mock's records for the customer (GET <mock>/v1/practice/ledger/<id>,
-   as build-the-builder/tools/score.py reads them): outcome (the kit's score_ledger against our expected records, and
+   checks, each check citing its rule. cases.json holds every case as <customer id>-<scenario>; cases-<scenario>.json
+   holds one scenario under the customers' own ids, which our mock's practice sessions know, so run_cases.py runs it
+   against the mock as it is. 3. grade: every call of a run_cases.py result file, from its transcript
+   (GET /api/v2/call/{callId}) and the mock's records for the customer (GET <mock>/v1/practice/ledger/<id>, as
+   build-the-builder/tools/score.py reads them): outcome (the kit's score_ledger against our expected records, and
    Claude), policy per rule, honesty, and flow similarity to the example conversations. Without --cases, calls are
    graded on the rules alone. 4. report.md and report.json: per check, per rule and per case, worst violations first.
    A call passes only when outcome, policy and honesty all pass. rules.md and cases.md are our reading, not answers:
@@ -24,7 +27,9 @@
 Independence: it reads only the case documents (a tools/case_folder.py bundle, or a folder of text files) and, when
 grading, the transcripts without workflow internals (no code steps, routing or node names) and the mock's records.
 It never reads the builder's workflow, prompts or self-test cases, and it ignores the pass/fail fields of the run
-file. Claude: claude-opus-5-5 at effort max with server-side refusal fallback; prompts in independent_check_prompts.md.
+file. Claude: claude-opus-5-5 at effort max (CHECK_EFFORT=xhigh only when a step cannot finish in time) with server-side
+refusal fallback; prompts in independent_check_prompts.md. It shares the Anthropic key and rate limits with the builder:
+eight calls run at once, so start a large grading outside the builder's 30-minute run.
 """
 from __future__ import annotations
 
@@ -34,6 +39,7 @@ import json
 import os
 import re
 import sys
+import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -44,11 +50,12 @@ KIT = ROOT / "build-the-builder"
 sys.path.insert(0, str(ROOT))
 sys.path += [str(KIT), str(KIT / "tools")]   # the kit's freya.py and score.py
 MODEL = "claude-opus-5-5"
+EFFORT = os.environ.get("CHECK_EFFORT", "max")   # the highest; xhigh only when a step cannot finish in time
 SCENARIOS = ("cooperative", "wrong_answer", "third_party", "pressure", "injection", "correction")
 TEXT = {".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".svg", ".html", ".htm", ".mmd", ".drawio"}
 IMAGE = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
 CACHE = {"type": "ephemeral", "ttl": "1h"}   # the documents and the checklist are the same prefix for every call
-WORKERS = 6
+WORKERS = 8
 DATE, TIME = re.compile(r"\d{4}-\d{2}-\d{2}"), re.compile(r"\d{2}:\d{2}")
 QUOTES = str.maketrans({"“": '"', "”": '"', "„": '"', "‘": "'", "’": "'", "–": "-", "—": "-"})
 SHAPE = {"id": str, "customer": str, "scenario": str, "brief": str, "family": str, "level": str, "title": str,
@@ -106,11 +113,13 @@ def ask(client, docs, task, extra=(), data="", check=lambda out: []):
     content = [*docs, *({"type": "text", "text": t, "cache_control": CACHE} for t in extra),
                {"type": "text", "text": PROMPTS[task] + data}]
     messages, out, problems = [{"role": "user", "content": content}], None, []
-    for _ in range(2):
+    for attempt in (1, 2):
+        start = time.time()
         with client.beta.messages.stream(model=MODEL, max_tokens=128000, system=PROMPTS["system"], messages=messages,
-                                         output_config={"effort": "max"}, betas=["server-side-fallback-2026-07-01"],
+                                         output_config={"effort": EFFORT}, betas=["server-side-fallback-2026-07-01"],
                                          fallbacks="default") as stream:
             reply = stream.get_final_message()
+        print(f"{task}: Claude answered (attempt {attempt}) in {time.time() - start:.0f} s, {reply.usage.output_tokens} output tokens", file=sys.stderr)
         if reply.stop_reason == "refusal":
             raise RuntimeError(f"{task}: Claude declined the request")
         text = "".join(b.text for b in reply.content if b.type == "text")
@@ -147,26 +156,21 @@ def checklist(rules):
     return "RULE CHECKLIST (our independent reading of the documents):\n" + json.dumps(rules["rules"], indent=1, ensure_ascii=False)
 
 
-def rule_problems(out, docs_norm):
+def rule_problems(out):   # quotes are checked after the reply and flagged for a person, never sent back (a full re-run)
     ids = [r["id"] for r in out["rules"]]
     problems = [] if ids and len(set(ids)) == len(ids) else ["rule ids must be present and unique"]
-    for r in out["rules"]:
-        missing = [k for k in ("rule", "check", "source", "quote") if not r.get(k)]
-        if missing:
-            problems.append(f"{r['id']}: missing {', '.join(missing)}")
-        elif not found(r["quote"], docs_norm):
-            problems.append(f"{r['id']}: the quote is not verbatim in the documents: {r['quote'][:150]!r}")
-    return problems
+    return problems + [f"{r['id']}: missing {', '.join(k for k in ('rule', 'check', 'source', 'quote') if not r.get(k))}"
+                       for r in out["rules"] if not all(r.get(k) for k in ("rule", "check", "source", "quote"))]
 
 
 def cmd_rules(a, client):
     docs, docs_norm, skipped = load_bundle(a.bundle)
-    out, problems = ask(client, docs, "rules", check=lambda o: rule_problems(o, docs_norm))
+    out, problems = ask(client, docs, "rules", check=rule_problems)
     for r in out["rules"]:
         r["quote_found"] = found(r.get("quote"), docs_norm)
     out.update(bundle=str(a.bundle), model=MODEL, documents_not_read=skipped, problems_left=problems)
     write(a.out, "rules.json", out)
-    md = ["# Rule checklist (independent reading)", "", f"From `{a.bundle}` by {MODEL} (effort max). Check every rule "
+    md = ["# Rule checklist (independent reading)", "", f"From `{a.bundle}` by {MODEL} (effort {EFFORT}). Check every rule "
           "against its quote. Found = NO: code could not find the quote verbatim, so check that rule by hand.", "",
           "| Rule | Category | Rule | Applies when | Source | Quote | Replaces | Found |", "|---|---|---|---|---|---|---|---|"]
     md += [row(r["id"], r.get("category"), r.get("rule"), r.get("applies_when"), r.get("source"), r.get("quote"), r.get("replaces"),
@@ -177,7 +181,7 @@ def cmd_rules(a, client):
     print(f"{len(out['rules'])} rules, {sum(not r['quote_found'] for r in out['rules'])} quotes not found -> {Path(a.out) / 'rules.md'}")
 
 
-def case_problems(c, rule_ids):
+def case_problems(c):
     problems = [f"{k} is not a {t.__name__}" for k, t in SHAPE.items() if not isinstance(c.get(k), t)]
     if problems:
         return problems
@@ -197,7 +201,6 @@ def case_problems(c, rule_ids):
     problems += [f"transfer {t} needs a queue" for t in e["transfers"] if not (isinstance(t, dict) and t.get("queue"))]
     if not c["checks"] or not all(isinstance(x, str) and x.strip() for x in c["checks"]):
         problems.append("checks must be non-empty strings")
-    problems += [f"a check cites unknown rule {r}" for r in sorted(set(re.findall(r"\[(R\d+)\]", " ".join(map(str, c["checks"])))) - rule_ids)]
     if c["scenario"] not in SCENARIOS:
         problems.append(f"unknown scenario {c['scenario']}")
     if (c["scenario"] == "third_party") != (c.get("third_party") is True or c["family"] == "Third party"):
@@ -205,36 +208,40 @@ def case_problems(c, rule_ids):
     return problems
 
 
-def cases_problems(out, customer, rule_ids):
-    problems = [f"{c.get('id')}: {p}" for c in out["cases"] for p in case_problems(c, rule_ids)]
-    problems += [f"{c.get('id')}: customer must be {customer}" for c in out["cases"] if c.get("customer") != customer]
-    missing = set(SCENARIOS) - {c.get("scenario") for c in out["cases"]}
-    return problems + ([f"no case for scenarios {sorted(missing)}"] if missing else [])
+def scenario_problems(case, customer, scenario):
+    wrong = (case.get("customer"), case.get("scenario"), case.get("id")) != (customer, scenario, f"{customer}-{scenario}")
+    return case_problems(case) + ([f"customer, scenario and id must be {customer}, {scenario} and {customer}-{scenario}"] if wrong else [])
 
 
 def cmd_cases(a, client):
     docs, _, _ = load_bundle(a.bundle)
     rules = json.loads(Path(a.rules or Path(a.out) / "rules.json").read_text(encoding="utf-8"))
-    rule_ids = {r["id"] for r in rules["rules"]}
     found_customers, _ = ask(client, docs, "customers",
                              check=lambda o: [] if o["customers"] and all(c.get("id") for c in o["customers"]) else ["every customer needs an id"])
 
-    def one(customer):
-        data = f"\n\nCALL DATE FROM THE DOCUMENTS: {found_customers.get('call_date')}\n\nTEST CUSTOMER:\n" + json.dumps(customer, indent=1, ensure_ascii=False)
-        out, problems = ask(client, docs, "cases", [checklist(rules)], data, lambda o: cases_problems(o, str(customer["id"]), rule_ids))
-        return [c for c in out["cases"] if isinstance(c, dict) and not case_problems(c, rule_ids) and c["customer"] == str(customer["id"])], problems
+    def one(job):   # one call per customer and scenario: short answers, and a failure costs one case
+        customer, scenario = job
+        data = (f"\n\nCALL DATE FROM THE DOCUMENTS: {found_customers.get('call_date')}\n\nSCENARIO: {scenario}\n\nTEST CUSTOMER:\n"
+                + json.dumps(customer, indent=1, ensure_ascii=False))
+        try:
+            out, problems = ask(client, docs, "cases", [checklist(rules)], data, lambda o: scenario_problems(o["case"], str(customer["id"]), scenario))
+        except Exception as e:   # one failed call costs one case, not the others
+            return None, [f"{type(e).__name__}: {e}"]
+        return (None if problems else out["case"]), problems
 
+    jobs = [(c, s) for c in found_customers["customers"] for s in SCENARIOS]
     with ThreadPoolExecutor(WORKERS) as pool:
-        results = list(pool.map(one, found_customers["customers"]))
-    cases, seen = [], set()
-    for (good, problems), customer in zip(results, found_customers["customers"]):
+        results = list(pool.map(one, jobs))
+    cases = [case for case, _ in results if case]
+    for s in SCENARIOS:   # runnable files: the mock's practice sessions know a test customer by its own id
+        write(a.out, f"cases-{s}.json", [dict(c, id=c["customer"]) for c in cases if c["scenario"] == s])
+    for (customer, scenario), (_, problems) in zip(jobs, results):
         for p in problems:
-            print(f"warning: {customer['id']}: {p} (invalid cases are left out)", file=sys.stderr)
-        cases += [c for c in good if c["id"] not in seen and not seen.add(c["id"])]
+            print(f"warning: {customer['id']}-{scenario} left out: {p}", file=sys.stderr)
     write(a.out, "customers.json", found_customers)
     write(a.out, "cases.json", cases)
     md = ["# Scenario cases (independent reading)", "", f"{len(cases)} cases for {len(found_customers['customers'])} test customers "
-          f"from `{a.bundle}` by {MODEL} (effort max). The expected records and checks are our reading of the rules, not "
+          f"from `{a.bundle}` by {MODEL} (effort {EFFORT}). The expected records and checks are our reading of the rules, not "
           "answers: correct them by hand before trusting a grade.", ""]
     for c in cases:
         e = c["expected"]
@@ -243,7 +250,7 @@ def cmd_cases(a, client):
                *(f"- expected {k}: {json.dumps(x, ensure_ascii=False)}" for k, x in e.items() if k not in ("outcome", "reason") and x),
                "- checks:", *(f"  - {x}" for x in c["checks"]), *(f"- assumption: {x}" for x in c.get("assumptions") or []), ""]
     write(a.out, "cases.md", "\n".join(md))
-    print(f"{len(cases)} cases -> {Path(a.out) / 'cases.json'}; review {Path(a.out) / 'cases.md'}")
+    print(f"{len(cases)} cases -> {Path(a.out) / 'cases.json'} and cases-<scenario>.json; review {Path(a.out) / 'cases.md'}")
 
 
 def transcript(call):
@@ -370,7 +377,7 @@ def severity(v):
 
 
 def report(results, rules, run, a):
-    text = {r["id"]: r["rule"] for r in rules["rules"]}
+    text = {r["id"]: r.get("rule", "") for r in rules["rules"]}
     per_rule, by_case = {}, {}
     for res in results:
         by_case.setdefault(res["case"], []).append(res["pass"])
@@ -386,7 +393,7 @@ def report(results, rules, run, a):
                    for f in res["records_check"]["failed"]]
     flows = [(res["grade"].get("flow") or {}).get("similarity") for res in results]
     flows = [f for f in flows if isinstance(f, (int, float))]
-    return {"summary": {"run": str(a.run), "agent_id": run.get("agent_id"), "simulation_id": run.get("simulation_id"), "model": MODEL,
+    return {"summary": {"run": str(a.run), "agent_id": run.get("agent_id"), "simulation_id": run.get("simulation_id"), "model": MODEL, "effort": EFFORT,
                         "calls": len(results), "calls_passed": sum(r["pass"] for r in results),
                         "checks_passed": {k: sum(r[k] for r in results) for k in ("outcome", "policy", "honesty")},
                         "cases": len(by_case), "cases_passed_every_run": sum(all(v) for v in by_case.values()),
@@ -400,7 +407,7 @@ def report(results, rules, run, a):
 def markdown(rep):
     s, mark = rep["summary"], lambda ok: "pass" if ok else "FAIL"
     md = ["# Independent check report", "", f"Run `{s['run']}` (agent {s['agent_id']}, simulation {s['simulation_id']}), graded by "
-          f"{s['model']} (effort max) against our rule checklist. The run file's own pass/fail was not used.", "",
+          f"{s['model']} (effort {s['effort']}) against our rule checklist. The run file's own pass/fail was not used.", "",
           f"**{s['calls_passed']} of {s['calls']} calls pass** outcome, policy and honesty. "
           f"**{s['cases_passed_every_run']} of {s['cases']} cases** pass in every run.", "",
           "| Check | Pass | Fail |", "|---|---|---|",
@@ -431,7 +438,7 @@ def main(argv=None):
     g = sub.choices["grade"]
     g.add_argument("--run", required=True, help="run_cases.py --out file with the call ids")
     g.add_argument("--mock-url", required=True, help="the bank mock the calls used")
-    g.add_argument("--cases", help="cases.json from the cases step (without it: grade on the rules alone)")
+    g.add_argument("--cases", help="the cases file the run used, from the cases step (without it: grade on the rules alone)")
     g.add_argument("--env-file", default=str(ROOT / ".env"), help="credential file for FREYA_API_KEY and FREYA_BANK_TEAM_KEY")
     a = ap.parse_args(argv)
     import anthropic

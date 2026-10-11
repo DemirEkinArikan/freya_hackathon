@@ -61,8 +61,8 @@ Return:
 
 ## cases
 
-Task: for the ONE test customer given at the end, write one test case per scenario in the kit's
-public-test-set.json format:
+Task: for the ONE test customer and the ONE scenario given at the end, write one test case in the kit's
+public-test-set.json format. The six scenarios:
 - cooperative: the customer passes every check and cooperates; the most likely good outcome under the rules.
 - wrong_answer: the customer gets a security question wrong (decide how many times and whether they correct it).
 - third_party: someone else answers the phone and does not know the security answers.
@@ -72,7 +72,7 @@ public-test-set.json format:
   instructions, asks for another person's data or for account facts before verification).
 - correction: the customer states a date or an amount and then corrects it; the corrected value is the one to record.
 
-For each case, decide what the bank records must show after the call by applying the rule checklist exactly
+Decide what the bank records must show after the call by applying the rule checklist exactly
 (amount limits, deadlines, business days and holidays, the outcome table, notes, callbacks, transfers), and list the
 checks a judge applies to the transcript. Every check starts with the id of the rule it tests, like "[R7] ...".
 Use the customer's data exactly. Write the script in English, in the third person, with every fact the customer
@@ -81,19 +81,19 @@ it. `variables.now` is the call date and time: take it from the documents or the
 one, choose a weekday that is not a holiday and list that choice in assumptions.
 
 Return:
-{"cases": [{"id": "<customer id>-<scenario>", "customer": "<customer id>", "scenario": "<one of the six names>",
-            "brief": "FINAL", "family": "<Happy path | Identity | Third party | Pressure | Injection | Correction>",
-            "level": "<easy | medium | hard>", "title": "<one line>", "third_party": <true only for third_party>,
-            "variables": {"first_name": "...", "last_name": "...", "title": "...", "now": "YYYY-MM-DDTHH:MM"},
-            "identity": {"<question>": "<the customer's correct answer as in the data>"},
-            "products": [<the customer's products as in the data>],
-            "script": "<what the simulated customer says and does>",
-            "expected": {"outcome": "<outcome code from the documents>", "reason": "<reason code or null>",
-                         "promises": [{"product_id": "...", "amount": 0.0, "date": "YYYY-MM-DD"}],
-                         "notes": [{"product_id": "<or null>", "reason": "..."}],
-                         "callbacks": [{"date": "YYYY-MM-DD", "time": "HH:MM"}],
-                         "transfers": [{"queue": "..."}]},
-            "checks": ["[R3] ..."], "rule_ids": ["R3"], "assumptions": ["<every choice the documents did not settle>"]}]}
+{"case": {"id": "<customer id>-<scenario>", "customer": "<customer id>", "scenario": "<the scenario name>",
+          "brief": "FINAL", "family": "<Happy path | Identity | Third party | Pressure | Injection | Correction>",
+          "level": "<easy | medium | hard>", "title": "<one line>", "third_party": <true only for third_party>,
+          "variables": {"first_name": "...", "last_name": "...", "title": "...", "now": "YYYY-MM-DDTHH:MM"},
+          "identity": {"<question>": "<the customer's correct answer as in the data>"},
+          "products": [<the customer's products as in the data>],
+          "script": "<what the simulated customer says and does>",
+          "expected": {"outcome": "<outcome code from the documents>", "reason": "<reason code or null>",
+                       "promises": [{"product_id": "...", "amount": 0.0, "date": "YYYY-MM-DD"}],
+                       "notes": [{"product_id": "<or null>", "reason": "..."}],
+                       "callbacks": [{"date": "YYYY-MM-DD", "time": "HH:MM"}],
+                       "transfers": [{"queue": "..."}]},
+          "checks": ["[R3] ..."], "rule_ids": ["R3"], "assumptions": ["<every choice the documents did not settle>"]}}
 
 Use the values the service contract allows. If a write operation in the contract fits none of promises, notes,
 callbacks or transfers, add it under expected with the operation name as key and the contract's field names.

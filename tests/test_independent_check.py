@@ -51,7 +51,8 @@ class FakeClaude:
     def stream(self, **request):
         self.requests.append(request)
         text = self.answer(request)
-        yield SimpleNamespace(get_final_message=lambda: SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)]))
+        yield SimpleNamespace(get_final_message=lambda: SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(type="text", text=text)],
+                                                            usage=SimpleNamespace(output_tokens=len(text))))
 
 
 def task_text(request):
@@ -106,24 +107,25 @@ class IndependentCheckTests(unittest.TestCase):
         self.assertFalse(ic.found("Promises may be up to 30 days away.", docs_norm))
         self.assertFalse(ic.found("", docs_norm))
 
-    def test_rules_sends_unverifiable_quotes_back_once_and_writes_the_checklist(self):
-        bad = json.loads(json.dumps(RULES))
-        bad["rules"][1]["quote"] = "Identity is checked with three questions."
+    def test_rules_sends_a_broken_reply_back_once_and_flags_quotes_it_cannot_find(self):
+        broken, unverifiable = json.loads(json.dumps(RULES)), json.loads(json.dumps(RULES))
+        del broken["rules"][1]["check"]
+        unverifiable["rules"][1]["quote"] = "Identity is checked with three questions."
 
         def answer(request):
-            return json.dumps(RULES if len(request["messages"]) > 1 else bad)
+            return json.dumps(unverifiable if len(request["messages"]) > 1 else broken)
 
         client = FakeClaude(answer)
         ic.cmd_rules(self.args(), client)
         self.assertEqual(len(client.requests), 2)
-        self.assertIn("R2: the quote is not verbatim", client.requests[1]["messages"][-1]["content"])
+        self.assertIn("R2: missing check", client.requests[1]["messages"][-1]["content"])
         first = client.requests[0]
         self.assertEqual((first["model"], first["output_config"], first["fallbacks"]), ("claude-opus-5-5", {"effort": "max"}, "default"))
         self.assertIn("Task: write the complete checklist", task_text(first))
         rules = json.loads((self.out / "rules.json").read_text())
-        self.assertEqual([r["quote_found"] for r in rules["rules"]], [True, True])
+        self.assertEqual([r["quote_found"] for r in rules["rules"]], [True, False])
         self.assertEqual((rules["problems_left"], rules["documents_not_read"]), ([], ["blob.bin"]))
-        self.assertIn("| R2 | identity |", (self.out / "rules.md").read_text())
+        self.assertRegex((self.out / "rules.md").read_text(), r"\| R2 \| identity \|.*\| NO \|")
 
     def test_cases_cover_every_scenario_and_run_with_the_kit_runner(self):
         ic.write(self.out, "rules.json", RULES)
@@ -133,19 +135,28 @@ class IndependentCheckTests(unittest.TestCase):
             if "list every test customer" in text:
                 return json.dumps(CUSTOMERS)
             customer = json.loads(text.split("TEST CUSTOMER:\n", 1)[1])
-            cases = make_cases(customer)
-            if customer["id"] == "C-2" and len(request["messages"]) == 1:
-                del cases[0]["expected"]   # the first answer for C-2 is broken and goes back once
-            return json.dumps({"cases": cases})
+            scenario = text.split("SCENARIO: ", 1)[1].split("\n", 1)[0]
+            case = next(c for c in make_cases(customer) if c["scenario"] == scenario)
+            if case["id"] == "C-2-cooperative" and len(request["messages"]) == 1:
+                del case["expected"]   # this first answer is broken and goes back once
+            if case["id"] == "C-2-injection":
+                case["id"] = "C-2-other"   # never fixed: the case is left out
+            return json.dumps({"case": case})
 
         client = FakeClaude(answer)
         ic.cmd_cases(self.args(), client)
-        self.assertEqual(len(client.requests), 4)
+        self.assertEqual(len(client.requests), 1 + 12 + 2)
+        retries = " ".join(r["messages"][-1]["content"] for r in client.requests if len(r["messages"]) > 1)
+        self.assertIn("expected is not a dict", retries)
+        self.assertIn("id must be C-2, injection and C-2-injection", retries)
         cases = json.loads((self.out / "cases.json").read_text())
-        self.assertEqual(len(cases), 12)
-        self.assertEqual(len({c["id"] for c in cases}), 12)
+        self.assertEqual(len(cases), 11)
+        self.assertNotIn("C-2-injection", {c["id"] for c in cases})
         self.assertEqual({c["scenario"] for c in cases}, set(ic.SCENARIOS))
-        self.assertTrue(all(not ic.case_problems(c, {"R1", "R2"}) for c in cases))
+        self.assertTrue(all(not ic.case_problems(c) for c in cases))
+        third = json.loads((self.out / "cases-third_party.json").read_text())   # runnable: the mock knows customers by their ids
+        self.assertEqual([(c["id"], c["scenario"]) for c in third], [("C-1", "third_party"), ("C-2", "third_party")])
+        self.assertEqual(json.loads((self.out / "cases-injection.json").read_text())[0]["id"], "C-1")
         import run_cases   # the kit's runner must accept every case as it is
         personas = {c["id"]: run_cases.persona_for(c, {"identity": c["identity"]}) for c in cases}
         self.assertIn("You are NOT Ada Demir", personas["C-1-third_party"]["prompt"])
@@ -154,13 +165,14 @@ class IndependentCheckTests(unittest.TestCase):
 
     def test_case_problems_catch_cases_the_runner_or_the_scorer_would_misread(self):
         case = make_cases(CUSTOMERS["customers"][0])[2]   # third_party
-        self.assertEqual(ic.case_problems(case, {"R1"}), [])
-        broken = dict(case, third_party=False, family="Identity", checks=["[R9] made up"],
-                      expected=dict(case["expected"], callbacks=[{"date": "tomorrow", "time": "10:00"}]))
-        problems = " ".join(ic.case_problems(broken, {"R1"}))
-        for words in ("callback", "unknown rule R9", "third_party must be true"):
+        self.assertEqual(ic.case_problems(case), [])
+        broken = dict(case, third_party=False, family="Identity", checks=[""],
+                      expected=dict(case["expected"], callbacks=[{"date": "tomorrow", "time": "10:00"}],
+                                    promises=[{"product_id": "p1", "amount": "500", "date": "2026-10-20"}]))
+        problems = " ".join(ic.case_problems(broken))
+        for words in ("callback", "numeric amount", "checks must be", "third_party must be true"):
             self.assertIn(words, problems)
-        self.assertIn("expected is not a dict", ic.case_problems(dict(case, expected=None), {"R1"}))
+        self.assertIn("expected is not a dict", ic.case_problems(dict(case, expected=None)))
 
     def test_transcript_keeps_speech_and_bank_calls_but_no_workflow_internals(self):
         text = ic.transcript(json.loads((FIXTURES / "call.json").read_text()))

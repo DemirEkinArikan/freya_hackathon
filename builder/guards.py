@@ -31,7 +31,7 @@ _INPUTS = {
     "commit_transfer": set(), "schedule_callback": {"date", "time"},
     "close_call": set(),
 }
-_OPTIONAL_INPUTS = {"commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
+_OPTIONAL_INPUTS = {"commit_promises": {"product_id"}, "finalize_notes": {"product_id"}, "close_call": {"outcome", "reason"}}
 _OPERATIONS = {"verify_identity": "verify_identity", "get_account": "get_account",
                "commit_promises": "create_promise", "finalize_notes": "add_note",
                "commit_transfer": "transfer_to_agent", "schedule_callback": "schedule_callback",
@@ -82,6 +82,7 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
                              "Clears the pending confirmation snapshot; staging does not record a bank promise."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
+                       "Under note_failure_disposition attempted_reason, a product whose note write reached note_failure_limit also prevents staging.",
                        "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
                        "An amount that is not positive, is below the product's floor_fields amount or exceeds its past_due amount is refused.",
                        "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
@@ -94,21 +95,27 @@ _CONTROLLER_STATE_EFFECTS = {
     "stage_note": {
         "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
                              "Clears the pending confirmation snapshot; staging does not record a bank note."],
-        "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging, except that under repeat_note_reasons a recorded note does not prevent a listed reason that differs from the product's latest recorded note and was never sent for that product.",
+                       "Under note_failure_disposition attempted_reason, a product whose note write reached note_failure_limit prevents staging.",
                        "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
                        "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
                        "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "finalize_notes": {
-        "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise; an empty set with no staged disposition is refused.",
-                             "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
-        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."],
+        "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms, except boolean false under note_finalization per_product) resolved by a recorded promise, staged disposition or recorded note, with no pending promise; with no disposition at all it is refused.",
+                             "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called.",
+                             "Under note_finalization per_product, a product_id input writes only that product's staged note now: other products stay open, the phase stays unsealed, and finalize_notes without product_id still seals it before close_call."],
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded.",
+                               "A later note recorded under repeat_note_reasons becomes that product's latest recorded note for close selection."],
         "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
-                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action.",
+                       "A product_id input is refused without note_finalization per_product, after the sealed phase, or when that product has no unsent staged note.",
+                       "Under note_failure_disposition attempted_reason, a write that reaches note_failure_limit on exact API-qualified nonpersistent receipts keeps its staged reason as that product's disposition for resolution and close selection, is never a recorded note, and the rest of the batch is still sent."]},
     "stage_transfer": {
         "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
                              "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer.",
                              "Afterwards only commit_transfer and close_call are accepted."],
         "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory.",
+                       "A note kept under note_failure_disposition prevents staging like a recorded note; neither prevents a queue listed in transfer_after_notes, even after the sealed disposition phase.",
                        "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_transfer": {
         "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
@@ -531,6 +538,10 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         result["transfer_reasons"] = {decode("queues", k): decode("reasons", v) for k, v in result["transfer_reasons"].items()}
     if "transfer_prerequisites" in result:
         result["transfer_prerequisites"] = {decode("queues", k): v for k, v in result["transfer_prerequisites"].items()}
+    if "transfer_after_notes" in result:
+        result["transfer_after_notes"] = [decode("queues", x) for x in result["transfer_after_notes"]]
+    if "repeat_note_reasons" in result:
+        result["repeat_note_reasons"] = [decode("reasons", decode("notes", x)) for x in result["repeat_note_reasons"]]
     if "close_precedence" in result:
         result["close_precedence"] = [decode("outcomes", x) for x in result["close_precedence"]]
     if "identity_close" in result:
@@ -569,6 +580,20 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     # dispatched; closing vocabulary alone grants no transfer.
     if set(result.get("transfer_prerequisites", {})) - set(result.get("transfer_reasons", {})):
         raise GuardCompileError(["transfer prerequisite queues must belong to permitted transfer queues"])
+    # The opt-in note lifecycle forms each need their sourced companions.
+    if set(result.get("transfer_after_notes", [])) - set(result.get("transfer_prerequisites", {})):
+        raise GuardCompileError(["transfer_after_notes queues must be transfer_prerequisites queues"])
+    per_product = result.get("note_finalization") == "per_product"
+    if per_product and result.get("record_notes") is not True:
+        raise GuardCompileError(["note_finalization per_product requires record_notes true"])
+    if not per_product and any(node.get("action") == "finalize_notes" and "product_id" in node.get("inputs", {})
+                               for node in plan["nodes"].values()):
+        raise GuardCompileError(["a finalize_notes product_id input requires note_finalization per_product"])
+    if "repeat_note_reasons" in result and (not per_product or set(result["repeat_note_reasons"]) - set(result.get("note_reasons", []))):
+        raise GuardCompileError(["repeat_note_reasons requires note_finalization per_product and reasons from note_reasons"])
+    if "note_failure_disposition" in result and (result.get("record_notes") is not True
+                                                 or "finalize_notes" not in result.get("definite_failure_resume", [])):
+        raise GuardCompileError(["note_failure_disposition requires record_notes true and finalize_notes in definite_failure_resume"])
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
     for scope, proposal in result.get("identity_close", {}).items():
@@ -943,7 +968,7 @@ def guard_product_turn(state, pid, profile):
     # A sourced overdue scope neither waits on nor writes for other products.
     rule = profile.get('resolve_all_products')
     overdue = isinstance(rule, dict) and rule.get('products') == 'overdue'
-    remaining = [p['product_id'] for p in guard_order(state, profile) if (not overdue or p['days_late'] >= 1) and p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['recorded_notes'] and p['product_id'] not in state['pending_promises'] and p['product_id'] not in state['pending_notes']]
+    remaining = [p['product_id'] for p in guard_order(state, profile) if (not overdue or p['days_late'] >= 1) and p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['recorded_notes'] and p['product_id'] not in state['exhausted_notes'] and p['product_id'] not in state['pending_promises'] and p['product_id'] not in state['pending_notes']]
     if not remaining or remaining[0] != pid:
         raise ValueError('product proposals must follow supplied policy order')
 
@@ -1025,7 +1050,7 @@ def guard_new(customer_id, now, call_inputs=None):
     return dict(customer_id=customer_id, now=day, now_time=clock, verified_fields=list(), wrong_answers=0,
                 identity_status='pending', products=list(), account_loaded=False, account_failed=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
-                recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
+                recorded_notes=dict(), exhausted_notes=dict(), promise_failures=dict(), attempts=dict(),
                 attempt_counts=dict(),
                 transfer=dict(), callbacks=list(), notes_finalized=False, closed=False, close_attempted=False,
                 quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict(),
@@ -1089,6 +1114,13 @@ def guard_goal_close(state, profile):
         return dict()
     return table
 
+def guard_noted(state):
+    # Recorded notes, overlaid by notes kept with their attempted reason after
+    # an exhausted write (note_failure_disposition only; never recorded notes).
+    noted = dict(state['recorded_notes'])
+    noted.update(state['exhausted_notes'])
+    return noted
+
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
     facts = dict()
@@ -1096,7 +1128,7 @@ def guard_close(state, proposed, profile, maps):
         facts['transferred'] = dict(outcome='transferred', reason=transfer['reason'])
     if state['recorded_promises']:
         facts['promise'] = dict(outcome='promise')
-    dispositions = state['recorded_notes'] if profile['record_notes'] else state['pending_notes']
+    dispositions = guard_noted(state) if profile['record_notes'] else state['pending_notes']
     if state['notes_finalized'] and state['products'] and all(dispositions.get(p['product_id']) == 'paid' for p in state['products']):
         facts['paid'] = dict(outcome='paid')
     if state['notes_finalized'] and dispositions:
@@ -1298,8 +1330,9 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
         pid = product['product_id']
         returned_position = next(i for i, item in enumerate(state['products'], 1) if item['product_id'] == pid)
         promise = 'recorded' if pid in state['recorded_promises'] else 'staged' if pid in state['pending_promises'] else 'none'
-        note = 'recorded' if pid in state['recorded_notes'] else 'staged' if pid in state['pending_notes'] else 'none'
-        resolution = 'recorded_promise' if promise == 'recorded' else 'recorded_note' if note == 'recorded' else 'local_disposition_finalized' if note == 'staged' and state['notes_finalized'] and profile.get('record_notes') is False else 'pending' if promise == 'staged' or note == 'staged' else 'unresolved'
+        staged_note = state['pending_notes'].get(pid)
+        note = 'exhausted' if pid in state['exhausted_notes'] else 'staged' if staged_note is not None and staged_note != state['recorded_notes'].get(pid) else 'recorded' if pid in state['recorded_notes'] else 'none'
+        resolution = 'recorded_promise' if promise == 'recorded' else 'recorded_note' if pid in state['recorded_notes'] else 'exhausted_note' if note == 'exhausted' else 'local_disposition_finalized' if note == 'staged' and state['notes_finalized'] and profile.get('record_notes') is False else 'pending' if promise == 'staged' or note == 'staged' else 'unresolved'
         reference = dict(position=position, returned_position=returned_position, product_ref=pid,
                          promise_status=promise, note_status=note, resolution_status=resolution,
                          proposal_constraints_status='unavailable')
@@ -1327,7 +1360,7 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
                 reference['proposal_turn_available'] = True
             except ValueError:
                 reference['proposal_turn_available'] = False
-            sealed = state['closed'] or state['notes_finalized'] or bool(state['transfer']) or bool(state['inflight']) or promise == 'recorded' or note == 'recorded' or failures >= limit or not reference['proposal_turn_available']
+            sealed = state['closed'] or state['notes_finalized'] or bool(state['transfer']) or bool(state['inflight']) or promise == 'recorded' or pid in state['recorded_notes'] or pid in state['exhausted_notes'] or failures >= limit or not reference['proposal_turn_available']
             reference['proposal_constraints_status'] = 'blocked' if sealed else 'available'
         except (KeyError, ValueError, TypeError):
             pass
@@ -1377,7 +1410,9 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         state['quarantined'] = True
         return state, 'failure', dict(), ''
     local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
-    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
+    # A queue the source authorizes after notes may also follow the sealed phase.
+    later_handoff = action == 'stage_transfer' and guard_decode('queues', inputs.get('queue'), maps) in profile.get('transfer_after_notes', list())
+    if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff and not later_handoff:
         raise ValueError('the disposition phase is sealed')
     if state['transfer'] and action not in ('commit_transfer', 'close_call'):
         raise ValueError('a staged or recorded transfer permits only handoff and final close')
@@ -1411,7 +1446,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         if action == 'stage_promise':
             pid = inputs['product_id']
             product = guard_product(state, pid)
-            if pid in state['recorded_promises'] or pid in state['recorded_notes']:
+            if pid in state['recorded_promises'] or pid in state['recorded_notes'] or pid in state['exhausted_notes']:
                 raise ValueError('product is already recorded')
             if state['promise_failures'].get(pid, 0) >= profile['promise_failure_limit']:
                 raise ValueError('this product exhausted its policy write budget')
@@ -1440,7 +1475,12 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             guard_product(state, pid)
             guard_product_turn(state, pid, profile)
             reason = guard_decode('reasons', guard_decode('notes', inputs['reason'], maps), maps)
-            if reason not in profile['note_reasons'] or pid in state['recorded_promises'] or pid in state['recorded_notes']:
+            recorded = state['recorded_notes'].get(pid)
+            # A sourced later note: a listed reason other than the latest
+            # recorded one, never a request already sent for this product.
+            repeat = (recorded is not None and reason != recorded and reason in profile.get('repeat_note_reasons', list())
+                      and 'add_note:' + guard_json(guard_body(dict(customer_id=state['customer_id'], product_id=pid, reason=guard_encode('notes', reason, maps)), 'add_note', catalog)) not in state['attempts'])
+            if reason not in profile['note_reasons'] or pid in state['recorded_promises'] or recorded is not None and not repeat or pid in state['exhausted_notes']:
                 raise ValueError('invalid or already recorded disposition')
             state['pending_promises'].pop(pid, None)
             state['pending_notes'][pid] = reason
@@ -1449,7 +1489,8 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             return state, 'done', dict(), ''
         if action == 'stage_transfer':
             queue = guard_decode('queues', inputs['queue'], maps)
-            if queue not in profile['transfer_reasons'] or queue not in profile['transfer_prerequisites'] or state['recorded_notes'] or state['transfer']:
+            noted = state['recorded_notes'] or state['exhausted_notes']
+            if queue not in profile['transfer_reasons'] or queue not in profile['transfer_prerequisites'] or noted and queue not in profile.get('transfer_after_notes', list()) or state['transfer']:
                 raise ValueError('transfer not permitted in current state')
             prerequisite = profile['transfer_prerequisites'][queue]
             if prerequisite in ('identity', 'account') and state['identity_status'] != 'verified' or prerequisite == 'account' and not state['account_loaded']:
@@ -1480,15 +1521,28 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
                     items.append(dict(customer_id=state['customer_id'], product_id=pid, amount=amount, date=item['date']))
             operation = 'create_promise'
         elif action == 'finalize_notes':
-            # An empty required set with nothing staged has nothing to finalize;
-            # sealing it would leave no closing fact and no way to add one.
-            required = guard_resolve_all_products(state, profile, True)
-            if state['pending_promises'] or not state['products'] or not required and not state['pending_notes'] or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['pending_notes'] for p in required):
-                raise ValueError('all products need resolved promises or staged dispositions')
-            state['notes_finalized'] = True
-            if not profile['record_notes']:
-                return state, 'done', dict(), ''
-            items = [dict(customer_id=state['customer_id'], product_id=p['product_id'], reason=guard_encode('notes', state['pending_notes'][p['product_id']], maps)) for p in guard_order(state, profile) if p['product_id'] in state['pending_notes'] and p['product_id'] not in state['recorded_notes']]
+            per_product = profile.get('note_finalization') == 'per_product'
+            selected = inputs.get('product_id')
+            # Staged notes not yet sent; a later note differs from the recorded one.
+            unsent = [p['product_id'] for p in guard_order(state, profile) if p['product_id'] in state['pending_notes'] and state['pending_notes'][p['product_id']] != state['recorded_notes'].get(p['product_id']) and p['product_id'] not in state['exhausted_notes']]
+            noted = set(state['pending_notes']) | set(state['recorded_notes']) | set(state['exhausted_notes'])
+            if selected is not None:
+                # A sourced immediate write of one product's staged note: other
+                # products stay open and the disposition phase stays unsealed.
+                if not per_product or state['notes_finalized'] or selected not in unsent:
+                    raise ValueError('no unsent staged note for this product')
+                unsent = [selected]
+            else:
+                # An empty required set with no disposition has nothing to
+                # finalize; sealing it would leave no closing fact and no way to
+                # add one. Per-product notes with boolean false need no others.
+                required = guard_resolve_all_products(state, profile, not per_product)
+                if state['pending_promises'] or not state['products'] or not required and not noted or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in noted for p in required):
+                    raise ValueError('all products need resolved promises or staged dispositions')
+                state['notes_finalized'] = True
+                if not profile['record_notes']:
+                    return state, 'done', dict(), ''
+            items = [dict(customer_id=state['customer_id'], product_id=pid, reason=guard_encode('notes', state['pending_notes'][pid], maps)) for pid in unsent]
             if not items:
                 return state, 'done', dict(), ''
             operation = 'add_note'
@@ -1522,7 +1576,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
                 raise ValueError('closing has unresolved commitments, dispositions or transfer')
             required = guard_resolve_all_products(state, profile) if state['account_loaded'] else list()
             if required and state['transfer'].get('status') != 'recorded':
-                dispositions = state['recorded_notes'] if profile['record_notes'] else state['pending_notes'] if state['notes_finalized'] else dict()
+                dispositions = guard_noted(state) if profile['record_notes'] else state['pending_notes'] if state['notes_finalized'] else dict()
                 if any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in dispositions for p in required):
                     raise ValueError('policy requires every product resolved before close')
             proposal = guard_close(state, inputs, profile, maps)
@@ -1782,6 +1836,15 @@ def guard_result(state, data, profile, catalog, expected_action):
             state['quarantined'] = True
             return state, 'failure', dict(), ''
         if count == batch['attempt_limit']:
+            if action == 'finalize_notes' and profile.get('note_failure_disposition') == 'attempted_reason':
+                # The source counts this product as noted with its attempted
+                # reason, kept apart from recorded notes. Later products with
+                # their own budget are still sent.
+                pid = tx['semantic']['product_id']
+                state['exhausted_notes'][pid] = state['pending_notes'][pid]
+                batch['index'] += 1
+                if batch['index'] < len(batch['items']) and batch['attempt_scope'] != 'call':
+                    return guard_continue(state, catalog)
             # The request is known not to have persisted, and the source
             # explicitly permits continuation. No successful fact is created.
             state['batch'] = dict()

@@ -74,7 +74,8 @@ _EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "conf
                          "attempt_scopes", "definite_failure_resume",
                          "confirmation_question", "confirmation_question_actions",
                          "identity_factor_state", "identity_counter_movement", "identity_failure_classes",
-                         "uncertain_stop_explanation"}
+                         "uncertain_stop_explanation",
+                         "note_finalization", "transfer_after_notes", "repeat_note_reasons", "note_failure_disposition"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -132,6 +133,10 @@ _SHAPE_GUIDANCE = {
     "transfer_prerequisites": 'a nonempty object mapping permitted transfer queue names to "none", "identity", "account" or "unstated". Use "unstated" when the source authorizes dispatching that queue but states no identity/account prerequisite: no evidence gate is added and nothing else is granted; never add identity or account from omission. Omit a queue the source names only in closing vocabulary without authorizing its dispatch; the controller refuses staging an omitted queue',
     "promise_readback": 'an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps; an absent or empty selected field is left out of that product\'s label. Use exactly "product_type" when the source requires confirming the product but prescribes no product fields: each product is named only by its protected product type, the type already used for floors; labels shared by two loaded products block the confirmation and no other field is read back. Use exactly "none" only when the source requires no confirmation for commit_promises (require_confirmation false and commit_promises not in confirmation_actions)',
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
+    "note_finalization": 'optional, exactly "per_product" when the source requires a product\'s note to be written as soon as that product is decided while other products are still open (for example before a later promise, transfer or close). finalize_notes then takes an optional product_id: it writes only that product\'s staged disposition now, without resolving other products or sealing the disposition phase. finalize_notes without product_id still writes the remaining staged notes and seals the phase before close_call; with boolean resolve_all_products false it then needs only the products already resolved, not every loaded product. Requires record_notes true. Absence keeps notes as one end-of-call batch',
+    "transfer_after_notes": 'optional nonempty unique array of transfer queue names, each a transfer_prerequisites key, that the source authorizes dispatching after notes are recorded (for example a handoff requested after note writes). A listed queue may be staged after recorded notes, including after the sealed disposition phase: recorded notes are kept, pending promises and dispositions are discarded as for any handoff, and its transfer_prerequisites gate still applies. Unlisted queues stay refused after any recorded note. Absence keeps every queue refused after a recorded note',
+    "repeat_note_reasons": 'optional nonempty unique array of note_reasons values the source allows writing as a later note for a product whose note is already recorded (for example a later paid or dispute note for that product). Requires note_finalization per_product. stage_note may then stage a listed reason for that product when it differs from the latest recorded reason and was never sent for that product; finalize_notes writes it as a new note, and the latest recorded note becomes that product\'s disposition for close selection. A product with a recorded promise still refuses notes, and unlisted reasons stay refused once a note is recorded',
+    "note_failure_disposition": 'optional, exactly "attempted_reason" when the source says a note write that keeps failing still counts its product as noted with the attempted reason, without claiming the note was saved. Requires finalize_notes in definite_failure_resume (with its attempt_scopes entry and note_failure_limit) and record_notes true. When that write reaches note_failure_limit on exact API-qualified nonpersistent negative receipts, the product keeps its staged reason as its disposition: it counts as resolved, the rest of that finalize_notes batch is still sent, close selection uses the reason (paid only when every loaded product\'s disposition is paid; otherwise the first non-paid disposition in product order is the no_promise reason), and that product refuses any later promise or note. It is never reported or counted as a recorded note, and uncertain or unqualified failures still quarantine',
     "uncertain_stop_explanation": "optional: what the source requires the caller to be told when the call stops without a close because a write's persistence is unknown or its evidence is missing, malformed or contradictory. Either the exact words to say to the caller, copied verbatim as whole words from this rule's own source quotation (never words the source forbids saying; no digits, braces, control characters or private engine/credential prefixes), or true when the source requires an explanation there but prescribes no words (a fixed neutral line is then used). The controller's single sealed quarantine end speaks exactly these words, verbatim and once, at every quarantine stop (unknown persistence, input failure, controller fault) and adds no write, close, retry or other words; turn-budget and entry-budget stops stay silent. Omit when the source requires no speech at that stop; different words for different stops are not representable",
 }
 
@@ -262,7 +267,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
     elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products", "call_input_formats",
-                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes", "uncertain_stop_explanation"}:
+                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes", "uncertain_stop_explanation",
+                  "note_finalization", "transfer_after_notes", "repeat_note_reasons", "note_failure_disposition"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -424,6 +430,13 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = value == "latest_check"
     elif kind == "identity_counter_movement":
         valid = value == "exact"
+    elif kind == "note_finalization":
+        valid = value == "per_product"
+    elif kind == "note_failure_disposition":
+        valid = value == "attempted_reason"
+    elif kind in {"transfer_after_notes", "repeat_note_reasons"}:
+        valid = (isinstance(value, list) and bool(value) and all(text(item) for item in value)
+                 and len(set(value)) == len(value))
     elif kind == "uncertain_stop_explanation":
         # Sourced words only: no digits, templates or engine names can add a
         # value, binding or field to the stop line.

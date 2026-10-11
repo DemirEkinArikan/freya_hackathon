@@ -73,7 +73,8 @@ get_account: none
 stage_promise: product_id,amount,date
 commit_promises: none; optional product_id when confirming separately
 stage_note: product_id,reason
-finalize_notes: none
+finalize_notes: none; optional product_id only under note_finalization per_product, to write that
+product's staged note immediately
 stage_transfer: queue
 commit_transfer: none
 schedule_callback: date,time
@@ -101,7 +102,8 @@ the routing model, so put needed routing context in routing_prompt/transitions.
 internal_action_references.products contains product_ref IDs needed for proposed
 action inputs; these are internal and must never be spoken. position is policy
 processing order; returned_position is original account order. product_states
-uses positions and distinguishes staged from recorded writes. Internal refs may
+uses positions and distinguishes staged from recorded writes; a note status of
+exhausted is kept with its reason after its write failed, never a saved note. Internal refs may
 also carry proposal_constraints (normalized type, band, floor/cap cents and the
 policy business deadline), resolution_status and remaining_failure_attempts.
 Use only available constraints to propose terms; blocked/unavailable constraints

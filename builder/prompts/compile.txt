@@ -83,6 +83,14 @@ defines that concept. They are interface names, not predetermined banking rules:
   the unconditional array. Conditions beyond this typed interface must remain
   explicit unsupported constraints, not silently widened disclosures.
 - record_notes: explicit boolean for note writes.
+- Note lifecycle (optional, only from source statements; see their rule shapes):
+  note_finalization "per_product" when a product's note is written as soon as it
+  is decided while other products stay open; transfer_after_notes [queues] the
+  source authorizes after notes are recorded; repeat_note_reasons [reasons] the
+  source allows as a later note for an already noted product; and
+  note_failure_disposition "attempted_reason" when a note write that keeps failing
+  still counts its product as noted with that reason. These enforce those
+  requirements; do not declare them as unsupported constraints.
 - resolve_all_products: explicit boolean for whether every returned product must
   be resolved before final close, or {selector:"source_declared_input_name",
   by_value:{"supplied_input_code":boolean}} when the source explicitly varies that

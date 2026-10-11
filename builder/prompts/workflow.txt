@@ -38,10 +38,12 @@ an action succeeded before authoritative returned evidence. Route rejected or
 uncertain actions to an honest explanation and policy-permitted recovery, without
 claiming persistence or resetting counters. Stage dispositions with stage_note after account products are loaded.
 finalize_notes is the final nontransfer product phase and requires account
-products. Contact/identity exits before account loading must reach their
+products. Under note_finalization per_product, finalize_notes with product_id writes that
+product's staged note at once and the call continues; finalize_notes without product_id
+still ends the phase before close_call. Contact/identity exits before account loading must reach their
 source-permitted closing path without account access or product finalization. Stage_transfer discards pending notes
 and promises while retaining earlier successful promises. Select a handoff before
-finalizing notes. All conversation paths must reach a guarded close_call where
+finalizing notes, unless transfer_after_notes lists its queue. All conversation paths must reach a guarded close_call where
 permitted; blocked/failure paths must follow the supplied disposition requirements.
 The controller may quarantine uncertain persistence and cannot fabricate success.
 close_call is a final guarded action: its compiled handler ends the call silently.

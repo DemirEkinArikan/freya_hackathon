@@ -42,12 +42,15 @@ def _entry(name: str, kind: str, description: str, enum: Any = None, pattern: st
     return entry
 
 
-def deterministic_plan(contract: dict, requirements: dict, profile: dict) -> dict:
+def deterministic_plan(contract: dict, requirements: dict) -> dict:
     actions = requirements["actions"]
+    # Enumerations come from the frozen rule values; the kernel decodes wire codes and checks them again.
+    profile = {kind: rule["value"] for kind, rule in contract["active_rules"].items()}
     slots = 1 if contract["active_rules"].get("policy_applicability", {}).get("value") == {"products": "single"} else PRODUCT_SLOTS
     inputs = ", ".join(name + "={{" + name + "}}" for name in declared_call_variables(contract) if name != "now")
     rules = "\n".join("- " + kind + ": " + _text(rule["value"]) for kind, rule in sorted(contract["active_rules"].items()))
-    limitations = "\n".join("- " + _text(entry.get("requirement", entry)) for entry in contract.get("declared_limitations", []))
+    limitations = "\n".join("- " + _text(entry["requirement"]) for entry in contract.get("declared_limitations", [])
+                            if entry.get("category") == "dialogue_only")
     system_prompt = (
         "You are the bank's phone agent. Follow the bank rules below exactly. The controller owns verification, account "
         "evidence, calculations, confirmations, recording and the final close; use only the engine-offered transitions to "
@@ -58,7 +61,7 @@ def deterministic_plan(contract: dict, requirements: dict, profile: dict) -> dic
         "identifiers, internal JSON, node names or field names. Never invent amounts, dates, codes, numbers or terms.\n"
         "GOAL: " + _text(contract["goal"]) + "\nBANK RULES (resolved rules of the frozen policy):\n" + rules
         + ("\nDIALOGUE REQUIREMENTS NOT ENFORCED BY THE CONTROLLER (follow them in speech):\n" + limitations if limitations else ""))
-    reasons = profile.get("close_reasons", {})
+    reasons = profile.get("close_reasons") if isinstance(profile.get("close_reasons"), dict) else {}
     extraction, action_nodes, choices = [], {}, []
     for action in actions:
         if action == "close_call":
@@ -83,7 +86,7 @@ def deterministic_plan(contract: dict, requirements: dict, profile: dict) -> dic
                                _entry(f"proposal_note_reason_{index}", "string", f"Disposition reason the bank rules assign to product {index}.", profile.get("note_reasons"))]
                 node_inputs = {"product_id": f"proposal_note_product_{index}", "reason": f"proposal_note_reason_{index}"}
             elif action == "stage_transfer":
-                extraction.append(_entry("proposal_transfer_queue", "string", "Handoff queue the bank rules assign to the caller's request.", list(profile.get("transfer_reasons", {}))))
+                extraction.append(_entry("proposal_transfer_queue", "string", "Handoff queue the bank rules assign to the caller's request.", list(profile.get("transfer_reasons") or [])))
                 node_inputs = {"queue": "proposal_transfer_queue"}
             elif action == "schedule_callback":
                 extraction += [_entry("proposal_callback_date", "date", "Callback date the caller proposes, resolved against now."),

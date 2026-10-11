@@ -115,6 +115,7 @@ def evaluate(directory, inputs):
     entry = {'attempt': int(directory.name[8:]), 'run': run_dir.relative_to(ROOT).as_posix() if run_dir else None,
              'status': 'running' if running else run.get('status') if run else 'no_manifest',
              'exported': False, 'local_validation': False, 'package_validation': False,
+             'deterministic_fallback': bool(run and run.get('plan_origin') == 'deterministic_fallback'),
              'diagnostics': sum(len(event['errors']) if isinstance(event.get('errors'), list) and event['errors'] else 1
                                 for event in events
                                 if package._event_name(event) in DIAGNOSTIC_EVENTS and event.get('passed') is False)

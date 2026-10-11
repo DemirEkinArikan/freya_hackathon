@@ -376,7 +376,8 @@ def validate_run(path, run, workflow, events, inputs):
             or not re.fullmatch(r'[0-9a-f]{64}', run['policy_contract_sha256'])):
         raise ValueError('Selected build requires published version and policy contract fingerprint')
     number = run.get('selected_attempt')
-    directory = f'attempts/plan-{number:03d}' if type(number) is int and 1 <= number <= 3 else None
+    # Three model plan attempts at most, then the builder's deterministic fallback plan.
+    directory = f'attempts/plan-{number:03d}' if type(number) is int and 1 <= number <= 4 else None
     if directory is None or run.get('selected_attempt_directory') != directory:
         raise ValueError('Selected attempt requires its canonical bounded attempt directory')
     attempt_dir = path.parent / directory
@@ -503,14 +504,16 @@ def validate_generated_artifacts(path, run, events):
 
 # T18 order, declared before release, across one brief's parallel builder attempts:
 # exported first, local validator checks first, package checks first, fewest
-# diagnostics, earliest finish, then the lower attempt number.
+# diagnostics, earliest finish, then the lower attempt number. Among those that pass
+# the three checks, an export of the builder's deterministic fallback plan
+# (deterministic_fallback true) ranks after every model-plan export.
 ATTEMPT_ORDER = ('exported', 'local_validation', 'package_validation', 'diagnostics', 'finished_at')
 
 
 def attempt_rank(entry):
     finished = dt.datetime.fromisoformat(entry['finished_at']).timestamp() if entry['finished_at'] else math.inf
     return (not entry['exported'], not entry['local_validation'], not entry['package_validation'],
-            entry['diagnostics'], finished, entry['attempt'])
+            entry.get('deterministic_fallback', False), entry['diagnostics'], finished, entry['attempt'])
 
 
 def validate_selection(record, label, selected_files):
@@ -523,6 +526,7 @@ def validate_selection(record, label, selected_files):
     for number, entry in enumerate(attempts, 1):
         if (not isinstance(entry, dict) or type(entry.get('attempt')) is not int or entry['attempt'] != number
                 or any(type(entry.get(key)) is not bool for key in ATTEMPT_ORDER[:3])
+                or type(entry.get('deterministic_fallback', False)) is not bool
                 or type(entry.get('diagnostics')) is not int or entry['diagnostics'] < 0
                 or not (entry.get('run') is None or _nonempty(entry['run']))
                 or not (entry.get('finished_at') is None or _nonempty(entry['finished_at']))

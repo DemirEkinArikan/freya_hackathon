@@ -568,12 +568,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                       {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
                     generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
                 else:
-                    # No model call: built only from this run's frozen policy, contract and sealed kernel.
-                    fallback_bindings = compile_action_bindings(frozen_policy, openapi)
-                    fallback_profile = compile_execution_policy(
-                        frozen_policy, fallback_bindings, required_kinds=requirements["required_kinds"])["profile"]
-                    generated = {"plan": deterministic_plan(compiled, requirements, fallback_profile),
-                                 "contract_sha256": contract_sha256}
+                    # No model call: built only from this run's frozen contract and execution requirements.
+                    generated = {"plan": deterministic_plan(compiled, requirements), "contract_sha256": contract_sha256}
                     trace.emit("plan_fallback_built", model_failure=str(fallback), attempt=attempt_number)
             except GenerationFormatError as exc:
                 elapsed = round(deadline.elapsed() - stage_started, 3)

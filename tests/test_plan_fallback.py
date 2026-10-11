@@ -15,18 +15,19 @@ from builder.policy import compile_execution_policy
 from builder.runtime import Deadline, GenerationError
 from builder.validation import validate_workflow
 from test_execution_requirements import packet
+from tools import package_submission as package
+from tools.verify_submission_bundle import check_recompilation
 
 
 def fallback_errors(policy, sources, openapi):
     """Run the same checks build.py applies to a model plan."""
     contract = compile_policy_contract(policy, sources, openapi)
     requirements = compile_execution_requirements(policy, sources, openapi)
-    bindings = compile_action_bindings(policy, openapi)
-    profile = compile_execution_policy(policy, bindings, required_kinds=requirements["required_kinds"])["profile"]
-    plan = deterministic_plan(contract, requirements, profile)
+    plan = deterministic_plan(contract, requirements)
     errors = validate_plan_execution(plan, requirements, policy, sources, openapi)
     if errors:
         return plan, errors
+    bindings = compile_action_bindings(policy, openapi)
     execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(plan))
     workflow = compile_guarded_workflow(plan, contract, openapi, execution, bindings)["workflow"]
     return plan, validate_workflow(workflow, openapi, policy, guard_context={
@@ -84,6 +85,10 @@ class FallbackPlanTests(unittest.TestCase):
         self.assertEqual(set(plan["nodes"]) >= {"dialogue", "decide", "farewell", "close"}, True)
         attempt = json.loads((run / manifest["selected_attempt_directory"] / "attempt.json").read_text())
         self.assertEqual((attempt["status"], attempt["plan_origin"]), ("exported", "deterministic_fallback"))
+        # Three model attempts, then the fallback: the packaging recompilation check accepts plan-004.
+        self.assertEqual(manifest["selected_attempt_directory"], "attempts/plan-004")
+        export = json.loads((run / "submission.workflow.json").read_text())
+        check_recompilation(run, manifest, export, [("brief.md", test_builder.BRIEF_TEXT)], test_builder.contract())
 
     def test_valid_model_plan_never_builds_the_fallback(self):
         generator = self.generator()
@@ -132,6 +137,19 @@ class FallbackPlanTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Candidate validation failed after bounded repairs"):
                 execute(self.args("--generate-only", "--no-plan-fallback"), generator=generator,
                         client_factory=lambda **kw: self.fail("Freya touched"))
+
+
+class FallbackSelectionTests(unittest.TestCase):
+    def test_model_plan_export_outranks_a_cleaner_earlier_fallback_export(self):
+        def entry(number, fallback, diagnostics, finished):
+            return {"attempt": number, "exported": True, "local_validation": True, "package_validation": True,
+                    "deterministic_fallback": fallback, "diagnostics": diagnostics,
+                    "finished_at": "2026-10-11T20:" + finished + ":00+00:00"}
+        fallback, model = entry(1, True, 0, "10"), entry(2, False, 7, "20")
+        self.assertIs(min([fallback, model], key=package.attempt_rank), model)
+        self.assertIs(min([fallback, dict(model, exported=False)], key=package.attempt_rank), fallback)
+        legacy = {key: value for key, value in model.items() if key != "deterministic_fallback"}
+        self.assertIs(min([fallback, legacy], key=package.attempt_rank), legacy)
 
 
 if __name__ == "__main__":

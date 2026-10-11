@@ -321,9 +321,12 @@ const KINDS = {
     }
     const r = { ok: true };
     if (op.list) r[op.list] = products.map((p) => Object.fromEntries(op.item_fields.filter((f) => p[f] != null).map((f) => [f, p[f]])));
-    for (const k of op.scalars) {
-      const v = c.variables[k] ?? c.identity[k] ?? (products.length === 1 ? products[0][k] : undefined);
-      if (v !== undefined) r[k] = v;
+    const one = products.length === 1 ? products[0] : {};
+    const pick = (k) => c.variables[k] ?? c.identity[k] ?? one[k];
+    for (const k of op.scalars) if (pick(k) !== undefined) r[k] = pick(k);
+    for (const [k, fields] of Object.entries(op.objects || {})) {
+      const o = Object.fromEntries(fields.map((f) => [f, pick(f)]).filter(([, v]) => v !== undefined));
+      if (Object.keys(o).length) r[k] = o;
     }
     return r;
   },

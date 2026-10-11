@@ -328,8 +328,12 @@ def build(contract_path, customers_path, name, overrides):
                                        "remaining": find(r"left|remaining|kalan|attempt|hak", "integer"), "all_verified": all_v, "hint": hint}}
         elif op["kind"] == "read":
             item_list = next((k for k, p in resp.items() if p.get("type") == "array"), None)
-            out.update(requires_identity=bool(identity_ops), list=item_list if item_list == list_name else None, item_fields=list(item_types),
-                       scalars=[k for k, p in resp.items() if k not in ("ok", "error") and p.get("type") != "array"], product_ref=product_ref)
+            lst = item_list if item_list == list_name else None
+            scalars = [k for k, p in resp.items() if k not in ("ok", "error") and p.get("type") not in ("array", "object")]
+            objects = {k: list(flat(p).get("properties", {})) for k, p in resp.items() if p.get("type") == "object"}
+            account = op["name"] == "get_account" or lst or gated or any(f in item_types or f in identity_fields for f in scalars + sum(objects.values(), []))
+            out.update(requires_identity=bool(identity_ops) and bool(account), list=lst, item_fields=list(item_types), scalars=scalars,
+                       objects=objects, product_ref=product_ref)
         elif op["kind"] == "write":
             parts = op["name"].split("_")
             key = parts[0] + "s" if parts[0] in ("transfer", "escalate", "refund", "payment") else "_".join(parts[1:]) + "s" if len(parts) > 1 and parts[0] in VERBS else op["name"]
@@ -359,7 +363,7 @@ def build(contract_path, customers_path, name, overrides):
     report = [f"contract: {config['title']}, base path '{config['base_path']}', customer key '{ckey}', product id '{pid}'"]
     for op in config_ops:
         extra = {"identity": lambda o: f"fields {o['identity']['fields']} -> response {o['identity']['out']}, hint {o['identity']['hint_value']}",
-                 "read": lambda o: f"list {o['list']} {o['item_fields']} scalars {o['scalars']} identity-gated {o['requires_identity']}",
+                 "read": lambda o: f"list {o['list']} {o['item_fields']} scalars {o['scalars']} objects {o['objects']} identity-gated {o['requires_identity']}",
                  "write": lambda o: f"ledger '{o['ledger_key']}' product_ref {o['product_ref']} one-per-product {o['unique']} ids {o['ids']} identity-gated {o['requires_identity']}",
                  "close": lambda o: f"fields {o['fields']} require {o['require']}"}[op["kind"]](op)
         report.append(f"  {op['method']} {config['base_path']}{op['path']}: {op['name']} = {op['kind']}; {extra}")

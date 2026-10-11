@@ -22,6 +22,7 @@ paths:
     post:
       requestBody: {content: {application/json: {schema: {type: object, required: [customer_no], properties: {customer_no: {type: string}}}}}}
       responses: {"200": {content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}, segment: {type: string},
+        statement: {type: object, properties: {due_date: {type: string}}},
         cards: {type: array, items: {type: object, properties: {card_id: {type: string}, statement_balance: {type: number}, minimum_due: {type: number}}}}}}}}}}
   /create_promise:
     post:
@@ -39,11 +40,12 @@ components:
       properties: {customer_no: {type: string}, field: {type: string, enum: [birth_date, id_last4]}, answer: {type: string}}}
 """
 
-CSV_ROWS = """Musteri No;Ad;Dogum Tarihi;ID Last4;Card ID;Statement Balance;Minimum Due;Segment
-C1;Ayse;14.03.1988;0358;k1;1.250,50;250;gold
-C1;Ayse;14.03.1988;0358;k2;99,90;20;gold
-C2;Mehmet;02.11.1979;4471;k1;300;60;basic
+CSV_ROWS = """Musteri No;Ad;Dogum Tarihi;ID Last4;Card ID;Statement Balance;Minimum Due;Segment;Due Date
+C1;Ayse;14.03.1988;0358;k1;1.250,50;250;gold;2026-10-20
+C1;Ayse;14.03.1988;0358;k2;99,90;20;gold;2026-10-20
+C2;Mehmet;02.11.1979;4471;k1;300;60;basic;2026-10-22
 """
+RENAMES = {"columns": {"Dogum Tarihi": "birth_date", "ID Last4": "id_last4"}}
 
 
 def free_port():
@@ -72,8 +74,7 @@ class GeneratorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "contract.yaml").write_text(CONTRACT_YAML)
             (Path(d) / "customers.csv").write_text(CSV_ROWS)
-            config, _ = build_mock.build(Path(d) / "contract.yaml", Path(d) / "customers.csv", "t",
-                                         {"columns": {"Dogum Tarihi": "birth_date", "ID Last4": "id_last4"}})
+            config, _ = build_mock.build(Path(d) / "contract.yaml", Path(d) / "customers.csv", "t", RENAMES)
         self.assertEqual((config["customer_key"], config["product_id"], config["base_path"]), ("customer_no", "card_id", "/api"))
         self.assertEqual(config["identity"]["max_wrong"], 2)
         c1 = config["customers"]["C1"]
@@ -82,6 +83,58 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(c1["variables"]["segment"], "gold")
         verify = config["operations"][0]["identity"]["out"]
         self.assertEqual((verify["verified"], verify["remaining"], verify["all_verified"]), ("verified", "attempts_left", "all_verified"))
+
+
+    @unittest.skipUnless(importlib.util.find_spec("yaml") and importlib.util.find_spec("openpyxl"), "PyYAML or openpyxl is not installed")
+    def test_xlsx_sheets_joined_on_the_customer_id(self):
+        import datetime, openpyxl
+        wb = openpyxl.Workbook()
+        wb.active.append(["Musteri No", "Ad", "Dogum Tarihi", "ID Last4"])
+        wb.active.append(["C1", "Ayse", datetime.datetime(1988, 3, 14), 358])
+        cards = wb.create_sheet("Cards")
+        cards.append(["Musteri No", "Card ID", "Statement Balance", "Minimum Due"])
+        cards.append(["C1", "k1", 1250.5, 250])
+        cards.append(["C1", "k2", 99.9, 20])
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "contract.yaml").write_text(CONTRACT_YAML)
+            wb.save(Path(d) / "customers.xlsx")
+            config, _ = build_mock.build(Path(d) / "contract.yaml", Path(d) / "customers.xlsx", "t", RENAMES)
+        c1 = config["customers"]["C1"]
+        self.assertEqual((c1["identity"], c1["variables"]), ({"birth_date": "1988-03-14", "id_last4": "358"}, {"ad": "Ayse"}))
+        self.assertEqual([p["card_id"] for p in c1["products"]], ["k1", "k2"])
+
+
+@unittest.skipUnless(shutil.which("node") and importlib.util.find_spec("yaml"), "node or PyYAML is not installed")
+class GenericWorkerTest(unittest.TestCase):
+    def test_other_contract_served_from_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "contract.yaml").write_text(CONTRACT_YAML)
+            (d / "customers.csv").write_text(CSV_ROWS)
+            (d / "overrides.json").write_text(json.dumps(RENAMES))
+            subprocess.run([sys.executable, str(ROOT / "mock/build_mock.py"), str(d / "contract.yaml"), str(d / "customers.csv"), "--out", str(d / "out"),
+                            "--overrides", str(d / "overrides.json")], check=True, capture_output=True)
+            port = free_port()
+            server = subprocess.Popen(["node", str(ROOT / "mock/local_server.mjs"), str(d / "out"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                def call(tool, **args):
+                    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/{tool}", data=json.dumps({"customer_no": "C1", **args}).encode(), method="POST")
+                    for _ in range(50):
+                        try:
+                            with urllib.request.urlopen(req, timeout=5) as r:
+                                return json.load(r)
+                        except urllib.error.URLError:
+                            time.sleep(0.1)
+                self.assertEqual(call("get_account"), {"ok": False, "error": "identity not verified"})
+                self.assertEqual(call("verify_identity", field="birth_date", answer="1988-03-14"), {"ok": True, "verified": True, "attempts_left": 2, "all_verified": False})
+                self.assertEqual(call("verify_identity", field="id_last4", answer="358")["all_verified"], True)
+                self.assertEqual(call("get_account"), {"ok": True, "segment": "gold", "statement": {"due_date": "2026-10-20"}, "cards": [
+                    {"card_id": "k1", "statement_balance": 1250.5, "minimum_due": 250}, {"card_id": "k2", "statement_balance": 99.9, "minimum_due": 20}]})
+                self.assertEqual(call("create_promise", card_id="k2", amount=99.9), {"ok": True, "promise_id": "pr1"})
+                self.assertEqual(call("close_call", outcome="Promise"), {"ok": True})
+            finally:
+                server.terminate()
+                server.wait(5)
 
 
 @unittest.skipUnless(shutil.which("node"), "node is not installed")

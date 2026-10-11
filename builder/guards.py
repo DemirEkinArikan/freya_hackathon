@@ -16,6 +16,7 @@ from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
 from .call_variables import declared_call_variables
+from .validation import extraction_entry_errors
 
 PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
@@ -81,26 +82,38 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
                              "Clears the pending confirmation snapshot; staging does not record a bank promise."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "An amount that is not positive, is below the product's floor_fields amount or exceeds its past_due amount is refused.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_promises": {
         "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
-        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
+        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "stage_note": {
         "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
                              "Clears the pending confirmation snapshot; staging does not record a bank note."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "finalize_notes": {
         "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise; an empty set with no staged disposition is refused.",
                              "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
-        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "stage_transfer": {
         "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
-                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
-        "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory."]},
+                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer.",
+                             "Afterwards only commit_transfer and close_call are accepted."],
+        "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory.",
+                       "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_transfer": {
         "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
-        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."]},
+        "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."],
+        "rejections": ["A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "schedule_callback": {
         "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
         "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
@@ -157,7 +170,7 @@ def _hash_checked(value: Any, label: str) -> None:
 
 def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                  call_variables: tuple[str, ...] = ()) -> list[str]:
-    errors = []
+    errors, entry_errors = [], []
     if not isinstance(plan, dict) or set(plan) - {"initial_node", "nodes", "system_prompt"}:
         return ["plan supports only initial_node, nodes and system_prompt"]
     nodes = plan.get("nodes")
@@ -212,8 +225,16 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                 errors.append(name + ": unsupported action")
                 continue
             inputs = node.get("inputs", {})
-            if not isinstance(inputs, dict) or not _INPUTS[action] <= set(inputs) or set(inputs) - _INPUTS[action] - _OPTIONAL_INPUTS.get(action, set()):
-                errors.append(name + ": wrong semantic input fields")
+            required, optional = _INPUTS[action], _OPTIONAL_INPUTS.get(action, set())
+            given = set(inputs) if isinstance(inputs, dict) else set()
+            if not isinstance(inputs, dict) or not required <= given or given - required - optional:
+                errors.append(name + ": wrong semantic input fields for " + action + ": inputs must be an object with "
+                              + ("required " + ", ".join(sorted(required)) if required else "no required fields")
+                              + (" and optional " + ", ".join(sorted(optional)) if optional else "")
+                              + "; missing: " + (", ".join(sorted(required - given)) or "none")
+                              + "; unsupported: " + (", ".join(sorted(given - required - optional)) or "none")
+                              + ". Each value names a public extracted variable holding the proposal;"
+                              " the controller validates it and does not choose it")
             elif not all(variable(value) for value in inputs.values()):
                 errors.append(name + ": action inputs must reference untrusted public variables")
             for field in ("success_node", "blocked_node", "failure_node"):
@@ -250,11 +271,12 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                         or fallback.get("is_tool_call", False) is not False
                         or fallback.get("target_node") != default):
                     errors.append(name + ": passthrough requires a public default and matching ordinary final always fallback")
-            for entry in extraction:
+            for index, entry in enumerate(extraction):
                 if not isinstance(entry, dict) or not variable(entry.get("name")):
                     errors.append(name + ": extraction cannot write protected or engine variables")
                 elif set(entry) - {"name", "type", "description", "enum_values", "validation_pattern", "max_retries", "min_confidence", "extraction_prompt"}:
                     errors.append(name + ": unsupported extraction fields")
+                entry_errors.extend(extraction_entry_errors(entry, "node." + name + ".extraction_schema[" + str(index) + "]"))
             if any(not isinstance(t, dict) or not isinstance(t.get("condition"), dict) or set(t) - {"target_node", "description", "condition", "is_tool_call"} for t in transitions):
                 errors.append(name + ": transitions must be documented transition objects")
             for target in [t.get("target_node") for t in transitions if isinstance(t, dict)] + [node.get("max_turn_transition")]:
@@ -264,7 +286,9 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
             errors.append(name + ": authored nodes must be conversation or guard_action")
     if not any(isinstance(n, dict) and n.get("action") == "close_call" for n in nodes.values()):
         errors.append("plan requires a guarded close_call; authored terminals are forbidden")
-    return errors
+    # Final validation applies the same entry rules to the verbatim compiled
+    # entries, so alone they do not stop compilation and hide its other errors.
+    return errors + entry_errors if errors else []
 
 
 def _dated_variants(contract: dict, profile: dict, kind: str) -> dict:

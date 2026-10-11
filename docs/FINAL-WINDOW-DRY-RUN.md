@@ -130,9 +130,8 @@ baseline builds.
   5 minutes: under 15 s of tools, about 2 minutes to commit, push, open and merge the
   evidence PR, and about 2 minutes to copy and hash the attachments. That fits inside
   the 15-minute buffer, but the buffer is kept for sending and the receipt only.
-- With three attempts per brief started together at about 20:02, all of them end by
-  about 20:32. If each brief has one eligible attempt, the package is ready to send
-  by about 21:00.
+- With three attempts per brief started 20:02–20:07, all of them end by about 20:37.
+  If each brief has one eligible attempt, the package is ready to send by about 21:00.
 - The latest start for a retry round is **21:45**. It ends by 22:15, which leaves
   30 minutes to select, package and verify before 22:45 (T18-FINAL-WINDOW.md).
 
@@ -288,24 +287,30 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 ### About 20:02 (17:02 UTC): start three attempts per brief at once
 
 6. Start the attempts. That is six builders, each in its own
-   `artifacts/final/<label>/attempt-<k>/` with its own new slot:
+   `artifacts/final/<label>/attempt-<k>/` with its own new slot. Starts alternate
+   between the briefs, 60 s apart, so the launcher runs for about 5 minutes; `nohup`
+   keeps it going if the terminal closes:
 
    ```sh
-   python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \
-     --model "$T18_BUILDER_MODEL" --reasoning-effort "$T18_REASONING_EFFORT"
+   nohup python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \
+     --model "$T18_BUILDER_MODEL" --reasoning-effort "$T18_REASONING_EFFORT" > artifacts/final-window/launch.log 2>&1 &
    ```
 
-   Each builder stops itself at 1,800 s, so all of them end by about 20:32. None
+   Each builder stops itself at 1,800 s, so all of them end by about 20:37. None
    takes the simulation lease, because none runs its own hosted tests.
-7. While they run, poll about once a minute with `withenv tools/final_attempts.py select`.
+7. While they run, poll about once a minute with
+   `python3.11 tools/final_attempts.py health --env-file "$MAIN/.env"; withenv tools/final_attempts.py select`.
+   A failed attempt whose error names `HTTP 50x` hit a platform failure, not a
+   builder fault (T18-FINAL-WINDOW.md).
    It prints one JSON line per attempt (status and the five criteria) and exits 2
    while any attempt still runs. Exit 3 means a brief has no eligible attempt. Only
    then, and no later than **21:45**, start a retry round for that brief alone:
    add `--labels hidden-N` to the launch command. The new attempts continue the
    numbering (4, 5, 6), and every earlier attempt stays untouched. Never retry a
-   brief that already has an eligible selection.
+   brief that already has an eligible selection, and wait for a `health` probe with
+   `ok: true` first.
 
-### When `select` exits 0 (about 20:35)
+### When `select` exits 0 (about 20:40)
 
 8. `select` has written `artifacts/final/<label>/selection.json` for both briefs,
    naming the selected attempt k of N. Both selected runs need the same
@@ -324,6 +329,7 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    ```sh
    git switch -c rapid/t18-final-evidence-20261011
    git --literal-pathspecs add -f --pathspec-from-file=artifacts/submission/evidence-files.txt
+   git add -f artifacts/final/health.jsonl artifacts/final/hidden-*/attempt-*/launch.json  # kept, never packaged
    git commit -m "T18 final evidence: selected hidden-1 and hidden-2 runs"
    EVID=$(git rev-parse HEAD)
    python3.11 tools/verify_kit.py && withenv tools/package_submission.py --check --source-only \

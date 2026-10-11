@@ -743,6 +743,9 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if isinstance(fn.get("name"), str):
             # Documented engine result bindings, not invented static defaults.
             declared.update(fn["name"] + suffix for suffix in ("_status_code", "_result", "_args"))
+    # The kit documents per-node counters for every pre_actions node.
+    declared.update(name + suffix for name, n in all_nodes.items() if isinstance(n, dict) and n.get("pre_actions")
+                    for suffix in ("_success_count", "_failure_count"))
     def text_bindings(value: Any, path: str, *, spoken: bool = False, readback: bool = False) -> None:
         if isinstance(value, str):
             stripped = re.sub(r"\{\{[^{}]+\}\}", "", value)

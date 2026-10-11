@@ -78,7 +78,7 @@ final submission buffer.
 | Invocation binding | Original source/configuration, provenance, manifest and complete trace agree with submitted runtime source; both selected builds bind to the same configuration |
 | Selected attempt | Frozen policy/contract, proposal/plan, compiler context, guarded graph, publication and export records agree for the selected bounded attempt |
 | Action coverage | Recomputed execution requirements and the selected plan cover the source-selected capabilities before exact guarded recompilation |
-| Eligibility consistency | Successful live-mode record, passing mandatory tool-free isolation audit before generation, fixed `experimental-5` phone model, permitted tool wiring and finite in-budget timing |
+| Eligibility consistency | Successful live-mode record, passing mandatory tool-free isolation audit before generation, policy extracted inside the selected trace (never a supplied `--policy-file`), fixed `experimental-5` phone model, permitted tool wiring and finite in-budget timing |
 | Final evidence membership | Every archived evidence member belongs to the retained selected sets and equals a regular-file blob in the trusted commit; original remapped evidence Git-path correspondence remains unverified |
 
 Raw ZIP byte hashes and controller canonical JSON digests have different roles;

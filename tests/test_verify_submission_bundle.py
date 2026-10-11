@@ -263,6 +263,28 @@ class IndependentBundleTests(unittest.TestCase):
                 self.verify(archive)
             self.assertNotIn(private, str(raised.exception))
 
+    def test_bracketed_brief_evidence_is_scanned_as_text_like_the_packager(self):
+        # A raw bank brief can be a code list with '[' on every line. Bytes that are
+        # not strict JSON pass the content scan; lines that do parse are still scanned.
+        name, brief = 'hidden-inputs/code-list.md', Path(self.temp.name) / 'code-list.md'
+        private = b'"Authorization": "synthetic-private-brief-value-51630"'
+        cases = ((b'[A1] Payment plan agreed\n[B2] Customer disputes the debt\n', '^final_manifest$'),
+                 (b'{"code": "A1", "code": "B2"}\n', '^final_manifest$'), (b'[NaN]\n', '^final_manifest$'),
+                 (b'{\n ' + private + b'\n}\n', '^archive_content$'),
+                 (b'{' + private + b'}\n[C3] Hardship review\n', '^archive_content$'))
+        for number, (raw, category) in enumerate(cases):
+            index = self.index()
+            index['source_only'] = False
+            index['evidence_files'][name] = hashlib.sha256(raw).hexdigest()
+            archive = self.rewrite({'package-index.json': json.dumps(index).encode()}, extra=[(name, raw)])
+            # Passing the content scan reaches the absent final manifest.
+            with self.subTest(case=number), self.assertRaisesRegex(ValueError, category):
+                self.verify(archive)
+            if category == '^final_manifest$':
+                brief.write_bytes(raw)
+                with patch.object(package, 'ROOT', brief.parent):
+                    package.check_content(brief, evidence=True)
+
     def test_short_opaque_local_environment_credential_is_rejected(self):
         private = 'opaque7'
         raw = ('Synthetic README ' + private + '\n').encode()
@@ -467,6 +489,15 @@ class SyntheticFinalConsistencyTests(unittest.TestCase):
             run['elapsed_seconds'] = elapsed
             with self.subTest(elapsed=elapsed), self.assertRaisesRegex(ValueError, '^final_evidence$'):
                 self.verify(self.rehash_evidence(self.rebound_run(run=run)))
+
+    def test_selected_run_that_resumed_a_supplied_policy_is_rejected(self):
+        run = self.evidence_json('runs/hidden-1/manifest.json')
+        trace = dict((info.filename, raw) for info, raw in self.entries)['traces/hidden-1.jsonl']
+        events = [json.loads(line) for line in trace.decode().splitlines()]
+        stage = next(event for event in events if event.get('event') == 'stage_completed')
+        run['policy_origin'] = stage['origin'] = 'provided_and_revalidated'
+        with self.assertRaisesRegex(ValueError, '^final_evidence$'):
+            self.verify(self.rehash_evidence(self.rebound_run(run=run, events=events)))
 
     def test_missing_generation_isolation_is_rejected_after_provenance_rebinding(self):
         trace = dict((info.filename, raw) for info, raw in self.entries)['traces/hidden-1.jsonl']

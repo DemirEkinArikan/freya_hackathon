@@ -24,12 +24,16 @@ An optional typed `uncertain_stop_explanation` rule supplies that
 explanation. Its value is one of two things:
 
 - the source's words, copied verbatim from the rule's own quotation, with no
-  digits, braces, control characters or engine prefixes. Both `validate_policy`
-  and the sealed compiler check that the words occur in the quotation as whole
-  words, at least once not directly after a negated speech verb ("never tell
-  the caller that ..."). These are literal checks, not a check of meaning:
-  words cut from another part of the quotation still pass;
-- `true`, for the fixed neutral line "the result of this request could not be
+  digits, braces, control characters or engine prefixes. An indirect
+  instruction such as "explain/say/tell (the caller) (only) that X" prescribes
+  X as these words, without the instruction verb, "only" or "that". Both
+  `validate_policy` and the sealed compiler check that the words occur in the
+  quotation as whole words, at least once not directly after a negated speech
+  verb ("never tell the caller that ...", "do not explain that ..."). These are
+  literal checks, not a check of meaning: words cut from another part of the
+  quotation still pass;
+- `true`, only when the source requires an explanation without stating its
+  content, for the fixed neutral line "the result of this request could not be
   confirmed".
 
 The `bg_quarantine` end then says exactly those words once, through the kit's

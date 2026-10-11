@@ -128,7 +128,8 @@ def _admit(round_number, label):
     if record.get('attempt_count') != len(attempts) or any(_state(directory)[4] for directory in attempts):
         raise ValueError(f'{label}: run select once every attempt has finished, then start another round')
     chosen = record['attempts'][record['selected'] - 1] if type(record.get('selected')) is int else None
-    if chosen and (round_number == 2 or chosen.get('mode') == 'strict'):
+    # Every model-plan export ranks before a deterministic fallback export, so any round can still improve one.
+    if chosen and not chosen.get('deterministic_fallback') and (round_number == 2 or chosen.get('mode') == 'strict'):
         raise ValueError(f'{label}: attempt {chosen["attempt"]} ({chosen.get("mode")}) is selected; '
                          f'round {round_number} cannot improve it')
 
@@ -159,6 +160,7 @@ def evaluate(directory, inputs):
              'run': run_dir.relative_to(ROOT).as_posix() if run_dir else None,
              'status': 'running' if running else run.get('status') if run else 'no_manifest',
              'exported': False, 'local_validation': False, 'package_validation': False,
+             'deterministic_fallback': bool(run and run.get('plan_origin') == 'deterministic_fallback'),
              'diagnostics': sum(len(event['errors']) if isinstance(event.get('errors'), list) and event['errors'] else 1
                                 for event in events
                                 if package._event_name(event) in DIAGNOSTIC_EVENTS and event.get('passed') is False)

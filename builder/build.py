@@ -25,7 +25,8 @@ if __package__ in (None, ""):
 
 from .platform import FreyaClient, PlatformError
 from .contract import compile_policy_contract, PolicyContractError
-from .runtime import CodexGenerator, Deadline, DeadlineExceeded, GenerationFormatError, Trace
+from .runtime import (CodexGenerator, Deadline, DeadlineExceeded, GenerationError, GenerationFormatError,
+                      GenerationStalled, GenerationTimeout, Trace)
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
@@ -34,6 +35,7 @@ from .policy import compile_execution_policy, PolicyError, MissingExecutionRules
 from .guards import compile_guarded_workflow, required_execution_kinds, GuardCompileError
 from .stored_workflow import assert_equivalent_stored_workflow
 from .execution_requirements import compile_execution_requirements, validate_plan_execution
+from .fallback_plan import deterministic_plan
 from .guards import execution_action_catalogue
 from .policy import execution_rule_guidance
 from .source_provenance import capture_source_provenance, verify_source_unchanged, bind_run_provenance
@@ -62,6 +64,17 @@ FIRST_WORKFLOW_RESERVE = 450
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9
+# A first policy attempt that times out or stalls is retried once, admitted like a
+# format repair. Reasoning dominates call time (high first calls used 4.5-14k
+# reasoning tokens at 0.0384 s each; medium about 1k), so a high or xhigh attempt is
+# retried at medium. With no policy yet there is no workflow to reserve time for,
+# so the retry keeps only the export reserve.
+RETRY_REASONING_EFFORT = {"high": "medium", "xhigh": "medium"}
+# A deterministic fallback plan compiles in about 3 s and a deployment plus export
+# took about 10 s on 11 Oct. It starts only with this much time left, and deploys
+# with its own smaller reserve because a timed-out plan call leaves about 300 s.
+FALLBACK_MIN_SECONDS = 90
+FALLBACK_EXPORT_RESERVE = 30
 PROMPT_ENFORCED_GUIDANCE = ("No sealed controller check enforces these source rules. The compiler adds them to system_prompt "
                             "and to nodes that route into the actions they concern. Also state each rule in the "
                             "task_message of every other node where it applies, and plan the dialogue so that the "
@@ -101,6 +114,8 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--policy-repair", choices=("patch", "full"), default="patch",
                      help="Repair a rejected policy by a structured patch first (falls back to a full re-emission), or only by full re-emission")
     out.add_argument("--codex", default="codex", help="Existing Codex CLI executable")
+    out.add_argument("--no-plan-fallback", dest="plan_fallback", action="store_false",
+                     help="Fail instead of exporting the deterministic fallback plan when no model plan validates")
     out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
                      help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
                           "declarations become prompt-enforced dialogue rules instead of rejecting the policy")
@@ -271,33 +286,36 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
                     repair_mode="patch", declarations="strict"):
-    repair = failure = rejected = None
+    repair = failure = rejected = retry = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     # Injected generators without the patch call keep full repairs.
     patching = repair_mode == "patch" and callable(getattr(generator, "generate_policy_patch", None))
     for attempt in range(MAX_REPAIRS + 1):
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
+        retrying = retry is not None and attempt == 1
         started = deadline.elapsed()
         policy = None
         if patching and rejected is not None and isinstance(rejected["policy"], dict):
             policy = _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt + 1,
                                      failure, cap=cap, reserve=reserve)
-        mode = None if attempt == 0 else "patch" if policy is not None else "full"
+        mode = None if attempt == 0 else "patch" if policy is not None else "retry" if retrying else "full"
         if policy is None:
+            call_reserve = EXPORT_RESERVE if retrying else reserve
             if repair:
                 _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
                               cap=cap, reserve=reserve)
-            deadline.require(seconds=1, reserve=reserve)
-            allocated = deadline.timeout(cap, reserve=reserve)
+            deadline.require(seconds=1, reserve=call_reserve)
+            allocated = deadline.timeout(cap, reserve=call_reserve)
             trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
-                       allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
-                       first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
+                       allocated_seconds=round(allocated, 2), reserve_seconds=call_reserve,
+                       first_workflow_reserve_seconds=call_reserve - EXPORT_RESERVE,
                        remaining_seconds=round(deadline.remaining(), 2))
             started = deadline.elapsed()
             try:
                 extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
                                                purpose="Extract banking policy and source/API bindings",
-                                               max_seconds=allocated, reserve_seconds=reserve)
+                                               max_seconds=allocated, reserve_seconds=call_reserve,
+                                               **(retry if retrying else {}))
             except GenerationFormatError as exc:
                 _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
                 trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
@@ -306,6 +324,19 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                     raise
                 failure = str(exc)
                 repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+                continue
+            except GenerationTimeout as exc:
+                if attempt:
+                    raise
+                failure = str(exc)
+                _admit_repair(trace, deadline, "policy", 2, None, failure, cap=POLICY_REPAIR_CAP, reserve=EXPORT_RESERVE)
+                effort = getattr(generator, "reasoning_effort", None)
+                effort = effort if isinstance(effort, str) else None
+                retry = {"reasoning_effort": RETRY_REASONING_EFFORT.get(effort, effort)}
+                trace.emit("policy_generation_retry", attempt=2, after="stall" if isinstance(exc, GenerationStalled) else "timeout",
+                           failed_reasoning_effort=effort, reasoning_effort=retry["reasoning_effort"],
+                           reserve_seconds=EXPORT_RESERVE, elapsed_seconds=round(deadline.elapsed() - started, 3),
+                           remaining_seconds=round(deadline.remaining(), 2))
                 continue
             policy = extracted.get("policy")
         elapsed = round(deadline.elapsed() - started, 3)
@@ -537,6 +568,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                         "seconds_per_character": REPAIR_SECONDS_PER_CHARACTER,
                                                         "fraction": REPAIR_ADMISSION_FRACTION}},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
+            "plan_fallback": getattr(args, "plan_fallback", True),
             "evaluator_input": evaluator_input,
             **({"declaration_mode": "relaxed"} if declarations == "relaxed" else {}),
         })
@@ -614,11 +646,29 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         repairs = policy_repairs
         workflow_repairs = 0
         adopted = False
+        fallback = None  # The model plan failure that started the deterministic fallback plan.
+        model_plan_validated = False
+
+        def use_fallback(exc: Exception) -> bool:
+            """Only when no model plan validated, the option is on and the fallback fits in the time left."""
+            started = (not model_plan_validated and getattr(args, "plan_fallback", True)
+                       and deadline.remaining() > FALLBACK_MIN_SECONDS)
+            trace.emit("plan_fallback_decision", started=started, model_failure=str(exc),
+                       model_plan_validated=model_plan_validated, remaining_seconds=round(deadline.remaining(), 2),
+                       minimum_seconds=FALLBACK_MIN_SECONDS)
+            return started
+
         while True:
-            if repair:
-                _admit_repair(trace, deadline, "plan", attempt_number + 1, repair.get("previous_plan"), failure,
-                              cap=WORKFLOW_CAP, reserve=EXPORT_RESERVE)
-            deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            if repair and fallback is None:
+                try:
+                    _admit_repair(trace, deadline, "plan", attempt_number + 1, repair.get("previous_plan"), failure,
+                                  cap=WORKFLOW_CAP, reserve=EXPORT_RESERVE)
+                except DeadlineExceeded as exc:
+                    if not use_fallback(exc):
+                        raise
+                    fallback = exc
+            deploy_reserve = EXPORT_RESERVE if fallback is None else FALLBACK_EXPORT_RESERVE
+            deadline.require(seconds=1, reserve=deploy_reserve)
             attempt_number += 1
             attempt_dir = run_dir / "attempts" / f"plan-{attempt_number:03d}"
             attempt_dir.mkdir(parents=True)
@@ -631,11 +681,16 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             trace.emit("stage_started", stage="workflow", attempt=workflow_repairs + 1,
                        contract_sha256=contract_sha256, attempt_directory=attempt_record["directory"])
             stage_started = deadline.elapsed()
-            workflow_prompt = make_workflow_prompt(compiled, openapi, repair, execution_requirements=requirements)
-            _attempt_snapshot(attempt_dir, "generation-context.json",
-                              {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
             try:
-                generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
+                if fallback is None:
+                    workflow_prompt = make_workflow_prompt(compiled, openapi, repair, execution_requirements=requirements)
+                    _attempt_snapshot(attempt_dir, "generation-context.json",
+                                      {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
+                    generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
+                else:
+                    # No model call: built only from this run's frozen contract and execution requirements.
+                    generated = {"plan": deterministic_plan(compiled, requirements), "contract_sha256": contract_sha256}
+                    trace.emit("plan_fallback_built", model_failure=str(fallback), attempt=attempt_number)
             except GenerationFormatError as exc:
                 elapsed = round(deadline.elapsed() - stage_started, 3)
                 stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + elapsed, 3)
@@ -645,11 +700,23 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 trace.emit("workflow_format_validation", passed=False, format_error=exc.code,
                            attempt=attempt_number, elapsed_seconds=elapsed)
                 if repairs >= MAX_REPAIRS:
-                    raise
+                    if not use_fallback(exc):
+                        raise
+                    fallback = exc
+                    continue
                 repairs += 1
                 workflow_repairs += 1
                 failure = str(exc)
                 repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+                continue
+            except (GenerationError, DeadlineExceeded) as exc:
+                if fallback is not None or not use_fallback(exc):
+                    raise
+                stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + deadline.elapsed() - stage_started, 3)
+                _attempt_status(attempt_dir, attempt_record, secret_values, status="failed", phase="generation",
+                                error=str(exc), failure_kind="builder")
+                attempt_open = False
+                fallback = exc
                 continue
             _attempt_snapshot(attempt_dir, "proposal.json", generated, secret_values)
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
@@ -701,17 +768,26 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
                 trace.emit("validation", passed=False, errors=errors, attempt=attempt_number,
                            elapsed_seconds=round(deadline.elapsed() - stage_started, 3))
+                if fallback is not None:
+                    raise ValueError(str(fallback) + "; the deterministic fallback plan also failed validation: "
+                                     + "; ".join(errors))
                 if repairs >= MAX_REPAIRS:
-                    raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
+                    exc = ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
+                    if not use_fallback(exc):
+                        raise exc
+                    fallback = exc
+                    continue
                 repairs += 1
                 workflow_repairs += 1
                 failure = "Candidate validation failed: " + "; ".join(errors)
                 repair = {"validation_errors": errors, "previous_plan": sanitize(plan, secrets=secret_values)}
                 continue
+            plan_origin = "model" if fallback is None else "deterministic_fallback"
+            model_plan_validated = model_plan_validated or fallback is None
             _attempt_status(attempt_dir, attempt_record, secret_values, status="validated", phase="compilation",
-                            plan_sha256=digest(plan), workflow_sha256=digest(candidate["workflow"]))
+                            plan_sha256=digest(plan), workflow_sha256=digest(candidate["workflow"]), plan_origin=plan_origin)
             trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]), attempt=attempt_number,
-                       elapsed_seconds=round(deadline.elapsed() - stage_started, 3))
+                       elapsed_seconds=round(deadline.elapsed() - stage_started, 3), plan_origin=plan_origin)
             _write_json(run_dir / "plan.json", plan)
             _write_json(run_dir / "execution-policy.json", execution_policy)
             _write_json(run_dir / "action-bindings.json", bindings)
@@ -732,15 +808,16 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "execution_requirements_sha256": requirements["sha256"],
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
+                            "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                             "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                      status="generated_validated", remaining_seconds=deadline.remaining())
-            deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            deadline.require(seconds=1, reserve=deploy_reserve)
             stage_started = deadline.elapsed()
             if client is None:
                 lease_path = getattr(args, "simulation_lease", None)
-                client = client_factory(deadline=deadline, reserve=EXPORT_RESERVE,
+                client = client_factory(deadline=deadline, reserve=deploy_reserve,
                                         lease_path=lease_path.resolve() if lease_path else output_dir / ".simulation.lock")
             if args.adopt_workflow and not adopted:
                 binding = client.adopt_workflow(args.slot or args.brief[0].stem, args.adopt_workflow, output_dir / ".freya-slots.json")
@@ -773,7 +850,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                        steps=len(deployment["workflow"]["nodes"]), tools=len(operations(openapi)), attempt=attempt_number)
             _stage_completed(trace, deadline, stage_durations, "deployment", stage_started, attempt=attempt_number)
             _attempt_status(attempt_dir, attempt_record, secret_values, status="published", phase="deployment")
-            if evaluator_input is None:
+            # Hosted cases cannot repair a deterministic plan; it is exported untested.
+            if evaluator_input is None or fallback is not None:
                 break
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             stage_started = deadline.elapsed()
@@ -833,6 +911,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "execution_requirements_sha256": requirements["sha256"],
                     "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                     "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
+                    "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "evaluator_input": evaluator_input,

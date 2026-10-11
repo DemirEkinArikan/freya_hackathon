@@ -593,9 +593,12 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             reason = choice.get("reason", "")
             if allowed is None or (allowed and reason not in allowed) or (not allowed and reason):
                 raise GuardCompileError(["identity closing choice conflicts with allowed closing reasons"])
-            if reason in seen:
+            # A pair may also be its protected evidence's row: recorded evidence
+            # closes only through that row, and a proposal matches only the others.
+            evidence = choice["requires"] if choice["requires"] in ("uncertain_verification", "definite_verification_failure") else ""
+            if (evidence, reason) in seen:
                 raise GuardCompileError(["identity closing choices have duplicate decoded reasons"])
-            seen.add(reason)
+            seen.add((evidence, reason))
             if reason == "callback" and choice["requires"] != "recorded_callback":
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
             if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
@@ -1164,12 +1167,14 @@ def guard_close(state, proposed, profile, maps):
                         raise ValueError('identity closing reason proposal must be text')
                     reason = guard_decode('reasons', proposed.get('reason', ''), maps)
                     matching = [choice for choice in choices if choice['outcome'] == outcome and choice.get('reason', '') == reason]
-                    if len(matching) != 1:
-                        raise ValueError('identity closing proposal lacks one declared eligible choice')
-                    choice = matching[0]
-                    requirement = choice['requires']
-                    if requirement in GUARD_IDENTITY_EVIDENCE.values():
+                    # Only recorded evidence selects an evidence row; a proposal matches the others.
+                    eligible = [choice for choice in matching if choice['requires'] not in GUARD_IDENTITY_EVIDENCE.values()]
+                    if matching and not eligible:
                         raise ValueError('identity closing proposal lacks required verification evidence')
+                    if len(eligible) != 1:
+                        raise ValueError('identity closing proposal lacks one declared eligible choice')
+                    choice = eligible[0]
+                    requirement = choice['requires']
                     if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
                         raise ValueError('identity closing proposal lacks required callback evidence')
                     proposal = dict((key, value) for key, value in choice.items() if key != 'requires')

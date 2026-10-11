@@ -15,9 +15,13 @@ class AuthoredPassthroughTests(unittest.TestCase):
 
     def router(self, target="close", entry=None):
         node = self.context["plan"]["nodes"]["talk"]
+        # The required always fallback would pre-empt intent routes on a host
+        # that checks deterministic conditions first, so routes read a variable.
+        routes = [dict(row, condition={"logic": "or", "conditions": [
+            {"variable": "answer_text", "operator": "equals", "operand": row["target_node"]}]}) for row in node["transitions"]]
         node.update(on_enter=entry or {"type": "silent"}, passthrough=True,
                     passthrough_default_transition=target,
-                    transitions=node["transitions"] + [{
+                    transitions=routes + [{
                         "target_node": target, "description": "entry fallback",
                         "condition": {"operator": "always"}}])
         return node

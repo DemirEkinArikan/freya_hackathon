@@ -108,6 +108,25 @@ def _condition(value: Any, path: str, errors: list[str], *, outer: bool = True) 
         errors.append(path + ": matches_intent requires description")
 
 
+def _router_free(value: Any) -> bool:
+    """Whether a condition can hold without a routing-model judgement."""
+    if not isinstance(value, dict):
+        return False
+    children = value.get("conditions")
+    if isinstance(children, list) and children:
+        found = [_router_free(child) for child in children]
+        return any(found) if value.get("logic") == "or" else all(found)
+    return value.get("operator") in OPERATORS - {"matches_intent"}
+
+
+def _router_judged(value: Any) -> bool:
+    """Whether a condition contains a routing-model intent judgement."""
+    if not isinstance(value, dict):
+        return False
+    children = value.get("conditions")
+    return value.get("operator") == "matches_intent" or isinstance(children, list) and any(map(_router_judged, children))
+
+
 def _assigned_vars(nodes: list[ast.stmt]) -> set[str]:
     names: set[str] = set()
     for node in nodes:
@@ -773,10 +792,29 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                         for child in condition.get("conditions", []) if isinstance(condition.get("conditions", []), list) else []:
                             condition_bindings(child)
                 condition_bindings(transition.get("condition"))
-            if transition.get("condition") == {"operator": "always"} and i != len(transitions) - 1:
+            # The router never evaluates a tool transition, unless the kit's
+            # same-target merge joins it with an ordinary route.
+            if (transition.get("condition") == {"operator": "always"} and i != len(transitions) - 1
+                    and (transition.get("is_tool_call") is not True or any(
+                        isinstance(t, dict) and t.get("is_tool_call") is not True and t.get("target_node") == target
+                        for t in transitions))):
                 errors.append(tpath + ": unconditional route shadows later transitions")
             if "is_tool_call" in transition and type(transition["is_tool_call"]) is not bool:
                 errors.append(tpath + ": is_tool_call must be boolean")
+        # The kit reads transitions in list order, yet evaluates deterministic
+        # conditions before its routing model and merges same-target routes.
+        # Accept only routing that every one of those readings orders alike.
+        routed = [(i, t) for i, t in enumerate(transitions) if isinstance(t, dict)
+                  and isinstance(t.get("target_node"), str) and t.get("is_tool_call") is not True]
+        free = {t["target_node"] for _, t in routed if _router_free(t.get("condition"))}
+        last = {t["target_node"]: i for i, t in routed}
+        for target, j in sorted(last.items(), key=lambda item: item[1]):
+            judged = [i for i, t in routed if i < j and t["target_node"] != target and _router_judged(t.get("condition"))]
+            if target in free and judged:
+                errors.append(f"{path}.transitions[{j}]: deterministic or always route (counting same-target routes "
+                              f"the kit merges) follows matches_intent at transitions[{judged[0]}]; hosts that evaluate "
+                              "deterministic conditions first pre-empt that intent. Put deterministic routes before "
+                              "intents, add no always fallback after intents, and route passthrough nodes deterministically")
         for field in ("passthrough_default_transition", "max_turn_transition"):
             target = node.get(field)
             if target:

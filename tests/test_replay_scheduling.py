@@ -6,7 +6,7 @@ from unittest.mock import patch
 from builder.guards import compile_guarded_workflow
 from development_protocol_samples import protocol_response
 from test_guards import fixture
-from tools.replay_guarded import ReplayError, replay
+from tools.replay_guarded import ReplayError, _route, replay
 
 
 def route(target, condition=None, *, tool=False):
@@ -231,30 +231,31 @@ class ReplaySchedulingTests(unittest.TestCase):
         self.assertLess(path.index(target), path.index("close"))
         self.assertEqual(report["calls"][0]["tool"], "close_call")
 
-    def test_entry_intent_cannot_override_deterministic_fallback(self):
+    def test_entry_intent_before_deterministic_fallback_is_refused_as_order_dependent(self):
         nodes = {"talk": conversation("talk", [route("later", intent()), route("close")], passthrough="close"),
                  "later": conversation("later", [route("close")])}
-        report = self.run_script(nodes)
-        self.assertEqual(report["status"], "terminated")
-        report = self.run_script(nodes, [entry_routing(None)])
-        self.assertEqual(report["status"], "terminated")
-        report = self.run_script(nodes, [entry_routing(0)])
-        self.assertEqual(report["status"], "terminated")
-        self.assertNotIn("later", [item["node"] for item in report["steps"]])
+        for frames in ((), [entry_routing(None)], [entry_routing(0)]):
+            with self.subTest(frames=frames), self.assertRaisesRegex(ReplayError, "follows matches_intent"):
+                self.run_script(nodes, frames)
+        # Below validation, supplied intent still never pre-empts a decidable route.
+        self.assertEqual(_route(nodes["talk"], {}, 0), ("close", True))
 
-    def test_true_deterministic_or_routes_before_fallback_despite_intent_leaf(self):
+    def test_true_deterministic_or_routes_without_intent_evidence(self):
         condition = {"logic": "or", "conditions": [equals("now", "2031-05-02"), intent()]}
-        nodes = {"talk": conversation("talk", [route("later", condition), route("close")], passthrough="close"),
+        nodes = {"talk": conversation("talk", [route("later", condition)]),
                  "later": conversation("later", [route("close")])}
-        report = self.run_script(nodes)
+        report = self.run_script(nodes, [caller()])
         self.assert_waiting_without_call(report)
         self.assertEqual([item["node"] for item in report["prompts"]], ["talk", "later"])
-        self.assertEqual(report["frames_consumed"], 0)
+        self.assertEqual(report["frames_consumed"], 1)
+        nodes["talk"]["transitions"].append(route("close"))
+        with self.assertRaisesRegex(ReplayError, "follows matches_intent"):
+            self.run_script(nodes, [caller()])
 
     def test_duplicate_targets_keep_list_order_without_merge_emulation(self):
         # The kit merges duplicate targets at load but does not document the
         # merged position; the compiled controller relies on list order.
-        nodes = {"talk": conversation("talk", [route("later", intent()),
+        nodes = {"talk": conversation("talk", [route("later", equals("now", "2031-05-03")),
                                                route("close", equals("now", "2031-05-02")),
                                                route("later")], passthrough="later"),
                  "later": conversation("later", [route("close")])}
@@ -262,15 +263,20 @@ class ReplaySchedulingTests(unittest.TestCase):
         self.assertEqual(report["status"], "terminated")
         self.assertNotIn("later", [item["node"] for item in report["steps"]])
         self.assertEqual(report["frames_consumed"], 0)
+        nodes["talk"]["transitions"][0]["condition"] = intent()
+        with self.assertRaisesRegex(ReplayError, "follows matches_intent"):
+            self.run_script(nodes)
 
-    def test_false_deterministic_and_resolves_entry_intent_without_evidence(self):
+    def test_false_deterministic_and_needs_no_entry_evidence(self):
         condition = {"logic": "or", "conditions": [{"logic": "and", "conditions": [
             equals("now", "2031-05-03"), intent()]}]}
+        node = {"transitions": [route("later", condition)]}
+        self.assertEqual(_route(node, {"now": "2031-05-02"}, evidence=False), (None, True))
+        self.assertEqual(_route(node, {"now": "2031-05-03"}, evidence=False), (None, False))
         nodes = {"talk": conversation("talk", [route("later", condition), route("close")], passthrough="close"),
                  "later": conversation("later", [route("close")])}
-        report = self.run_script(nodes)
-        self.assertEqual(report["status"], "terminated")
-        self.assertEqual(report["frames_consumed"], 0)
+        with self.assertRaisesRegex(ReplayError, "follows matches_intent"):
+            self.run_script(nodes)
 
     def test_completion_events_do_not_count_toward_caller_turn_cap(self):
         nodes = {"talk": conversation("talk", [route("later", intent(), tool=True)], entry="llm", cap=1),

@@ -57,7 +57,11 @@ in list order, then checks unresolved intent conditions with supplied evidence.
 A mixed `or` already true or `and` already false is decidable. Supplied intent
 cannot force or override a deterministic route, including an ordinary `always`
 fallback. This is a local interpretation of the pinned kit's routing guidance;
-it does not prove platform ordering or timing.
+it does not prove platform ordering or timing. Validation therefore rejects the
+nodes where the interpretation matters: a deterministic or `always` route listed
+after an intent route of another target, counting same-target routes the kit
+merges. Accepted workflows route alike under list-order and deterministic-first
+evaluation, and the replay refuses an order-dependent workflow before execution.
 The kit merges same-target transitions at load into one OR transition but does
 not document the merged transition's position. Replay keeps compiled list order
 and does not emulate that merge. Compiled controller nodes such as

@@ -66,8 +66,12 @@ class ClaudeT08BoundaryTests(unittest.TestCase):
     def test_caller_claimed_success_without_dispatch_records_nothing(self):
         self.h.stage()
         self.h.code("commit")
+        initial = deepcopy(self.h.variables)
         for entry in ("commit", "close"):
             with self.subTest(entry=entry):
+                # Each claim starts unquarantined, so neither depends on the other.
+                self.h.variables = deepcopy(initial)
+                self.assertFalse(self.state["quarantined"])
                 node = self.h.workflow["nodes"]["bg_" + entry + "_api"]
                 for mapping in node["response_mapping"]:
                     self.h.variables[mapping["variable"]] = {"evidence_ok": True, "evidence_promise_id": "claimed"}.get(
@@ -153,16 +157,40 @@ class ClaudeT08BoundaryTests(unittest.TestCase):
         self.assertTrue(self.state["quarantined"])
 
     def test_recorded_promise_and_close_never_dispatch_twice(self):
-        self.h.stage()
-        self.h.code("commit")
-        self.h.variables["bg_consent"] = "yes"
-        self.h.code("bg_commit_accept")
+        def promise(amount):
+            self.h.stage(amount=amount)
+            self.h.code("commit")
+            self.h.variables["bg_consent"] = "yes"
+            self.h.code("bg_commit_accept")
+
+        promise("50.00")
+        self.assertEqual(self.body()["input_product_id"], "internal-product-Z")
         self.h.api_result("commit", {"evidence_ok": True, "evidence_promise_id": "once"})
-        self.h.stage()
+        recorded, attempts = deepcopy(self.h.variables), deepcopy(self.state["attempts"])
+        # The same dispatch path again, with the same and with changed terms.
+        for amount in ("50.00", "60.00"):
+            with self.subTest(amount=amount):
+                self.h.variables = deepcopy(recorded)
+                promise(amount)
+                self.assertEqual(self.h.variables["bg_route"], "blocked")
+                self.assertEqual(self.body(), {})
+                self.assertEqual(self.state["attempts"], attempts)
+                self.assertEqual(self.state["recorded_promises"],
+                                 {"internal-product-Z": {"amount_cents": 5000, "date": "2031-05-06"}})
+        self.h.variables = recorded
+        self.h.variables.update(product="internal-product-A", note_reason="NOTE_R")
+        self.h.code("note")
+        self.h.code("finish")
+        self.h.api_result("finish", {"evidence_ok": True})
+        self.h.code("close")
+        self.assertEqual(self.body()["input_outcome"], "C_A")
+        self.h.api_result("close", {"evidence_ok": True})
+        self.assertTrue(self.state["closed"])
+        attempts = deepcopy(self.state["attempts"])
+        self.h.code("close")
+        self.assertEqual(self.h.variables["bg_route"], "blocked")
         self.assertEqual(self.body(), {})
-        self.h.code("commit")
-        self.assertEqual(self.body(), {})
-        self.assertEqual(len(self.state["attempts"]), 1)
+        self.assertEqual(self.state["attempts"], attempts)
 
 
 if __name__ == "__main__":

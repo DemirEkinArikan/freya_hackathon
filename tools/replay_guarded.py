@@ -23,11 +23,13 @@ class ReplayError(ValueError):
 
 
 def _mapped(value):
-    # The kit documents string scalar result bindings. JSON containers remain
-    # serialized inputs for the sealed kernel, which parses its account result.
-    if value is None:
+    # The kit documents string scalar result bindings. The hosted platform maps
+    # a JSON array or object to an empty string (11 Oct, a 200 get_account with
+    # three products), so a container reaches the kernel only as JSON text that
+    # the compiled post-hook wrote.
+    if value is None or isinstance(value, (dict, list)):
         return ""
-    if isinstance(value, (dict, list, bool)):
+    if isinstance(value, bool):
         return canonical_json(value)
     return str(value)
 

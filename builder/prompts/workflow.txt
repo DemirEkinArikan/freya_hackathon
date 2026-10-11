@@ -44,8 +44,14 @@ and promises while retaining earlier successful promises. Select a handoff befor
 finalizing notes. All conversation paths must reach a guarded close_call where
 permitted; blocked/failure paths must follow the supplied disposition requirements.
 The controller may quarantine uncertain persistence and cannot fabricate success.
-close_call is a final guarded action: its compiled handler ends the call. Do not
-add a conversation after it to represent a closed call. Every declared conversation
+close_call is a final guarded action: its compiled handler ends the call silently.
+It does not supply a farewell, app advice or any other customer explanation. If an
+active rule requires such speech, author an applicable speaking conversation before
+close_call, including source-required normal, early-exit and handoff wording. Do not
+invent default advice or farewell requirements when the source supplies none.
+Before that action, do not claim the final close was recorded; describe prior
+actions as recorded only when the approved runtime view establishes success.
+Do not add a conversation after close_call to represent a closed call. Every declared conversation
 must have a graph path to a call-ending handler; any required routing references
 must name valid nodes already participating in that path.
 
@@ -55,6 +61,11 @@ Resolve speech dates against supplied now. Human product readback uses only fiel
 allowed by the contract. Do not expose customer/internal product identifiers.
 Persuasion and speech interpretation remain your dialogue responsibility; routing
 through a guard does not establish that the conversation complied with the policy.
+When active rules require a shared deadline or an adjustment across products,
+author the required explanation, corrections and renewed agreement in the relevant
+dialogue before final commitment and closing. Use only available approved deadline
+constraints and input-defined calendar rules. Do not assume guard calculations
+speak those explanations or impose a shared deadline when the source does not.
 
 Keep the plan compact with shared per-product dialogue and input-derived branches.
 The reference defines transport format only, never bank-specific requirements.

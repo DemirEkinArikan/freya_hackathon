@@ -215,7 +215,8 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                     errors.append(name + ": unknown " + field)
         elif kind == "conversation":
             allowed = {"name", "node_type", "task_message", "routing_prompt", "on_enter", "on_enter_first_entry_only",
-                       "extraction_schema", "transitions", "max_node_turns", "max_turn_transition"}
+                       "extraction_schema", "transitions", "max_node_turns", "max_turn_transition",
+                       "passthrough", "passthrough_default_transition"}
             if set(node) - allowed:
                 errors.append(name + ": dialogue nodes cannot contain executable or unsupported fields")
             if not isinstance(node.get("task_message", ""), str):
@@ -227,6 +228,22 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
             if not isinstance(extraction, list) or not isinstance(transitions, list):
                 errors.append(name + ": extraction_schema and transitions must be arrays")
                 continue
+            if "passthrough" in node and type(node["passthrough"]) is not bool:
+                errors.append(name + ": passthrough must be boolean")
+            if "passthrough_default_transition" in node:
+                default = node["passthrough_default_transition"]
+                if not isinstance(default, str) or default not in nodes:
+                    errors.append(name + ": passthrough default must target a declared public node")
+            if node.get("passthrough") is True:
+                default = node.get("passthrough_default_transition")
+                fallback = transitions[-1] if transitions and isinstance(transitions[-1], dict) else {}
+                # Entry routing is explicit. The default and unconditional
+                # fallback must agree before the compiler seals public targets.
+                if (not isinstance(default, str) or default not in nodes
+                        or fallback.get("condition") != {"operator": "always"}
+                        or fallback.get("is_tool_call", False) is not False
+                        or fallback.get("target_node") != default):
+                    errors.append(name + ": passthrough requires a public default and matching ordinary final always fallback")
             for entry in extraction:
                 if not isinstance(entry, dict) or not variable(entry.get("name")):
                     errors.append(name + ": extraction cannot write protected or engine variables")

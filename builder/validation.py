@@ -568,6 +568,38 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
     return name, handler
 
 
+def extraction_entry_errors(variable: Any, ep: str) -> list[str]:
+    """Kit extraction-entry rules, shared by final validation and the guard plan check."""
+    if not isinstance(variable, dict) or not isinstance(variable.get("name"), str) or not _NAME.fullmatch(variable["name"]):
+        return [ep + ": extracted variable requires name"]
+    errors = []
+    if not isinstance(variable.get("type"), str) or variable["type"] not in {"string", "integer", "float", "boolean", "date", "datetime", "name", "phone_number"}:
+        errors.append(ep + ": unknown extraction type")
+    if type(variable.get("min_confidence")) not in {int, float} or not 0 <= variable["min_confidence"] <= 1:
+        errors.append(ep + ": min_confidence must be explicit and within 0..1")
+    if "enum" in variable:
+        errors.append(ep + ": extraction uses documented enum_values, not enum")
+    if "enum_values" in variable:
+        values = variable["enum_values"]
+        if not isinstance(values, list) or not values:
+            errors.append(ep + ": enum_values must be a nonempty array")
+        elif variable.get("type") in {"string", "date", "datetime", "name", "phone_number"} and any(not isinstance(v, str) for v in values):
+            errors.append(ep + ": textual extraction enums require string values")
+    if "max_retries" in variable and (type(variable["max_retries"]) is not int or variable["max_retries"] < 0):
+        errors.append(ep + ": max_retries must be a nonnegative integer")
+    if "validation_pattern" in variable:
+        try:
+            if not isinstance(variable["validation_pattern"], str):
+                raise TypeError
+            re.compile(variable["validation_pattern"])
+        except (TypeError, re.error, OverflowError, RecursionError):
+            errors.append(ep + ": validation_pattern must be a valid regex string")
+    custom = variable.get("extraction_prompt")
+    if custom and (not isinstance(custom, str) or any("{{" + key + "}}" not in custom for key in ("extractor.speech", "extractor.conversation.last-10", "extractor.type_preamble", "extractor.variables_list"))):
+        errors.append(ep + ": custom extraction prompt omits required input placeholders")
+    return errors
+
+
 def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
                       *, guard_context: Mapping[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
@@ -847,34 +879,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             errors.append(path + ": extraction_schema must be an array")
         else:
             for i, variable in enumerate(extraction):
-                ep = f"{path}.extraction_schema[{i}]"
-                if not isinstance(variable, dict) or not isinstance(variable.get("name"), str) or not _NAME.fullmatch(variable["name"]):
-                    errors.append(ep + ": extracted variable requires name")
-                    continue
-                if not isinstance(variable.get("type"), str) or variable["type"] not in {"string", "integer", "float", "boolean", "date", "datetime", "name", "phone_number"}:
-                    errors.append(ep + ": unknown extraction type")
-                if type(variable.get("min_confidence")) not in {int, float} or not 0 <= variable["min_confidence"] <= 1:
-                    errors.append(ep + ": min_confidence must be explicit and within 0..1")
-                if "enum" in variable:
-                    errors.append(ep + ": extraction uses documented enum_values, not enum")
-                if "enum_values" in variable:
-                    values = variable["enum_values"]
-                    if not isinstance(values, list) or not values:
-                        errors.append(ep + ": enum_values must be a nonempty array")
-                    elif variable.get("type") in {"string", "date", "datetime", "name", "phone_number"} and any(not isinstance(v, str) for v in values):
-                        errors.append(ep + ": textual extraction enums require string values")
-                if "max_retries" in variable and (type(variable["max_retries"]) is not int or variable["max_retries"] < 0):
-                    errors.append(ep + ": max_retries must be a nonnegative integer")
-                if "validation_pattern" in variable:
-                    try:
-                        if not isinstance(variable["validation_pattern"], str):
-                            raise TypeError
-                        re.compile(variable["validation_pattern"])
-                    except (TypeError, re.error):
-                        errors.append(ep + ": validation_pattern must be a valid regex string")
-                custom = variable.get("extraction_prompt")
-                if custom and (not isinstance(custom, str) or any("{{" + key + "}}" not in custom for key in ("extractor.speech", "extractor.conversation.last-10", "extractor.type_preamble", "extractor.variables_list"))):
-                    errors.append(ep + ": custom extraction prompt omits required input placeholders")
+                errors.extend(extraction_entry_errors(variable, f"{path}.extraction_schema[{i}]"))
         if name in globals_:
             _condition(node.get("condition"), path + ".condition", errors)
             excluded = node.get("excluded_nodes", [])

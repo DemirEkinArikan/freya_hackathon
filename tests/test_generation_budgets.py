@@ -1,14 +1,20 @@
 """Controller and subprocess allocation boundaries; no actual model calls."""
+import copy
 import json
 import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
 from builder.build import execute, PROJECT
-from builder.runtime import CodexGenerator, Deadline, DeadlineExceeded, GenerationError, Trace, run_bounded
+from builder.runtime import (CodexGenerator, Deadline, DeadlineExceeded, GenerationError, GenerationFormatError,
+                             Trace, run_bounded)
 import test_builder
-from test_builder import fixture, plan
+from test_builder import FakeClient, fixture, plan
 from test_runtime import completed_stream
+
+
+def read_events(run):
+    return [json.loads(line) for line in (run / "trace.jsonl").read_text().splitlines()]
 
 
 class GenerationBudgetTests(unittest.TestCase):
@@ -26,12 +32,14 @@ class GenerationBudgetTests(unittest.TestCase):
         result = execute(self.args("--generate-only"), generator=generator)
         kwargs = generator.generate.call_args.kwargs
         self.assertEqual(kwargs["max_seconds"], 900)
-        self.assertEqual(kwargs["reserve_seconds"], 750)
+        self.assertEqual(kwargs["reserve_seconds"], 870)
         source = json.loads((PROJECT / result["run_directory"] / "builder-source.json").read_text())
         config = source["resolved_config"]
         self.assertEqual(config["generation_budgets"], {
             "policy_initial_cap_seconds": 900, "policy_repair_cap_seconds": 450,
-            "first_workflow_reserve_seconds": 450, "workflow_cap_seconds": 900})
+            "first_workflow_reserve_seconds": 570, "workflow_cap_seconds": 900,
+            "repair_admission": {"base_seconds": 61, "fraction": 0.9,
+                                 "seconds_per_character": 0.0044}})
         self.assertEqual((config["deadline_seconds"], config["export_reserve_seconds"], config["max_repairs"]),
                          (1800, 300, 2))
         self.assertEqual((config["model"], config["reasoning_effort"]), ("gpt-6.1-sol", "high"))
@@ -49,8 +57,8 @@ class GenerationBudgetTests(unittest.TestCase):
         generator.generate.side_effect = extract
         result = execute(self.args("--generate-only"), generator=generator, deadline=deadline)
         self.assertEqual(result["policy_repairs"], 1)
-        self.assertEqual([call.kwargs["max_seconds"] for call in generator.generate.call_args_list], [900, 430])
-        self.assertEqual([call.kwargs["reserve_seconds"] for call in generator.generate.call_args_list], [750, 750])
+        self.assertEqual([call.kwargs["max_seconds"] for call in generator.generate.call_args_list], [900, 310])
+        self.assertEqual([call.kwargs["reserve_seconds"] for call in generator.generate.call_args_list], [870, 870])
         self.assertEqual(generator.generate_plan.call_count, 1)
         self.assertEqual(deadline.start, 0)
 
@@ -69,7 +77,7 @@ class GenerationBudgetTests(unittest.TestCase):
     def test_pending_workflow_stops_policy_when_only_reserve_remains(self):
         now = [0.0]
         deadline = Deadline(1800, clock=lambda: now[0])
-        now[0] = 1049
+        now[0] = 929
         generator = self.generator()
         with self.assertRaises(DeadlineExceeded):
             execute(self.args("--generate-only"), generator=generator, deadline=deadline)
@@ -85,6 +93,126 @@ class GenerationBudgetTests(unittest.TestCase):
         generator.generate_plan.assert_not_called()
         manifest = json.loads((self.run_directory() / "manifest.json").read_text())
         self.assertEqual(manifest["status"], "failed")
+
+    def test_policy_repair_starts_only_if_a_rewrite_of_that_size_fits_before_the_workflow_reserve(self):
+        # The first call ends at 620 s: min(450, 1180 - 300 - 570) = 310 s remain for a repair.
+        for padding, repaired in ((0, True), (60000, False)):
+            now = [0.0]
+            deadline = Deadline(1800, clock=lambda: now[0])
+            invalid = fixture()
+            invalid["policy"]["sources"][0]["sha256"] = "0" * 64
+            invalid["policy"]["goal"] += " " + "x" * padding
+            estimate = 61 + 0.0044 * len(json.dumps(invalid["policy"], ensure_ascii=False, separators=(",", ":")))
+            self.assertEqual(0.9 * estimate <= 310, repaired)
+            generator = self.generator()
+            generator.generate.return_value = fixture()
+            def extract(*args, **kwargs):
+                now[0] += 620 if generator.generate.call_count == 1 else 100
+                return copy.deepcopy(invalid) if generator.generate.call_count == 1 else fixture()
+            generator.generate.side_effect = extract
+            out = self.directory / f"out-{padding}"
+            args = self.args("--generate-only", "--output-dir", str(out))
+            with self.subTest(padding=padding):
+                if repaired:
+                    self.assertEqual(execute(args, generator=generator, deadline=deadline)["policy_repairs"], 1)
+                else:
+                    with self.assertRaisesRegex(DeadlineExceeded, r"^No time for a repair \(310 s available, about "
+                                                                  r"\d+ s needed\): Policy extraction failed: "):
+                        execute(args, generator=generator, deadline=deadline)
+                    self.assertEqual(generator.generate.call_count, 1)
+                    generator.generate_plan.assert_not_called()
+                run = next(out.iterdir())
+                errors = json.loads((run / "policy.rejected-1.json").read_text())["validation_errors"]
+                admission = next(e for e in read_events(run) if e["event"] == "repair_admission")
+                self.assertEqual({key: admission[key] for key in ("stage", "attempt", "admitted", "available_seconds",
+                                                                   "estimated_seconds", "reserve_seconds")},
+                                 {"stage": "policy", "attempt": 2, "admitted": repaired, "available_seconds": 310,
+                                  "estimated_seconds": round(estimate, 1), "reserve_seconds": 870})
+                if not repaired:
+                    manifest = json.loads((run / "manifest.json").read_text())
+                    self.assertEqual(manifest["status"], "failed")
+                    self.assertTrue(manifest["error"].endswith("Policy extraction failed: " + "; ".join(errors)))
+
+    def test_skipped_policy_repair_after_format_error_keeps_the_format_diagnostic(self):
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        generator = self.generator()
+        def extract(*args, **kwargs):
+            now[0] = 880  # 920 s remain: 50 s before the 870 s reserve, below 90% of the 61 s base.
+            raise GenerationFormatError("inner_json")
+        generator.generate.side_effect = extract
+        with self.assertRaisesRegex(DeadlineExceeded, r"^No time for a repair \(50 s available, about 61 s needed\): "
+                                                      r"Codex completed output has invalid serialization: inner_json$"):
+            execute(self.args("--generate-only"), generator=generator, deadline=deadline)
+        self.assertEqual(generator.generate.call_count, 1)
+
+    def test_plan_repair_starts_only_if_it_can_finish_before_the_export_reserve(self):
+        broken = plan()
+        broken["initial_node"] = "missing"
+        for finished_at, repaired in ((1000, True), (1460, False)):
+            now = [0.0]
+            deadline = Deadline(1800, clock=lambda: now[0])
+            generator = self.generator()
+            generator.generate.return_value = fixture()
+            def workflow(prompt, *, contract_sha256):
+                first = generator.generate_plan.call_count == 1
+                now[0] = finished_at if first else finished_at + 100
+                return {"plan": copy.deepcopy(broken if first else plan()), "contract_sha256": contract_sha256}
+            generator.generate_plan.side_effect = workflow
+            out = self.directory / f"out-{finished_at}"
+            args = self.args("--generate-only", "--output-dir", str(out))
+            with self.subTest(finished_at=finished_at):
+                if repaired:
+                    result = execute(args, generator=generator, deadline=deadline)
+                    self.assertEqual((result["status"], result["workflow_repairs"]), ("generated_validated", 1))
+                else:
+                    with self.assertRaisesRegex(DeadlineExceeded, r"^No time for a repair \(40 s available, about "
+                                                                  r"\d+ s needed\): Candidate validation failed: "):
+                        execute(args, generator=generator, deadline=deadline)
+                    self.assertEqual(generator.generate_plan.call_count, 1)
+                run = next(out.iterdir())
+                admission = next(e for e in read_events(run) if e["event"] == "repair_admission")
+                self.assertEqual((admission["stage"], admission["attempt"], admission["admitted"],
+                                  admission["available_seconds"], admission["reserve_seconds"]),
+                                 ("plan", 2, repaired, 500 if repaired else 40, 300))
+                attempts = sorted(path.name for path in (run / "attempts").iterdir())
+                self.assertEqual(attempts, ["plan-001", "plan-002"] if repaired else ["plan-001"])
+                if not repaired:
+                    end = read_events(run)[-1]
+                    self.assertEqual((end["event"], end["status"], end["stage_durations"]),
+                                     ("end", "failed", {"policy": 0, "workflow": 1460}))
+
+    def test_stage_timing_uses_the_deadline_clock_through_export(self):
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        def extract(*args, **kwargs):
+            now[0] += 400
+            return fixture()
+        def workflow(prompt, *, contract_sha256):
+            now[0] += 300
+            return {"plan": plan(), "contract_sha256": contract_sha256}
+        generator.generate.side_effect = extract
+        generator.generate_plan.side_effect = workflow
+        class TimedClient(FakeClient):
+            def save_workflow(self, *args):
+                now[0] += 12
+                return super().save_workflow(*args)
+            def export_workflow(self, *args):
+                now[0] += 5
+                return super().export_workflow(*args)
+        result = execute(self.args(), generator=generator, client_factory=TimedClient, deadline=deadline)
+        self.assertEqual(result["status"], "exported")
+        self.assertEqual(result["stage_durations"], {"policy": 400, "workflow": 300, "deployment": 12, "export": 5})
+        stages = [(e["stage"], e["elapsed_seconds"], e["remaining_seconds"])
+                  for e in read_events(self.run_directory()) if e["event"] == "stage_completed"]
+        self.assertEqual(stages, [("policy", 400, 1400), ("workflow", 300, 1100),
+                                  ("deployment", 12, 1088), ("export", 5, 1083)])
+        events = read_events(self.run_directory())
+        self.assertEqual([(e["attempt"], e["elapsed_seconds"]) for e in events if e["event"] == "policy_execution_requirements"],
+                         [(1, 400)])
+        self.assertFalse(any(e["event"] == "repair_admission" for e in events))
 
     def test_injected_generator_overrunning_export_reserve_cannot_report_success(self):
         now = [0.0]

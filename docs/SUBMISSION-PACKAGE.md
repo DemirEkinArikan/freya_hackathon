@@ -21,6 +21,9 @@ repository URL. `commit` is the full 40-character **submission evidence HEAD**.
 `run_command` records both exact selected invocations including their ordered
 briefs, matching API, model, reasoning, slot, output and shared lease flags.
 Each of the four mappings must contain exactly `hidden-1` and `hidden-2`.
+Tonight's manifest also has `selections`, which maps each label to its
+`artifacts/final/<label>/selection.json` from `tools/final_attempts.py select`.
+`tools/final_attempts.py manifest` writes the whole manifest from those records.
 
 The following is a structural template, **not usable final evidence**. Replace
 all placeholders with reviewed actual paths/values; `briefs` preserves invocation
@@ -81,6 +84,7 @@ For each `runs` entry the packager resolves these original sibling files:
 | Selected `proposal.json`, `plan.json`, `workflow.json`, `guard-manifest.json` | Proposal contract/plan, authored workflow and guard fingerprints agree with selected attempt, build and compilation trace |
 | Selected `action-bindings.json`, `execution-policy.json`, `guard-context.json` | Retained compiler context references the exact retained contract, plan, bindings and execution policy |
 | Ordered input files and matching OpenAPI | Fingerprints agree with exactly one input trace event and selected manifest |
+| `selections` record, when the key is present | The declared order's eligible choice, attempt k of N, bound to the selected run's raw manifest, trace and export bytes. Every listed attempt's manifest and trace is still on disk, unchanged. Packaged as `selections/<label>.json`; unselected attempts are listed, never packaged |
 
 The full run/attempt directories remain protected local evidence, including failed
 proposals/readbacks, archived plans/compiler artifacts and partial runner files.

@@ -12,6 +12,12 @@ From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
 
 - Per final brief, submit the exported phone agent and the trace of the run
   that built it; also submit the builder code. One trace per brief.
+- A builder run on one brief may take 30 minutes, including any test it runs on
+  its own agent. The builder may run more than once; submit one run's agent with
+  that run's trace, and no manual step inside a run. Tonight each brief gets three
+  parallel attempts from `tools/final_attempts.py launch`. `select` picks one by
+  the order declared in [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order),
+  and every attempt stays on disk.
 - The kit exports with `freya.export_workflow(workflow_id, "<brief>.workflow.json")`.
   The builder writes the same envelope to `<run>/submission.workflow.json`, and
   the ZIP stores it as `workflows/hidden-N.workflow.json`. For upload, copy those
@@ -44,12 +50,17 @@ the channel the instructions came from. Do not guess an address.
 
 ## Before sending (on the evidence HEAD)
 
+- [ ] `final_attempts.py select` exited 0. Both `artifacts/final/<label>/selection.json`
+      records name the selected attempt k of N, and no attempt directory was
+      removed or edited. The manifest came from `final_attempts.py manifest`, so it
+      has `selections`.
 - [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
       the extraction check in SUBMISSION-PACKAGE.md all pass.
 - [ ] On that ZIP, `verify_submission_bundle.py --commit <evidence commit>` and
       `verify_hidden_release.py --official-pins <operator pins>` both pass
       ([S07-BUNDLE-VERIFICATION.md](S07-BUNDLE-VERIFICATION.md)). Their two JSON
       reports and the ZIP SHA-256 are posted on issue 19. Do not send otherwise.
+      The bundle report shows `attempt_selection` for both labels.
 - [ ] Each `<brief>.workflow.json` and trace attachment has the same SHA-256 as
       its ZIP member and its selected run file.
 - [ ] Evidence HEAD pushed; its PR merged with matching head.
@@ -63,6 +74,7 @@ the channel the instructions came from. Do not guess an address.
 | Destination used | |
 | Attachment names and SHA-256 | |
 | Package ZIP SHA-256 | |
+| Selected attempt per brief (k of N, run directory) | |
 | Evidence commit | |
 | Receipt, verbatim (no credentials) | |
 | Local private screenshot path | |
@@ -72,6 +84,9 @@ issue 19 without credentials or transcripts.
 
 ## Contingencies
 
+- **A brief has no eligible attempt (`select` exits 3).** Launch a retry round for
+  that brief alone (`--labels hidden-N`), no later than 18:45 UTC / 21:45 Istanbul.
+  It adds new attempt numbers, and every earlier attempt stays. Then run `select` again.
 - **One brief has no eligible run by 19:15 UTC.** The packager needs exactly two
   runs and refuses a one-run package. Send the eligible run's export and trace
   with `package_submission.py --source-only` code, and state that the other brief

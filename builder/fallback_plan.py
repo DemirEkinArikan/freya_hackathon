@@ -72,9 +72,12 @@ def deterministic_plan(contract: dict, requirements: dict) -> dict:
         names = [action] if action not in {"stage_promise", "stage_note"} else [action + "_" + str(slot) for slot in range(1, slots + 1)]
         for index, name in enumerate(names, 1):
             if action == "verify_identity":
-                extraction += [_entry("proposal_identity_field", "string", "Security factor the caller is answering now, in the bank's factor order.", profile.get("identity_fields")),
-                               _entry("proposal_identity_answer", "string", "The customer's own answer to the current security question, in the format the bank rules require; never a third party's answer.")]
-                node_inputs = {"field": "proposal_identity_field", "answer": "proposal_identity_answer"}
+                # The controller sends the next factor itself; a proposed factor only selects a latest_check correction.
+                node_inputs = {"answer": "proposal_identity_answer"}
+                if profile.get("identity_factor_state") == "latest_check":
+                    extraction.append(_entry("proposal_identity_field", "string", "Security factor the caller is answering now, in the bank's factor order.", profile.get("identity_fields")))
+                    node_inputs["field"] = "proposal_identity_field"
+                extraction.append(_entry("proposal_identity_answer", "string", "The customer's own answer to the current security question, in the format the bank rules require; never a third party's answer."))
             elif action == "stage_promise":
                 extraction += [_entry(f"proposal_promise_product_{index}", "string", f"Internal product reference from the runtime context for product {index} covered by the caller's agreement; never spoken."),
                                _entry(f"proposal_promise_amount_{index}", "float", f"Agreed payment amount for that product {index}."),

@@ -3,6 +3,7 @@ import copy
 import unittest
 
 from test_guards import fixture
+from builder.fallback_plan import deterministic_plan
 from builder.guards import PROPOSAL_MIN_CONFIDENCE, compile_guarded_workflow, run_guard_step, validate_guarded_workflow
 
 PROFILE = {"identity_fields": ["factor_alpha", "factor_beta"], "identity_wrong_limit": 4}
@@ -83,6 +84,17 @@ class ProposalConfidenceTests(unittest.TestCase):
         compiled = {e["name"]: e["min_confidence"] for e in self.compile(context)["nodes"]["talk"]["extraction_schema"]}
         self.assertEqual(compiled, {"answer_text": PROPOSAL_MIN_CONFIDENCE, "amount": 0.5, "queue": 0.95, "free_note": 0.9})
         self.assertEqual(context["plan"]["nodes"]["talk"]["extraction_schema"][0]["min_confidence"], 0.95)
+
+    def test_fallback_plan_binds_the_factor_only_for_latest_check(self):
+        for factor_state, inputs in ((None, {"answer": "proposal_identity_answer"}),
+                                     ("latest_check", {"field": "proposal_identity_field", "answer": "proposal_identity_answer"})):
+            rules = {"identity_fields": {"value": ["factor_alpha", "factor_beta"]}}
+            if factor_state:
+                rules["identity_factor_state"] = {"value": factor_state}
+            plan = deterministic_plan({"goal": "An invented goal", "active_rules": rules}, {"actions": ["verify_identity", "close_call"]})
+            self.assertEqual(plan["nodes"]["verify_identity"]["inputs"], inputs)
+            names = [entry["name"] for entry in plan["nodes"]["dialogue"]["extraction_schema"]]
+            self.assertEqual("proposal_identity_field" in names, factor_state is not None)
 
 
 if __name__ == "__main__":

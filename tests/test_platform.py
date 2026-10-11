@@ -82,6 +82,28 @@ class PlatformTests(unittest.TestCase):
             client.save_workflow("brief", definition(), state)
         self.assertEqual(json.loads(state.read_text())["slots"]["brief"]["workflow_id"], "w1")
 
+    def test_integral_float_stored_as_int_publishes_but_other_changes_fail(self):
+        # Observed live: authored min_confidence 1.0 reads back as 1.
+        for stored, publishes in ((1, True), (1.0, True), (0.95, False), (True, False), ("1", False)):
+            client = MemoryPlatform()
+            authored = definition()
+            authored["nodes"]["greeting"]["min_confidence"] = 1.0
+            request = client.request
+            def canonicalizing(method, path, body=None, params=None, request=request, stored=stored):
+                result = request(method, path, body, params)
+                if path == "/api/v2/workflow" and not params:
+                    client.rows["w1"]["workflow"]["nodes"]["greeting"]["min_confidence"] = stored
+                return result
+            client.request = canonicalizing
+            with self.subTest(stored=stored):
+                if publishes:
+                    deployment = client.save_workflow("brief", authored, self.directory / f"slots-{stored!r}.json")
+                    self.assertTrue(deployment["published"])
+                    self.assertEqual(deployment["workflow"]["nodes"]["greeting"]["min_confidence"], stored)
+                else:
+                    with self.assertRaises(PlatformError):
+                        client.save_workflow("brief", authored, self.directory / f"slots-{stored!r}.json")
+
     def test_fixed_model_repair_must_actually_persist(self):
         with self.assertRaises(PlatformError):
             MemoryPlatform(refuse_model=True).save_workflow("brief", definition(), self.directory / "slots.json")

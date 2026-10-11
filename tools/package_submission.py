@@ -461,6 +461,16 @@ def validate_generated_artifacts(path, run, events):
     if (contract.get('sha256') != digest(fingerprinted) or contract.get('sha256') != run['policy_contract_sha256']
             or attempt.get('policy_sha256') != digest(policy)):
         raise ValueError('Original policy/contract artifacts differ from their recorded fingerprints')
+    # The builder writes this record when the policy freezes and snapshots it in the validated attempt.
+    requirements_path, requirements = read_evidence(path.parent / 'execution-requirements.json')
+    snapshot_path, snapshot = read_evidence(directory / 'execution-requirements.json')
+    retained.extend([requirements_path, snapshot_path])
+    if (digest(snapshot) != digest(requirements)
+            or requirements.get('sha256') != digest({key: value for key, value in requirements.items() if key != 'sha256'})
+            or requirements['sha256'] != run.get('execution_requirements_sha256')
+            or requirements.get('policy_sha256') != digest(policy) or requirements.get('contract_sha256') != contract['sha256']
+            or requirements.get('openapi_sha256') != run.get('tool_api_sha256')):
+        raise ValueError('Original execution requirements differ from their recorded fingerprints')
     if (run.get('action_guard_compilation_verified') is not True
             or run.get('plan_sha256') != digest(artifacts['plan.json'])
             or attempt.get('plan_sha256') != digest(artifacts['plan.json'])

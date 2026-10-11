@@ -80,7 +80,7 @@ class PackageSemanticJsonTests(unittest.TestCase):
                 self.manifest['inputs']['hidden-1']['tool_api'] = path.name
             else:
                 self.manifest[role]['hidden-1'] = path.name
-        self.assertEqual(len(package.check_manifest(self.manifest)), 38)
+        self.assertEqual(len(package.check_manifest(self.manifest)), 42)
 
 
 if __name__ == '__main__':

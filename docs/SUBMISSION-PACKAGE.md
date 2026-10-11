@@ -136,7 +136,9 @@ The packager scans source/evidence for credential patterns and exact known priva
 values from this repository's `.env` and process environment. Use the actual
 local credential context privately when checking; do not dump it. Review exports
 for controller-bound API keys, bank team keys, bearer tokens, passwords and tool
-authentication. A scanner failure must be resolved, not bypassed by renaming keys.
+authentication. Structured JSON/JSONL content receives semantic credential checks
+independently of its filename extension. A scanner failure must be resolved, not
+bypassed by renaming keys or files.
 A scrubbed required tool credential can make an export unrunnable and invalidate
 its original hash binding. Retain the original securely; reconcile organizer
 import-safe credential requirements before selecting/package validation. Do not
@@ -186,9 +188,10 @@ conversation evaluation. The ZIP index remaps workflow/trace paths to
 `workflows/hidden-N.*` and `traces/hidden-N.*`, selected records to
 `runs/hidden-N/`, and preserves or remaps ordered input paths. Do not confuse raw
 file-byte hashes in the ZIP index with canonical JSON/controller digests.
-The packager checks archive-name collisions before `--check` succeeds, builds a
-temporary ZIP, verifies its payload hashes and replaces the destination only
-after success. A failed write preserves the previous package.
+The packager checks archive names against the extraction rules before `--check`
+succeeds, including case-folded collisions, backslashes and file/ancestor conflicts.
+It builds a temporary ZIP, verifies its payload hashes and replaces the destination
+only after success. A failed write preserves the previous package.
 
 Run this from the reviewed source checkout after final package validation. It
 checks the complete inventory, confined paths, file types, raw hashes and mapped

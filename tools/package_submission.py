@@ -215,7 +215,7 @@ def source_files():
     return result
 
 
-def check_content(path, *, evidence=False):
+def check_content(path, *, evidence=False, content_format=None):
     raw = path.read_bytes()
     text = raw.decode("utf-8")
     # An overridden local key is still private, and short opaque credentials
@@ -231,9 +231,12 @@ def check_content(path, *, evidence=False):
     else:
         try:
             assert_no_secrets(text, forbidden_values=known)
-            if path.suffix == '.json':
+            # Evidence format comes from its role, not its filename. Exports,
+            # manifests and APIs can carry JSON under any extension.
+            selected_format = content_format or path.suffix.lstrip('.')
+            if selected_format == 'json':
                 assert_no_secrets(read_json(path), forbidden_values=known)
-            elif path.suffix == '.jsonl':
+            elif selected_format == 'jsonl':
                 for line in text.splitlines():
                     if line.strip():
                         assert_no_secrets(strict_json(line), forbidden_values=known)
@@ -257,7 +260,7 @@ def strict_json(text):
 
 def read_evidence(path):
     path = safe_path(path)
-    check_content(path, evidence=True)
+    check_content(path, evidence=True, content_format='json')
     value = read_json(path)
     if not isinstance(value, dict):
         raise ValueError('Evidence JSON must be an object')
@@ -509,7 +512,7 @@ def check_manifest(value):
         if not isinstance(inputs, dict) or not isinstance(inputs.get('briefs'), list) or not inputs['briefs']:
             raise ValueError('Each hidden build requires ordered brief paths and a tool API')
         bundles.append(digest({'briefs': [safe_path(entry).read_text(encoding='utf-8') for entry in inputs['briefs']],
-                               'tool_api': read_json(safe_path(inputs.get('tool_api', '')))}))
+                               'tool_api': read_evidence(inputs.get('tool_api', ''))[1]}))
     if len(set(bundles)) != 2:
         raise ValueError('Two hidden builds require distinct input bundles')
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, capture_output=True, check=True).stdout.strip()
@@ -518,13 +521,14 @@ def check_manifest(value):
     result, exported, sources = [], {}, set()
     for kind in ("workflows", "traces"):
         for name, entry in value[kind].items():
-            path = safe_path(entry); check_content(path, evidence=True)
+            path = safe_path(entry)
             if kind == "workflows":
-                workflow = read_json(path)
+                _, workflow = read_evidence(path)
                 if not isinstance(workflow, dict) or not workflow.get("workflow_id") or not workflow.get("agent_id") or not workflow.get("workflow"):
                     raise ValueError("Require the actual platform-exported workflow envelope")
                 exported[name] = workflow
             else:
+                check_content(path, evidence=True, content_format='jsonl')
                 events = [strict_json(line) for line in path.read_text().splitlines() if line.strip()]
                 validate_trace(events, exported[name])
             result.append((path, f"{kind}/{name}{''.join(path.suffixes)}"))
@@ -556,16 +560,33 @@ def verify_committed(paths):
 
 def archive_plan(files, evidence):
     """Check all names before validation succeeds or an output is opened."""
+    from pathlib import PurePosixPath
+
     archived = {}
+    folded = {'package-index.json'}
     entries = [(path, path.relative_to(ROOT).as_posix()) for path in files] + evidence
     for path, name in entries:
-        if name == 'package-index.json':
-            raise ValueError('Package evidence collides with reserved package-index.json')
-        if not isinstance(name, str) or Path(name).is_absolute() or any(part in ('..', '.') for part in name.split('/')):
+        if (not isinstance(name, str) or not name or '\\' in name
+                or '\x00' in name or ':' in name):
             raise ValueError('Package archive path must be a relative confined file path')
-        if name in archived and archived[name] != path:
+        member = PurePosixPath(name)
+        if (member.is_absolute() or not member.parts or member.as_posix() != name
+                or any(part in ('..', '.') for part in member.parts)):
+            raise ValueError('Package archive path must be a relative confined file path')
+        if name.casefold() == 'package-index.json':
+            raise ValueError('Package evidence collides with reserved package-index.json')
+        if name in archived:
+            if archived[name] != path:
+                raise ValueError('Package source/evidence paths collide')
+            # A shared API or source file may be referenced by both builds.
+            continue
+        if name.casefold() in folded:
             raise ValueError('Package source/evidence paths collide')
         archived[name] = path
+        folded.add(name.casefold())
+    if any(parent.parts and parent.as_posix().casefold() in folded
+           for name in archived for parent in PurePosixPath(name).parents):
+        raise ValueError('Package archive file and parent paths collide')
     return archived
 
 
@@ -583,8 +604,8 @@ def main(argv=None):
     files = source_files(); hashes = {str(p.relative_to(ROOT)): check_content(p) for p in files}
     evidence, manifest = [], None
     if args.manifest:
-        manifest_path = safe_path(args.manifest); check_content(manifest_path, evidence=True)
-        manifest = read_json(manifest_path); evidence = check_manifest(manifest)
+        manifest_path, manifest = read_evidence(args.manifest)
+        evidence = check_manifest(manifest)
     archived = archive_plan(files, evidence)
     evidence_hashes = {name: check_content(path, evidence=True) for name, path in archived.items() if name not in hashes}
     if args.manifest:

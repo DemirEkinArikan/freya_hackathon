@@ -82,3 +82,27 @@ hosted scoring evidence must also be complete. A focused source PR can be merged
 while these gates remain open; `tools/cowork.py complete` is inappropriate until
 all of them are satisfied. Development evaluator fixtures stay outside model
 inputs and holdouts stay reserved.
+
+## Evaluator criteria and attempt binding
+
+The controller loads and fingerprints `--test-cases` before any model call,
+then retains an evaluator-only `evaluator-cases.json` snapshot and
+`evaluator-input.json` binding in the run. The binding records the original raw
+SHA-256, canonical JSON SHA-256, snapshot raw SHA-256 and selected brief. Every
+attempt and the success/failure manifest carry the same binding. Each test uses
+the snapshot; changed original or snapshot bytes abort as an infrastructure
+failure before another repair or accepted export. Original candidate and test
+evidence remain. These evaluator payloads and bindings never enter policy or
+workflow prompts.
+
+Selected holdout rows are refused before generation. Autonomous repair uses
+development feedback; reserved blind evaluation uses the separate frozen
+candidate/consumption lifecycle. No holdout is materialized or consumed by these
+checks.
+
+Supplied hosted evidence must reconcile its before/after deployment records,
+per-call expected/observed versions and simulation/iteration IDs. Internally
+consistent pins are also compared with the actual published attempt, including
+its graph hash and reported workflow/agent/version IDs. Legacy injected local
+runners remain supported when hosted structures are absent. Compatibility tests
+use external-service doubles and establish no live behavioral acceptance.

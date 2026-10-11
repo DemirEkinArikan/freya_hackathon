@@ -13,6 +13,25 @@ def failed(message="identity factors were asked out of order", category="behavio
             "failures": [{"category": category, "message": message, **extras}]}
 
 
+def hosted_failure():
+    """Synthetic complete evidence with the production evaluator's structure."""
+    result = failed()
+    pin = {"workflow_id": "local-workflow", "agent_id": "local-agent", "version_id": "local-version",
+           "version_number": 4, "graph_sha256": "a" * 64, "published": True,
+           "model": "local-builder-model", "reasoning_effort": "high"}
+    result.update(reps=1, deployment_pin={"verified": True, "per_call_version_verified": True,
+                                         "before": copy.deepcopy(pin), "after": copy.deepcopy(pin)},
+                  simulations=[{"repetition": 1, "status": "completed",
+                                "simulation_id": "local-simulation", "iteration_id": "local-iteration"}],
+                  rows=[{"fixture_id": "local-case", "repetition": 1, "pass": False,
+                         "failures": copy.deepcopy(result["failures"]),
+                         "version_attribution": {"verified": True, "status": "verified", "expected": 4,
+                                                 "observed": {"judge": 4, "transcript": 4}}}],
+                  final=[{"fixture_id": "local-case", "passes": 0, "runs": 1,
+                          "required_runs": 1, "pass": False}])
+    return result
+
+
 def approved_policy():
     # This synthetic input belongs to the generator, unlike evaluator rule IDs.
     kinds = ("purpose", "identity_fields", "identity_wrong_limit", "identity_close",
@@ -346,11 +365,7 @@ class InfrastructureGateTests(unittest.TestCase):
         self.assert_infrastructure(result)
 
     def test_supplied_deployment_pin_requires_both_exact_verified_flags(self):
-        result = failed()
-        self.assertFalse(test_infrastructure_failed(result))
-        result["deployment_pin"] = {"verified": True, "per_call_version_verified": True,
-                                    "before": {"agent_id": "local-agent", "version_number": 4},
-                                    "after": {"agent_id": "local-agent", "version_number": 4}}
+        result = hosted_failure()
         self.assertFalse(test_infrastructure_failed(result))
         self.assertEqual(len(repair_test_summary(result)["failures"]), 1)
         for field in ("verified", "per_call_version_verified"):
@@ -365,6 +380,60 @@ class InfrastructureGateTests(unittest.TestCase):
         for pin in (None, [], True, "PRIVATE_PIN", {}):
             with self.subTest(pin=pin):
                 self.assert_infrastructure({**failed(), "deployment_pin": pin})
+
+    def test_verified_pin_flags_cannot_conceal_changed_or_missing_deployment_records(self):
+        for field, replacement in (("agent_id", "changed-agent"), ("workflow_id", "changed-workflow"),
+                                   ("version_id", "changed-version"), ("version_number", 5),
+                                   ("graph_sha256", "b" * 64), ("published", False)):
+            result = hosted_failure()
+            result["deployment_pin"]["after"][field] = replacement
+            with self.subTest(field=field):
+                self.assert_infrastructure(result)
+        for side in ("before", "after"):
+            for value in (None, [], {}, "PRIVATE_PIN_RECORD"):
+                result = hosted_failure()
+                result["deployment_pin"][side] = value
+                with self.subTest(side=side, value=value):
+                    self.assert_infrastructure(result)
+            result = hosted_failure()
+            result["deployment_pin"].pop(side)
+            self.assert_infrastructure(result)
+            for value in (True, 4.0, 0, "4"):
+                result = hosted_failure()
+                result["deployment_pin"][side]["version_number"] = value
+                with self.subTest(side=side, version=value):
+                    self.assert_infrastructure(result)
+
+    def test_per_call_version_evidence_must_agree_with_its_flag_and_deployment_pin(self):
+        modifications = [lambda r: r["rows"][0].pop("version_attribution"),
+                         lambda r: r["rows"][0]["version_attribution"].update(verified=False),
+                         lambda r: r["rows"][0]["version_attribution"].update(status="unverified"),
+                         lambda r: r["rows"][0]["version_attribution"].update(expected=5, observed={"judge": 5}),
+                         lambda r: r["rows"][0]["version_attribution"].update(observed={"judge": 3}),
+                         lambda r: r["rows"][0]["version_attribution"].update(observed={"judge": 4, "transcript": 3}),
+                         lambda r: r["rows"][0]["version_attribution"].update(observed={}),
+                         lambda r: r["rows"][0]["version_attribution"].update(observed={"judge": 4.0}),
+                         lambda r: r["rows"][0]["version_attribution"].update(observed={"unknown": 4})]
+        for modify in modifications:
+            result = hosted_failure()
+            modify(result)
+            with self.subTest(attribution=result["rows"][0].get("version_attribution")):
+                self.assert_infrastructure(result)
+        result = hosted_failure()
+        result.pop("deployment_pin")
+        self.assertFalse(test_infrastructure_failed(result))
+        result["rows"][0]["version_attribution"]["observed"]["judge"] = 3
+        self.assert_infrastructure(result)
+
+    def test_complete_hosted_pass_and_single_source_version_attribution_remain_valid(self):
+        result = hosted_failure()
+        result.update(passed=1, failures=[])
+        result["rows"][0].update(**{"pass": True, "failures": []})
+        result["final"][0].update(passes=1, **{"pass": True})
+        for observed in ({"judge": 4}, {"transcript": 4}, {"judge": 4, "transcript": 4}):
+            result["rows"][0]["version_attribution"]["observed"] = observed
+            with self.subTest(observed=observed):
+                self.assertFalse(test_infrastructure_failed(result))
 
     def test_supplied_simulations_require_complete_unique_completed_repetitions(self):
         result = failed()
@@ -384,12 +453,23 @@ class InfrastructureGateTests(unittest.TestCase):
                          lambda r: r["simulations"][1].update(repetition=True),
                          lambda r: r["simulations"][1].update(repetition=0),
                          lambda r: r["simulations"][1].update(repetition=4),
-                         lambda r: r["simulations"][1].pop("repetition")]
+                         lambda r: r["simulations"][1].pop("repetition"),
+                         lambda r: r["simulations"][1].update(simulation_id=r["simulations"][0]["simulation_id"]),
+                         lambda r: r["simulations"][1].update(iteration_id=r["simulations"][0]["iteration_id"])]
         for modify in modifications:
             invalid = copy.deepcopy(result)
             modify(invalid)
             with self.subTest(simulations=invalid["simulations"]):
                 self.assert_infrastructure(invalid)
+        for field in ("simulation_id", "iteration_id"):
+            for value in (None, "", " ", True, [], {}):
+                invalid = copy.deepcopy(result)
+                invalid["simulations"][1][field] = value
+                with self.subTest(field=field, value=value):
+                    self.assert_infrastructure(invalid)
+            invalid = copy.deepcopy(result)
+            invalid["simulations"][1].pop(field)
+            self.assert_infrastructure(invalid)
         for simulations in (None, [], {}, True, "PRIVATE_SIMULATIONS", [None]):
             with self.subTest(simulations=simulations):
                 self.assert_infrastructure({**failed(), "simulations": simulations})

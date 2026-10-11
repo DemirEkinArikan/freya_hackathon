@@ -11,6 +11,7 @@ from builder.safety import digest, read_json
 from test_execution_requirements import add_rule, packet, rule
 import test_goal_requirements as goal_requirements
 from test_goal_requirements import PRODUCT, SealedSession, compiled, synthetic, witness
+from test_input_format_completeness import declare_offset_clock
 
 
 def respond(session, action, data, status):
@@ -396,7 +397,10 @@ class OriginalCallbackFailureReplay(unittest.TestCase):
                     with self.assertRaisesRegex(ExecutionRequirementsError, "unsupported constraints"):
                         compile_execution_requirements(policy, sources, api)
                 else:
-                    self.assertEqual(compile_execution_requirements(policy, sources, api)["actions"],
+                    # The brief requires an explicit UTC offset on now; with that format declared they compile.
+                    with self.assertRaisesRegex(ExecutionRequirementsError, "explicit UTC offset"):
+                        compile_execution_requirements(policy, sources, api)
+                    self.assertEqual(compile_execution_requirements(declare_offset_clock(policy, text, "brief-1"), sources, api)["actions"],
                                      ["close_call", "schedule_callback"])
 
 

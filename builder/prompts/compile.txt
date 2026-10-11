@@ -149,7 +149,10 @@ speech-only triggers) belong in these descriptive kinds, which the workflow
 implements, not in unsupported_constraints. The exception is what the source says
 to tell the caller when the call stops without a close on unknown or contradictory
 write evidence: the sealed stop ends the call before any workflow node can speak,
-so encode it in uncertain_stop_explanation. Each active semantic kind should have one resolved value. Preserve superseded
+so encode it in uncertain_stop_explanation. An indirect instruction such as
+"explain/say/tell (the caller) (only) that X" prescribes X as the words to say:
+quote X exactly as written; true is only for a source that requires an
+explanation there without stating its content. Each active semantic kind should have one resolved value. Preserve superseded
 rules with overrides referencing their IDs; do not leave conflicting active values.
 
 Generate a complete Freya workflow using the supplied runtime reference. Separate

@@ -111,7 +111,8 @@ class GenerationBudgetTests(unittest.TestCase):
                 return copy.deepcopy(invalid) if generator.generate.call_count == 1 else fixture()
             generator.generate.side_effect = extract
             out = self.directory / f"out-{padding}"
-            args = self.args("--generate-only", "--output-dir", str(out))
+            # A full rewrite's admission; test_policy_patch_repair covers patch admission.
+            args = self.args("--generate-only", "--policy-repair", "full", "--output-dir", str(out))
             with self.subTest(padding=padding):
                 if repaired:
                     self.assertEqual(execute(args, generator=generator, deadline=deadline)["policy_repairs"], 1)

@@ -22,14 +22,17 @@ organizer instructions govern execution. Customer cases remain hidden.
   Keep invocation-time `builder-source.json`; do not create it retrospectively.
 - Rehearse the manifest/ZIP/extraction procedure in
   [submission package documentation](SUBMISSION-PACKAGE.md). Reserve storage for
-  every attempt directory: each brief gets N parallel attempts (default 3), and
-  none is deleted. Each attempt publishes to its own new workflow, named
+  every attempt directory: each brief gets two parallel attempts per round of the
+  [attempt matrix](#attempt-matrix), and none is deleted. Each attempt publishes to its own new workflow, named
   `final-<label>-a<k>-<UTC launch time>`. Concurrent attempts must not share a
   workflow: an export fails if its workflow changed after publication. Tonight
-  needs at most 2 × (3 + retries) workflows, well under the workspace limit of 200.
-- The frozen commit must contain `tools/final_attempts.py` and the packager's
-  `selections` support ([PR 167](https://github.com/DemirEkinArikan/freya_hackathon/pull/167)). Both are tools, not runtime
-  source, so they do not change the builder source fingerprint.
+  needs at most 2 × 2 × (rounds) workflows, well under the workspace limit of 200.
+- The frozen commit must contain `tools/final_attempts.py` with the attempt matrix
+  and the packager's `selections` support ([PR 167](https://github.com/DemirEkinArikan/freya_hackathon/pull/167)). Both are tools, not runtime
+  source, so they do not change the builder source fingerprint. Round 2 also needs
+  the builder's relaxed declaration option (R1) in the frozen source; without it,
+  round 2 refuses to start.
+- The T17 freeze must cover both efforts of the matrix, high and medium.
 - Obtain and read organizer submission instructions when supplied. Record the
   actual channel, permitted attachment layout, credential/import requirements,
   metadata, size limits and receipt mechanism. **No submission address is known
@@ -55,27 +58,61 @@ verified ZIP and organizer-ready attachments. Do not consume that buffer on test
 |---|---|---|
 | Before 17:00 | Before 20:00 | Finish broad tests, T17 acceptance/freeze and preparation gates; frozen checkout, guard and preflight |
 | 17:00–17:02 | 20:00–20:02 | Save both briefs/APIs as exact bytes with ordered amendments, write `spec.json` and pins; read submission instructions |
-| 17:02–17:07 | 20:02–20:07 | `tools/final_attempts.py launch`: 3 attempts per brief, 6 builders, starts interleaved 60 s apart |
-| 17:02–17:37 | 20:02–20:37 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
-| 17:35–18:00 | 20:35–21:00 | `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
-| 18:00–19:15 | 21:00–22:15 | Retries only for a brief with no eligible attempt: a new round starts by 21:45 and ends by 22:15 |
+| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: strict high + strict medium per brief, 4 builders, starts interleaved 60 s apart |
+| 17:02–17:35 | 20:02–20:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
+| 17:20–17:40 | 20:20–20:40 | As soon as `select` shows a brief's round 1 finished with no selected attempt: `launch --round 2 --labels hidden-N` |
+| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (relaxed high + relaxed medium) |
+| 17:35–18:40 | 20:35–21:40 | Once both briefs have a selection: `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
+| 18:15–19:15 | 21:15–22:15 | One more round only for a brief still without an eligible attempt: it starts by 21:45 and ends by 22:15 |
 | 19:15–19:45 | 22:15–22:45 | Select, package and verify retry results; prepare attachments |
 | 19:45–20:00 | 22:45–23:00 | Buffer: submit via the supplied authorized channel, inspect upload/receipt and keep the acknowledgment |
 
 The latest retry launch is **18:45 UTC / 21:45 Istanbul**. Its attempts end by
-22:15, which leaves 30 minutes to select, package and verify before 22:45. Never
-launch a retry for a brief that already has an eligible selection, not even for a
-faster build: build time breaks ties only after score. A late or invalid
+22:15, which leaves 30 minutes to select, package and verify before 22:45. The
+launcher refuses a round that cannot improve a brief's selection
+([attempt matrix](#attempt-matrix)). Never launch one for a faster build: build
+time breaks ties only after score. A late or invalid
 organizer input reduces this margin; do not promise that a retry still fits. Preserve failed attempts rather than relabeling late exports
 as successful. The kit permits repeated runs: one selected run per final brief
 is submitted with its own trace, and every other attempt stays on disk.
 
-Six concurrent builders is above today's observed maximum: four generate-only
-builds ran at once without conflict, and two live builds did on another
-occasion. If the launcher refuses the machine cap, or the first attempts fail on
-Codex usage limits, launch `--attempts 2` or `--attempts 1` per brief instead.
 The builders take the simulation lease only for their own hosted tests, and
 tonight they run none.
+
+### Attempt matrix
+
+| Round | Briefs | Attempts per brief |
+|---|---|---|
+| 1 | both, at 20:02 | strict high, strict medium |
+| 2 | only a brief whose finished round 1 left no selected attempt | relaxed high, relaxed medium |
+
+- **Strict** is the builder's default declaration handling. **Relaxed** is the
+  builder's last-resort declaration mode (R1, issue 8 comment 6108951431). A
+  protected declaration without a typed construct then no longer fails the
+  build. Its requirement becomes a dialogue-level rule, and the trace lists it as
+  not enforced by the controller. Everything the sealed kernel enforces stays
+  enforced.
+- `launch --round 2` passes `--declarations relaxed` when the frozen
+  `builder/build.py` parser declares that option. If the frozen source has none,
+  round 2 refuses to start, and a brief without a strict export can only get
+  another `--round 1`.
+- The launcher refuses a round that cannot improve the brief's recorded
+  selection:
+  - any further round until `select` has recorded every attempt of that brief as
+    finished;
+  - round 1 for a brief whose selected attempt is strict;
+  - round 2 for a brief with any selected attempt.
+
+  A brief whose selection is relaxed may still get one more `--round 1` by 21:45,
+  because selection prefers a strict export.
+- **Codex account limit (lane rules section 10).** Before each start, the
+  launcher waits while 5 or more `builder/build.py` processes run on this machine.
+  It prints each wait. As issue 19 comment 6108793427 recommends, no other build
+  should use the Codex account from 20:00 until the attempts finish. Builds take
+  up to 30 minutes, so other lanes start none after 19:30.
+- **Records.** Each `launch.json` records the round, mode, effort, exact argv,
+  PID, the builder-process count before the start and the staging probe.
+  `selection.json` lists every attempt with its mode and effort.
 
 ### Platform failures are infrastructure, not builder results
 
@@ -84,7 +121,9 @@ The builder does not retry platform errors. A 5xx during dry-run validation,
 save, publication, read-back or export ends that attempt, and its manifest
 error names the `HTTP 50x` request. Only the hosted test runner retries GETs.
 Such an attempt is simply not eligible: it never counts as a builder result, and
-a brief left without an eligible attempt gets a retry round.
+a brief left without an eligible attempt gets a retry round. If every strict
+attempt of a brief ended on such a platform error, that retry is another
+`--round 1`, not round 2: strict mode was never really tried.
 
 Two measures limit the damage:
 - The launcher interleaves the briefs and starts attempts `--stagger-seconds`
@@ -107,14 +146,17 @@ release, in `package_submission.ATTEMPT_ORDER`:
    policy and inputs, `validate_workflow`, and the stored export equivalent to the
    authored graph. These are the bundle verifier's per-run checks.
 3. The packager's per-run gates pass (`validate_trace` and `validate_run`).
-4. Fewest diagnostics. Each rejected policy or plan error and each format
+4. Strict declaration mode before relaxed. A relaxed attempt is selected only
+   when no strict attempt passes 1–3, even if it has fewer diagnostics or
+   finished earlier.
+5. Fewest diagnostics. Each rejected policy or plan error and each format
    failure in the trace counts as one, and so does each `unsupported_constraints`
    entry left in the final policy.
-5. Earliest finish (trace end), then the lower attempt number.
+6. Earliest finish (trace end), then the lower attempt number.
 
 Only an attempt that passes 1–3 can be selected. `select` writes
 `artifacts/final/<label>/selection.json`, which lists every attempt with its
-status, criteria and the raw SHA-256 of its manifest, trace and export. It
+mode, effort, status, criteria and the raw SHA-256 of its manifest, trace and export. It
 exits 2 while any attempt still runs and 3 when no attempt is eligible. It never
 changes an attempt directory. The output is deterministic, so running `select`
 again on the same attempts reproduces each record byte for byte.
@@ -136,8 +178,8 @@ path is local orchestration configuration, never generation input. Do not switch
 or edit another worker's active checkout. A local worktree artifact lock is not
 an acceptable substitute for the shared lease.
 
-Set `T18_SOURCE_COMMIT`, `T18_SOURCE_INVENTORY_SHA256`, `T18_BUILDER_MODEL` and
-`T18_REASONING_EFFORT` from the accepted T17 freeze. The inventory digest is the
+Set `T18_SOURCE_COMMIT`, `T18_SOURCE_INVENTORY_SHA256` and `T18_BUILDER_MODEL`
+from the accepted T17 freeze. The efforts come from the attempt matrix. The inventory digest is the
 full allowlisted source inventory recorded by T17, not just runtime provenance.
 These are explicit nonsecret configuration values. Create a detached worktree
 from that accepted source commit. The guard below verifies HEAD, rejects staged
@@ -178,19 +220,20 @@ print({'source_files': len(files), 'source_inventory_sha256': actual})
 PY
 python3.11 tools/final_attempts.py launch --env-file /Users/demirekinarikan/VsCode/freya_hackathon/.env \
   --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
-  --model "$T18_BUILDER_MODEL" --reasoning-effort "$T18_REASONING_EFFORT"
+  --model "$T18_BUILDER_MODEL" --round 1
 ```
 
 The launcher reads `artifacts/hidden-inputs/spec.json`, which lists each label's
 briefs in the organizer's explicit order and its matching API. For each attempt
 it starts `builder/build.py` with `--brief` repeated in that order,
 `--output-dir artifacts/final/<label>/attempt-<k>`, its own slot, the shared
-lease, the model and the effort. The child is detached, so closing the terminal
+lease, the model, the round's effort and, in round 2, the relaxed option. The child is detached, so closing the terminal
 does not stop it. `launch.json` in the attempt directory records the exact argv
 and PID, and `builder.log` keeps the builder's output. The launcher loads the
 private `.env` with the data-only parser into the children's environment, never
 its own, and removes `OPENAI_API_KEY`. It refuses Python other than 3.11, a
-missing `FREYA_API_KEY` or Codex CLI, and more running builders than
+missing `FREYA_API_KEY` or Codex CLI, a round the attempt matrix does not allow,
+and more running builders than
 `--max-running` (default 6). These commands are templates pending actual briefs,
 not a claim they have run. Omit offline/generate-only modes for final builds.
 Do not supply an old `--policy-file`, fixture workflow or public-case evaluator

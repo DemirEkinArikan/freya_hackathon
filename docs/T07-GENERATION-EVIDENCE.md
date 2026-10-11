@@ -137,3 +137,51 @@ date/goal selection, qualified nonpromise retry support and safe all-path
 termination remain implementation work. Neither original failed run is upgraded
 or resumed as accepted, and its reviewed candidate or diagnostic is not a model
 policy answer. Evaluator expectations cannot fill missing source values.
+
+## Rapid acceptance reconciliation — 11 October, 09:15 Istanbul cutoff
+
+The acceptance lane starts at fetched source
+`4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b`, integrating the bounded compiler,
+source call-input formats, authored passthrough declarations and KIT routing
+guidance from PR112/110/113/114. Their individually recorded test counts belong
+to their checked heads. The canonical callback record's combined-source test
+session is not a verified result: its referenced log is absent. No earlier
+suite count is attributed to this source by inference.
+
+Independent reconciliation of all five historical run records matched all
+38 listed original artifact hashes. The historical missing-response-schema
+trial summary describes earlier preparation; the later failed train-1/train-2
+records used complete synthetic APIs. Their bounded policy failures remain
+failures. The old public-A export and A+B structural result retain their
+documented execution defects.
+
+The approved callback input and its copied files match byte-for-byte: brief
+`6a646d1652ca2534a51511dcefc63442997135fe4d025ad44f63e0fd9ed54df2`, OpenAPI
+`3223a51843927e9fe1947c83ec9c8aee0fa7d8acf0ae9f4de33e0e3fe3ffd436`.
+The canonical callback checkpoint remains `prepared_no_model_launch`. The
+reserved checkout has inputs only, with no original audit, terminal generation
+manifest, frozen contract, plan or workflow available for acceptance. S03/S04
+approved inputs and original build records are also absent from the reconciled
+shared inventory. These are missing evidence, rather than accepted jobs.
+No duplicate model invocation or platform job is started by this lane.
+
+The [dedicated local acceptance checker](T07-CANDIDATE-ACCEPTANCE.md) prepares
+post-freeze independent checks for a new goal without substituting an existing
+fixture's oracle. It binds the complete original context, schema, workflow and
+script, checks exact source-derived call arguments and expected final state,
+and requires every supplied frame and receipt to be consumed. A required bank
+close must be actually accepted by the sealed kernel; merely reaching a terminal
+or quarantining cannot satisfy that requirement.
+
+These cases use ideal extraction and explicit local receipts. Existing replay
+evaluates transitions without establishing actual caller/entry event timing, so
+neither its termination nor this checker proves spoken compliance, hosted
+behavior, all-path safety or original model provenance. Those claims retain
+their separate source, generation and execution evidence requirements. No new
+three-repeat hosted gate is added to T07.
+
+T07 remains open for original audited changed-goal/schema candidates, independent
+operative source review, frozen-case execution, and a second supported banking
+goal/schema. T08 and T09 dependency closure remains pending T07's actual
+acceptance. No completion command or hidden-input consumption is justified by
+this preparation.

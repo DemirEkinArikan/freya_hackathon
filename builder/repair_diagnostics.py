@@ -182,6 +182,20 @@ def _failure_counts(failures: list[dict]) -> Counter:
     return Counter((row["category"], row["message"]) for row in failures)
 
 
+def _verified_version_attribution(value: Any, pinned_version: int | None) -> bool:
+    """Reconcile supplied per-call evidence instead of trusting its flag."""
+    if not isinstance(value, dict) or value.get("verified") is not True:
+        return False
+    expected, observed = value.get("expected"), value.get("observed")
+    if (type(expected) is not int or expected < 1
+            or pinned_version is not None and expected != pinned_version
+            or not isinstance(observed, dict) or not observed
+            or any(source not in {"judge", "transcript"} for source in observed)
+            or "status" in value and value["status"] != "verified"):
+        return False
+    return all(type(number) is int and number == expected for number in observed.values())
+
+
 def test_infrastructure_failed(result: Any) -> bool:
     """Fail closed on incomplete, inconsistent, or nonbehavioral evidence.
 
@@ -209,22 +223,37 @@ def test_infrastructure_failed(result: Any) -> bool:
         evidence_gap = True
     if evidence_gap:
         return True
+    pinned_version = None
     if "deployment_pin" in result:
         pin = result["deployment_pin"]
         if (not isinstance(pin, dict) or pin.get("verified") is not True
                 or pin.get("per_call_version_verified") is not True):
             return True
+        before, after = pin.get("before"), pin.get("after")
+        if (not isinstance(before, dict) or not before or not isinstance(after, dict)
+                or before != after or type(before.get("version_number")) is not int
+                or type(after.get("version_number")) is not int
+                or before["version_number"] < 1
+                or "published" in before and before["published"] is not True
+                or "published" in after and after["published"] is not True):
+            return True
+        pinned_version = before["version_number"]
     if "reps" in result and (type(result["reps"]) is not int or result["reps"] <= 0):
         return True
     if "simulations" in result:
         simulations = result["simulations"]
         if not isinstance(simulations, list) or not simulations:
             return True
-        repetitions = set()
+        repetitions, simulation_ids, iteration_ids = set(), set(), set()
         for simulation in simulations:
             if (not isinstance(simulation, dict) or simulation.get("status") != "completed"
                     or "interrupted" in simulation and simulation["interrupted"] is not False):
                 return True
+            for field, seen in (("simulation_id", simulation_ids), ("iteration_id", iteration_ids)):
+                identifier = simulation.get(field)
+                if not isinstance(identifier, str) or not identifier.strip() or identifier in seen:
+                    return True
+                seen.add(identifier)
             if "reps" in result:
                 repetition = simulation.get("repetition")
                 if (type(repetition) is not int or not 1 <= repetition <= result["reps"]
@@ -259,6 +288,9 @@ def test_infrastructure_failed(result: Any) -> bool:
             if (not isinstance(row, dict) or type(row.get("pass")) is not bool
                     or not _valid_failures(row.get("failures"))
                     or row["pass"] != (not row["failures"])):
+                return True
+            if ((pinned_version is not None or "version_attribution" in row)
+                    and not _verified_version_attribution(row.get("version_attribution"), pinned_version)):
                 return True
             nested_failures.extend(row["failures"])
         if _failure_counts(nested_failures) != _failure_counts(failures):

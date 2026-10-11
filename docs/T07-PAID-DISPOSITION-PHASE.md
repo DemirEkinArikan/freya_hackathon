@@ -1,9 +1,9 @@
 # Paid disposition requires account-phase proof
 
 Preflight previously demanded a local paid marker whenever the global closing
-vocabulary contained the `paid` meaning. That vocabulary also supplies identity
-closing rows. A source can explicitly use paid for an unreached identity close
-while its account phase only supports a refused/no-promise close.
+vocabulary contained the `paid` meaning, even when the account phase only
+supports a refused/no-promise close. (An identity closing row can no longer use
+paid or any other protected-fact outcome: only the recorded fact closes with it.)
 
 `_local_disposition_errors` now checks the normalized supplied `close_precedence`,
 whose typed entries are account outcomes. A supplied account paid entry still
@@ -13,8 +13,9 @@ frozen profile. The detached runtime's existing empty priority representation
 continues to reject ambiguous protected facts. No outcome, note marker, priority
 or new policy type is fabricated, and local dispositions never authorize add_note.
 
-The six independent synthetic regressions cover canonical and opaque outcomes,
-real compiled account refusal and identity paid closes, explicit account paid
+The independent synthetic regressions cover canonical and opaque outcomes,
+real compiled account refusal and identity closes, the refused identity paid
+row, explicit account paid
 with/without its required local marker, absent priority, and the existing explicit
 paid promise-failure disposition check. That last rule already requires its local
 marker before preflight reaches this function, so it supplies no unhandled

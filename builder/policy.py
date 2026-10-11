@@ -81,7 +81,7 @@ _DESCRIPTIVE_EXTENSION_GUIDANCE = {
 }
 _SHAPE_GUIDANCE = {
     "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
-    "call_input_formats": "optional nonempty object mapping source-declared read-only initial call-variable names to offset_datetime only. Each name occurs literally in this rule's quotation. Use only when the source expressly requires a date+time with explicit UTC offset; never infer formats from API schemas or add defaults. offset_datetime validates a full YYYY-MM-DD local calendar date, HH:MM with optional seconds/fraction, and explicit Z or +/-HH:MM offset on the raw sealed initial string before any bank request. Values/date/offset are retained without conversion; malformed/date-only/offset-less values quarantine and cannot be repaired through ordinary dialogue variables. Absence preserves legacy behavior; this grants no action or permission",
+    "call_input_formats": "optional nonempty object mapping source-declared read-only initial call-variable names to offset_datetime only. Each name occurs literally in this rule's quotation and is also declared in call_variables. Use only when the source expressly requires a date+time with explicit UTC offset, and then always, including for the engine clock now; never infer formats from API schemas or add defaults. offset_datetime validates a full YYYY-MM-DD local calendar date, HH:MM with optional seconds/fraction, and explicit Z or +/-HH:MM offset on the raw sealed initial string before any bank request. Values/date/offset are retained without conversion; malformed/date-only/offset-less values quarantine and cannot be repaired through ordinary dialogue variables. Absence preserves legacy behavior; this grants no action or permission",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
@@ -133,6 +133,32 @@ def execution_rule_guidance() -> dict[str, str]:
     """Describe typed interfaces and identified descriptive formats, not values."""
     guidance = {**_SHAPE_GUIDANCE, **_DESCRIPTIVE_EXTENSION_GUIDANCE}
     return {kind: guidance[kind] for kind in sorted(guidance)}
+
+
+_OFFSET_WORDING = re.compile(r"\b(?:utc|gmt|time[- ]?zone)\s+offsets?\b"
+                             r"|\boffsets?\s+(?:from|to)\s+(?:utc|gmt)\b|\bexplicit\s+time[- ]?zones?\b", re.I)
+_NOT_REQUIRED = re.compile(r"\b(?:no|not|never|without|optional|optionally|may|if|unless|ignore[sd]?|omit(?:s|ted)?)\b|n['’]t\b", re.I)
+_STATED_OFFSET = re.compile(r"(?<![\d:])(?<!\d\s)[+-]\d{2}:\d{2}(?!\d)"
+                            r"|\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?![\d:]|[.,]\d|\s*(?:[Zz]\b|[+-]\d))")
+_DATE_TIME = re.compile(r"\bdate\b.*\btime\b|\bdatetime\b|\btimestamp\b", re.I | re.S)
+
+
+def offset_datetime_inputs(texts: Any, names: Any) -> set[str]:
+    """Input names a source statement requires to carry an explicit UTC offset.
+
+    Literal wording only: a statement (sentence, list item or table row) that
+    names the input beside UTC/time-zone offset wording, with no negation or
+    optionality cue, no stated offset value and no offset-less example
+    date-time; a name other than the engine clock now also needs date and time
+    wording. Unclear wording is left to extraction review.
+    """
+    found = set()
+    for text in texts:
+        for statement in re.split(r"\n\s*\n|\n(?=\s*(?:[|#*-]|\d+[.)]\s))|(?<=[.!?])\s+", text):
+            if _OFFSET_WORDING.search(statement) and not (_NOT_REQUIRED.search(statement) or _STATED_OFFSET.search(statement)):
+                found.update(name for name in names if (name == "now" or _DATE_TIME.search(statement))
+                             and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", statement))
+    return found
 
 
 def _json_type(value: Any) -> str:

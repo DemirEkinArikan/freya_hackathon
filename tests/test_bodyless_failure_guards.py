@@ -11,6 +11,9 @@ from builder.policy import compile_execution_policy
 from builder.safety import digest
 from builder.validation import validate_workflow
 
+# The hook also records the raw type of each trusted result field; no body has none.
+ABSENT = "absent,absent,absent"
+
 
 def invented_context():
     def text(enum=None):
@@ -183,7 +186,7 @@ class BodylessFailureGuardTests(unittest.TestCase):
                 envelope["data"] = body
             with self.subTest(body=body):
                 transported = session.result("commit", envelope)
-                self.assertEqual(transported["data"], {"bg_http_status": 472})
+                self.assertEqual(transported["data"], {"bg_http_status": 472, "bg_result_types": ABSENT})
                 self.assertEqual(session.variables["bg_route"], "allow")
                 self.assertEqual(session.variables["bg_body"], original)
                 self.assertFalse(session.state["quarantined"])
@@ -195,7 +198,7 @@ class BodylessFailureGuardTests(unittest.TestCase):
                 original = session.confirm()
                 with self.subTest(body=body, status=status):
                     transported = session.result("commit", {"status_code": status, "data": body})
-                    self.assertEqual(transported["data"], {"bg_http_status": status})
+                    self.assertEqual(transported["data"], {"bg_http_status": status, "bg_result_types": ABSENT})
                     if status == 472:
                         self.assertEqual(session.variables["bg_route"], "allow")
                         self.assertEqual(session.variables["bg_body"], original)
@@ -210,7 +213,7 @@ class BodylessFailureGuardTests(unittest.TestCase):
         for envelope, expected in (({"data": {"bg_http_status": 472}}, {}),
                                    ({"status_code": 207, "data": {"bg_http_status": 472}}, {"bg_http_status": 207}),
                                    ({"status_code": None, "data": {"bg_http_status": 472}}, {"bg_http_status": None})):
-            self.assertEqual(session.hook(envelope)["data"], expected)
+            self.assertEqual(session.hook(envelope)["data"], dict(expected, bg_result_types=ABSENT))
         session.confirm()
         session.result("commit", {"data": {"bg_http_status": 472}})
         self.assertTrue(session.state["quarantined"])

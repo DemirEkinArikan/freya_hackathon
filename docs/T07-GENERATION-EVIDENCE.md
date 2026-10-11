@@ -305,3 +305,271 @@ What remains:
    train-2 and S03 on main, and run acceptance on whatever exports.
 4. Prove caller wording robustness and hosted behaviour separately. The
    ideal-extraction driver cannot prove either.
+
+## Round-4 candidate acceptance — 11 October, 13:00Z
+
+This section gathers every candidate posted on issue 8 from 11:05Z to 12:47Z.
+It re-verifies each one that passed the acceptance driver. Each re-check ran
+from my own clean detached checkout at the candidate's build source. The
+official driver and replay files are byte-identical at both sources
+(`tools/generated_candidate_acceptance.py` `02a5c242…`,
+`tools/replay_guarded.py` `ac06c07f…`). No model build, simulation, hosted
+call, lease or holdout was used. No generated output, ledger or other lane's
+file was edited. T07 stays open; the decision is at the end of this section.
+
+### Verdicts
+
+| Candidate | Goal and schema | Source | Executable acceptance (my re-run) | Banking acceptance |
+| --- | --- | --- | --- | --- |
+| public-A rebuild `20261011T113924574303Z` | collections, one product (kit brief A, kit OpenAPI) | `42b1749` | **43/43**: 35 ledger cases and 8 guard probes | not reviewed: no operative source review exists, and two source questions are open |
+| public-B round 4 `20261011T120037352826Z` | collections, several products (kit briefs A and B, kit OpenAPI) | `eea245e` | **3/3**, on a narrow ledger | not reviewed |
+| callback round 3 `20261011T104109500476Z` | callback scheduling (approved development input, its own OpenAPI) | `6fac1dd` | 20/20 (PR 171); all files re-hash unchanged | withheld: F-01 and F-03. Both fixes are now merged, but this candidate predates them |
+| train-1 r4 `20261011T113935467134Z` | collections with three goals (synthetic train-1) | `42b1749` | **fail**: 16/18 ledger cases | none |
+| S03 r4 `20261011T113940961549Z` | identity only (approved development input) | `42b1749` | **fail**: NC1 | none |
+| train-2 r4 `20261011T113940523871Z` | synthetic train-2 | `42b1749` | none: the policy stage failed | none |
+| S04 r4 `20261011T120850752055Z` | account information (approved development input) | `f5afe45` | none: the policy stage failed | none |
+
+### public-A rebuild: executable behaviour passes
+
+| Item | Value |
+| --- | --- |
+| Run | `20261011T113924574303Z`, generate-only, gpt-6.1-sol / high; comments 6108635783, 6108794222 and 6108917218 |
+| Source | origin/main `42b1749d71082b776914f464bdafe3e29a1baa69`, which includes PR 174 (per-goal close) and PR 177 (categorised declarations); `builder_source_sha256` `86d24631…2589` |
+| Time | 11:39:24Z to 11:59:34Z, `generated_validated` in 1210.014 s, with 590.0 s of the 1800 s deadline left (300 s export reserve). Policy 456.5 s with 0 repairs; workflow 751.0 s with 0 repairs; `plan-001` selected |
+| Inputs | Kit files read in place: brief A raw `d57c049c…f1c7` and kit OpenAPI raw `9a8410b1…adb8`; canonical `8389c009…00e3` / `dc55f049…9c7e` |
+| Audit | Fresh tool-free isolation audit `pass`, `failures: []`, no canary exposure, before the policy model call |
+| Outputs | `workflow.json` `4eaac8f5…d9c0` (manifest canonical `cac04fd6…44e6`), `plan.json` `6379c670…308a`, plan-001 guard context `601970b9…8152`, `policy.json` `e037a357…c36b`, `policy.contract.json` `c7ea5fbf…7251`, `manifest.json` `9b50585c…c8e3`, `trace.jsonl` `22ad5421…0a8e`, `build-provenance.json` `f9187bc1…3a99` |
+| Policy | 54 active rules, 6 permitted operations, `record_notes` false. One non-fatal `controller_stricter` declaration (below) |
+
+Independent re-verification by this lane:
+- **Provenance.** `builder/source_provenance.py`, run from my checkout at
+  `42b1749`, finds the run's `builder-source.json` equal to that checkout. The
+  manifest, trace and `build-provenance.json` bindings agree. `42b1749` is an
+  ancestor of origin/main.
+- **Files.** The lane's 21-file run list (`16735451…`) re-hashes unchanged
+  before and after my checks. The root `workflow.json`, `plan.json` and guard
+  manifest equal `attempts/plan-001`.
+- **Ledger.** `public-a-source-ledger.json` (`35df8b45…bf8e`, 35 cases) is
+  read-only and was last written at 11:45:14Z. The policy froze at 11:47:01Z,
+  and `workflow.json` was written at 11:59:34Z. Its sources are the raw brief A
+  and kit OpenAPI.
+- **Expectations.** All 43 bind the original workflow, guard context, OpenAPI,
+  contract and script digests. They copy the ledger's calls, typed arguments,
+  closing mode and final flags exactly; each guard probe copies its base case.
+  `allowed_operations` is the ledger's six permitted operations.
+- **Driver.** The unchanged official driver from my checkout passes **43/43**,
+  with empty stderr. Each result equals the lane's apart from timing. The cases
+  exercise all 6 close outcomes and all 14 reasons.
+- **Frame enum fidelity (new finding).** The replay checks extraction names but
+  not enum values.
+  - 30 caller values in 22 cases set `proposed_response_kind` at
+    `payment_answer` outside that field's own enum: `acceptance` (19),
+    `flat_refusal` (8), `refuses_to_talk` (2), `full_amount_too_much` (1).
+  - I mapped them to the node's own values (`terms`, `refusal`, `refusal`,
+    `full_too_much`), re-bound only the script digest and re-ran: **43/43**,
+    with the same calls, final state, terminal and node path in every case.
+  - The field is only dialogue context in `payment_decision`'s task message.
+    No code node and no deterministic route reads it.
+  - All 363 caller values are now inside their node's enum, type and date
+    format.
+- **OpenAPI binding.** All 7 API nodes use the operation's path and method,
+  send only request fields the schema declares, keep the schema's required
+  list and identical enums, and map only fields of the 200 response.
+- **No shortcuts.** None of 53 identifiers from the kit public test set, the
+  ledger or the scripts appears in the generated workflow or policy.
+- **Structure.** All 104 nodes are reachable from `bg_init`, every node can
+  reach an `end_call`, and all 32 conversation nodes have turn caps. This is
+  not proof that every runtime path terminates.
+
+Policy adaptation shown by the frozen cases (ideal extraction):
+- **Dates.** Weekend and holiday dates move to the next business day. A date
+  after the deadline moves to the deadline (12 and 7 business days, with the
+  26 October and 11 November holidays). Attempt 1 on a Friday moves to the
+  next week.
+- **Amounts.** Full amount today; the floor after "too much"; below the floor,
+  then the floor; an amount between floor and full. Late-band attempt 2 is the
+  floor on the deadline.
+- **Refusals.** One persuasion attempt in the early band and two in the late
+  band, then `no_promise/refused`.
+- **Writes.** One definite failure followed by success closes `promise`. A 500
+  and then a failure closes `no_promise/service_error`; the kernel makes the
+  single retry itself. A correction at the protected confirmation is read back
+  again. A recorded promise is immutable. A transfer after a recorded promise
+  closes `transferred/restructuring`.
+- **Identity and handoffs.** Three wrong answers across both questions close
+  `not_verified/failed`; the day/month-swapped hint is not counted. Support,
+  restructuring and general handoffs, each with its queue.
+- **Third party.** Callback window start 10:00 and end 19:00; today at exactly
+  `now` is refused; two out-of-window proposals close `no_callback`. Wrong
+  number and deceased.
+- **Guard probes.** The dialogue dispatches an ineligible step, and the sealed
+  kernel refuses it in all 8: weekend, holiday, after-deadline and below-floor
+  staging, a third `create_promise`, re-staging a recorded promise, a 09:30
+  callback and a fourth identity answer.
+
+Source-review questions (not executable claims; banking acceptance needs an
+operative review):
+1. **Product read-back.** The policy chose `promise_readback: "product_type"`,
+   so the protected line names the product by type only ("Payment for credit
+   card: 412.50 on 2026-10-14. Do you confirm?", comment 6108917218).
+   - Rule 34 says "Read the product"; rule 17 names it "credit card ending
+     4821".
+   - The typed interface can carry the ending: public-B r4 encoded the same
+     rule 17 as `{product_fields: [type, card_last4]}`. So this is a model
+     choice, not a builder gap.
+   - If rule 34 requires the ending, every promise path omits it.
+2. **A refused close ends silently.** The compiler routes every refused
+   `close_call` to the silent `bg_terminal` (`builder/guards.py:2094` at
+   `42b1749`, `:2137` on main `2162f64`). An in-memory probe from my checkout
+   changed only the early-exit reason in PA29, PA32 and PA34 to `callback` (and
+   PA29 to `hardship`). Each call then ended at `bg_terminal` with no request,
+   `closed=false` and `quarantined=false`. This is fail-closed: no wrong close
+   is sent. But rule 46 ("every call ends with exactly one close_call") is
+   unmet on that path. Ideal extraction never reaches it, so it is a wording
+   robustness exposure.
+3. **Declared limitation, carried into the export.** One `controller_stricter`
+   entry for rule `closing-duty`: uncertain verification evidence quarantines
+   without a close, because the brief gives no disposition for it.
+4. **Not covered.** Failure receipts for `transfer_to_agent`,
+   `schedule_callback`, `get_account` and `close_call`; the brief is silent on
+   them.
+
+### public-B round 4: executable behaviour passes on three cases
+
+| Item | Value |
+| --- | --- |
+| Run | `20261011T120037352826Z`, generate-only, gpt-6.1-sol / high; comments 6108806263 and 6109015044 |
+| Source | origin/main `eea245ebf95f39210e144d259a8921231db86105` (PR 179 plan-check parity, PR 181 build budget); `builder_source_sha256` `2967795b…3cf6` |
+| Time | 12:00:37Z to 12:19:16Z, `generated_validated` in 1119.568 s, with 680.4 s left. Policy 623.5 s and workflow 493.1 s, with 0 repairs; `plan-001` selected |
+| Inputs | Kit brief A `d57c049c…f1c7`, brief B `c59c7009…d550`, OpenAPI `9a8410b1…adb8`; canonical `8389c009…00e3`, `7eeb6464…e123` / `dc55f049…9c7e` |
+| Audit | Fresh tool-free isolation audit `pass`, `failures: []` |
+| Outputs | `workflow.json` `3c1e5fb0…89a7` (manifest canonical `0cbcb3bd…d6b0`), `plan.json` `fa4db201…826d`, guard context `b8acfde8…6d19`, `policy.json` `529d880c…7802`, `policy.contract.json` `e8a54c95…b93c`, `manifest.json` `a31a564e…64ca`, `trace.jsonl` `2e2fb2b4…937c` |
+| Policy | 72 active rules, 7 permitted operations, no declarations |
+
+Independent re-verification by this lane:
+- **Provenance and files.** Provenance passes from my checkout at `eea245e`,
+  which is an ancestor of origin/main. The 22-file run list (`082baf5b…`)
+  re-hashes unchanged.
+- **Ledger.** `t15b-source-ledger.json` (`647e0192…a92a`, 3 cases) was last
+  written at 07:06:36Z, five hours before this build. Unlike public-A's ledger,
+  the file is not read-only, but it still matches its posted hash.
+- **Expectations and driver.** The expectations copy the ledger's identity
+  calls, tail calls, closing mode and final flags. The driver passes **3/3**,
+  equal to the lane's results apart from timing. All 36 caller values are
+  inside their node's enum.
+- **Static checks.** 8 API nodes with no binding issue and no shortcut
+  identifier. All 72 nodes are reachable and reach an end, and all 11
+  conversation nodes have turn caps.
+- **Agreement.** The second-goal gate lane reached the same result
+  independently (comment 6109086561).
+- **Limits.**
+  - Only 3 cases: no identity failure, refusal, partial promise, write failure,
+    retry or guard probe.
+  - The refused-close routing above is compiler-generic, so it applies here
+    too.
+  - The product read-back includes the card ending.
+
+### Callback round 3: unchanged; the evidence rebuild is pending
+
+- **Files.** The 37-file run list (`a5657bd4…`) and the 80-file evaluator list
+  (`b81aec0a…`) re-hash unchanged.
+- **Frames and bindings.** All 75 caller values are inside their node's enum.
+  Both API nodes bind the approved OpenAPI (`3223a518…d436`), and no shortcut
+  identifier appears.
+- **Fixes merged since PR 171.** F-01 is in PR 184 (`f6d64d2`) plus PR 185
+  (`9ce340f`); F-03 is in PR 182 (`2162f64`, 12:46:29Z). F-02 is a recorded
+  limitation (coordinator decision, comment 6108651390).
+- **What is still needed.** These artifacts predate both fixes and are never
+  edited. Banking acceptance therefore needs the callback evidence rebuild on
+  main `2162f64` or later. None was posted by 12:47Z.
+
+### Failures
+
+| Run | Result | My re-run from a clean checkout at `42b1749` |
+| --- | --- | --- |
+| train-1 r4 (comment 6108943402) | Exported in 1383.0 s with 3 non-fatal declarations. Fails 2 of 18 ledger cases: C06 (no close after identity exhaustion, because the profile has no `identity_close`) and C46 (the close is refused while other required products stay undiscussed). C26, C31 and C32 pass the ledger but differ from the fixture oracle on a note convention | C06 fails (4 `verify_identity` calls, then no close); C46 fails (a promise, then no close); C01 and C26 pass |
+| S03 r4 (comment 6108827099) | Exported in 901.5 s with 0 declarations. Fails NC1: no asking node can propose `no_contact`, so the call ends with no close | NC1 fails on both the frozen and the pre-registered amended ledger (no request, no close); P1 passes |
+| train-2 r4 (comment 6108789626) | Failed at the policy stage: one fatal `protected_unenforceable` declaration (a callback strictly later than `now`, which the kernel already refuses), then the repair timed out | none exported |
+| S04 r4 (comment 6109028446) | Failed at the policy stage: one fatal declaration about wrong-answer units, with a duplicate decoded identity reason behind it | none exported |
+| S03 `0861c80` export `20261011T110443538449Z` | Exported (725.2 s, 0 repairs, 0 declarations) | no acceptance has been posted |
+
+All three exported failures end at `bg_terminal` without a close and without a
+wrong write.
+
+### Declarations carried into exports
+
+| Run | `unsupported_constraints` and contract `declared_limitations` |
+| --- | --- |
+| public-A rebuild | 1 `controller_stricter` (rule `closing-duty`). It is in `policy.json`, in `policy.contract.json` and in the trace `policy_contract` event |
+| public-B r4 | none |
+| callback r3 | none (built before declaration categories existed) |
+| train-1 r4 | 3 `controller_stricter`: callback/transfer retry and close retry (rule r36), and the volunteered-amount range (rule r40) |
+| S03 r4 | none |
+
+### Adaptation and wording robustness
+
+- **Policy adaptation (ideal extraction, executable).** Callback r3 passes
+  20/20, public-A 43/43 and public-B r4 3/3, each against a ledger frozen before
+  its candidate existed.
+- **Caller wording robustness.** Not tested for any candidate: every frame is
+  evaluator-chosen ideal extraction. Two findings bear on it:
+  - In public-A, one wrong language-derived reason at the early close ends the
+    call with no close.
+  - public-A's evaluator frames carried off-enum values. The outcome did not
+    change.
+- **Speech and hosted behaviour.** Not tested (T14).
+
+### All-path termination
+
+- **Structural evidence.** For all three exported candidates, every node is
+  reachable, every node can reach an end, and every conversation node has a
+  turn cap. Controller entry budgets bound code loops. The driver keeps
+  `all_path_safety_proven` false.
+- **Known generic behaviour.** A refused or unavailable close ends silently at
+  `bg_terminal`, by design, so that no close is ever fabricated. That
+  terminates safely, but it leaves the source's close-exactly-once rule unmet:
+  - under ideal extraction in train-1 C06 and C46, and in S03 NC1;
+  - after one wrong proposal in public-A.
+
+### Decision against the issue 8 finish condition
+
+- **Generate routes, extraction, dialogue and code from goal, policy and
+  current schema.** Met by callback r3, public-A and public-B r4.
+- **Resolve fields and enum values from OpenAPI, with no case-ID shortcuts.**
+  Met by the same three.
+- **Compile different supported banking goals.** Two different goals and
+  schemas have executable acceptance: callback scheduling, and payment
+  collection (public-A and public-B). The round-3 decision (PR 171) and
+  checkpoint 6108501427 look to S03 or S04 for the second goal, and neither is
+  accepted. Whether kit collections may count as the second goal is a
+  coordinator decision (comment 6108917218 asks).
+- **Every executable path terminates safely.** Only structural evidence
+  exists. The fail-closed silent end above leaves the close rule unmet on the
+  listed paths.
+- **Banking acceptance.** No candidate has it:
+  - callback r3 is withheld, and its evidence rebuild is pending;
+  - public-A and public-B have no operative source review.
+
+The finish condition is therefore **not met**. `tools/cowork.py complete` was
+not run, and T08/T09 closure stays pending.
+
+What remains:
+1. **Callback.** One evidence rebuild on main `2162f64` or later. Then the
+   official driver against the same frozen ledger (`6f028d09…7532`) and an S01
+   re-check of F-01 and F-03.
+2. **Second goal.** An operative source review of public-A (or public-B). No
+   lane owns it. It must settle the product read-back question. A public-B
+   evidence run with two attempts started on `2162f64` at 12:49Z (comment
+   6109209600); its export would need the same review.
+3. **Second-goal ruling.** The coordinator decides whether kit collections
+   counts as the second goal. If not, S03 or S04 must pass first:
+   - S04 gap 1 (own-count wrong answers) and gap 2 (one close pair under two
+     `requires` values) gained owners at 12:52-12:53Z (comments 6109223647
+     and 6109216713). The train-2 callback refusal text is owned by the
+     kernel-refusal-text lane (comment 6109222905).
+   - No owner was found for a plan check that keeps every `requires: none`
+     closing row proposable (S03 NC1), or for binding identity exhaustion to
+     the sourced failed close (train-1 C06, the same family).
+4. **Termination ruling.** The coordinator either records the fail-closed
+   silent end as a limitation or assigns a fix lane.
+5. **Hosted proof.** Caller wording robustness and hosted behaviour (T14).

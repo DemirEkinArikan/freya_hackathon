@@ -16,7 +16,10 @@ for export. Policy validation repairs allow at most 450 seconds and share that
 same reserve. Extraction-only mode retains the 300 export/completion reserve
 without reserving a nonexistent workflow stage. The workflow stage still uses
 at most 900 seconds, clipped by the remaining global time and export reserve.
-The two-repair limit remains shared across policy and workflow validation.
+Policy full re-emissions keep the two-repair limit, and policy patch repairs have
+their own time-based budget (see "More patch repairs" below). The policy stage's
+repairs (patches and full re-emissions) still count against the two-repair limit
+for workflow validation.
 Timeouts remain failures, except that a first policy attempt that times out or
 stalls is retried once (see "Stall guard" below).
 
@@ -51,8 +54,9 @@ unchanged contract and execution-requirement checks, so a patched rule still
 needs its exact source quote. Admission sizes a patch by that excerpt instead of
 the whole policy. A malformed patch, an unappliable one, a format error or any
 exception in the excerpt, prompt or apply code falls back to a full repair in
-the same attempt, if that repair is admitted. A patched
-policy that fails validation uses a repair attempt like any other. The trace
+the same attempt, if that repair is admitted and one is left. When none is left,
+the next attempt is another patch, while one is left and admitted. A patched
+policy that fails validation can be patched again (see below). The trace
 records `repair_admission` with `repair_mode: patch` and a `policy_patch` event
 with the patch, its size, the excerpt and prompt sizes and the elapsed time.
 `--policy-repair full` restores full re-emission only. In a no-model replay of
@@ -61,6 +65,25 @@ admitted at its recorded allocation (estimates 67-195 s against full rewrites
 of 307-428 s). The prompt shrinks less, to 56-85% of a full repair, because the
 sources, API, interface and instructions stay; the rewritten part is what the
 admission estimate prices.
+
+More patch repairs (11 Oct, night). The relaxed re-runs of stress-dev-1, -3 and -4
+stopped at the policy stage after two patch repairs, with 1,325-1,436 seconds unused.
+Those patch repairs took 15-54 seconds. A rejected policy is now patched again for as
+long as each patch is admitted by the estimate above, against the remaining time less
+the first-workflow and export reserve, up to `MAX_PATCH_REPAIRS = 6` patches. Patching
+stops early when a patch leaves the error set of the policy it patched unchanged. Full
+re-emissions, including the first-attempt retry, keep `MAX_REPAIRS = 2`. A full
+re-emission that is left can still run after patching stops, if it is admitted. After a
+full re-emission, patching may resume on the new policy. Each policy validation failure
+adds a `policy_repair_budget` trace event. It records the patches and full re-emissions used,
+whether the last patch made no progress, the next repair and the remaining seconds. The
+resolved configuration records `max_patch_repairs`. In a no-model replay of eight retained
+11 Oct stress traces through this controller, the current validators reproduced every
+recorded error set. Five builds that stopped after their third attempt would have made
+another admitted attempt. In stress-dev-1 and -3 and the relaxed sd5x stress re-run, a
+patch had made no progress, so the next attempt is a full re-emission (estimated 271-409
+seconds, with 404-450 seconds available). Stress-dev-4 and the strict stress-dev-2 re-run
+get another patch. Two builds still stop for lack of time. The one success is unchanged.
 
 The 1800-second limit, the 300-second export reserve and the 450-second
 first-workflow reserve are unchanged. In a replay of that day's call times, a

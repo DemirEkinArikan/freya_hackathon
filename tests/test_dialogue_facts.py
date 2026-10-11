@@ -345,7 +345,8 @@ class DialogueFactTests(unittest.TestCase):
         context = fixture()
         context["plan"]["nodes"]["talk"]["routing_prompt"] = "Route using current {{bg_facts}} and supplied {{now}}."
         workflow = compile_guarded_workflow(**context)["workflow"]
-        self.assertEqual(workflow["nodes"]["talk"]["routing_prompt"], context["plan"]["nodes"]["talk"]["routing_prompt"])
+        # Accepted in the plan, then removed: talk routes by intent (test_routing_normalisation).
+        self.assertNotIn("routing_prompt", workflow["nodes"]["talk"])
         self.assertEqual(validate_guarded_workflow(workflow, **context), [])
         for invalid in ("{{bg_state}}", {}, False):
             context["plan"]["nodes"]["talk"]["routing_prompt"] = invalid

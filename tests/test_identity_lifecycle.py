@@ -116,7 +116,12 @@ class IdentityLifecycleTests(unittest.TestCase):
     def test_passed_factors_stay_permanent_without_latest_check(self):
         _, _, session = self.session(values())
         self.assertEqual(self.check(session, F1, self.match(4)), "done")
-        self.assert_refused(session, "verify_identity", field=F1, answer="invented-correction")
+        # Extracted values persist, so a passed-factor proposal (stale, or a
+        # correction this policy does not allow) neither reopens F1 nor blocks F2.
+        session.action("verify_identity", field=F1, answer="invented-correction")
+        self.assertEqual(session.variables["bg_route"], "allow")
+        self.assertIn(F2, json.loads(session.variables["bg_body"]).values())
+        self.assertNotIn(F1, json.loads(session.variables["bg_body"]).values())
         self.assertEqual(session.state["verified_fields"], [F1])
 
     # (b) exact counter movement

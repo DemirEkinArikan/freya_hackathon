@@ -22,16 +22,23 @@ PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
 CONTROLLED_ENTRY_LIMIT = 2048
 DEFAULT_CONVERSATION_TURNS = 10
+# Kit extraction confidence comes from token probabilities and a value below
+# min_confidence is discarded without trace. A clear spoken date scored 0.889
+# on the platform; 0.7 is the kit's lowest documented threshold. Free-value
+# proposals are validated by the sealed kernel and the bank before any effect.
+PROPOSAL_MIN_CONFIDENCE = 0.7
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _INPUTS = {
-    "verify_identity": {"field", "answer"}, "get_account": set(),
+    "verify_identity": {"answer"}, "get_account": set(),
     "stage_promise": {"product_id", "amount", "date"},
     "commit_promises": set(), "stage_note": {"product_id", "reason"},
     "finalize_notes": set(), "stage_transfer": {"queue"},
     "commit_transfer": set(), "schedule_callback": {"date", "time"},
     "close_call": set(),
 }
-_OPTIONAL_INPUTS = {"commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
+# The controller supplies the identity factor itself; a proposed field is used
+# only for an identity_factor_state latest_check correction of a passed factor.
+_OPTIONAL_INPUTS = {"verify_identity": {"field"}, "commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
 _OPERATIONS = {"verify_identity": "verify_identity", "get_account": "get_account",
                "commit_promises": "create_promise", "finalize_notes": "add_note",
                "commit_transfer": "transfer_to_agent", "schedule_callback": "schedule_callback",
@@ -1396,12 +1403,16 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         fields = profile['identity_fields']
         if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit'):
             raise ValueError('identity is complete or exhausted')
-        field = inputs['field']
         expected = next(f for f in fields if f not in state['verified_fields'])
-        # The latest completed check controls a factor: a correction of a
-        # passed factor is checked again after its pass is withdrawn.
-        recheck = profile.get('identity_factor_state') == 'latest_check' and field in state['verified_fields']
-        if field != expected and not recheck or not str(inputs['answer']).strip():
+        # The controller checks the next factor in policy order itself.
+        # Extracted values persist for the call, so a proposal only selects a
+        # latest_check correction of a passed factor (its pass is withdrawn
+        # first); an absent or passed proposal cannot block the next check,
+        # and a proposed later factor is refused.
+        proposed = str(inputs.get('field') or '')
+        recheck = profile.get('identity_factor_state') == 'latest_check' and proposed in state['verified_fields']
+        field = proposed if recheck else expected
+        if proposed in fields and proposed not in state['verified_fields'] and proposed != expected or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
         if recheck:
             state['verified_fields'].remove(field)
@@ -2112,6 +2123,12 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
+    bound = {value for node in plan["nodes"].values() if node["node_type"] == "guard_action"
+             for value in node.get("inputs", {}).values()}
+    for node in nodes.values():
+        for entry in node.get("extraction_schema", []):
+            if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
+                entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
     # A quarantine terminal never fabricates a successful bank close. It is

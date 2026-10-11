@@ -64,7 +64,11 @@ merges. Accepted workflows route alike under list-order and deterministic-first
 evaluation, and the replay refuses an order-dependent workflow before execution.
 The kit merges same-target transitions at load into one OR transition but does
 not document the merged transition's position. Replay keeps compiled list order
-and does not emulate that merge. Compiled controller nodes such as
+and does not emulate that merge. Validation therefore also rejects an
+`is_tool_call` route that shares its target with an ordinary route, whatever its
+condition or position: merged, they form one transition, unconditional if either
+is `always`, that is either a router row, which loses the completion and can
+shadow the node's other routes, or a tool call, which drops the ordinary route. Compiled controller nodes such as
 `done -> gate`, `allow -> api`, `always -> gate` route correctly only if the
 host keeps the earlier `allow` reachable; replay cannot prove that.
 Code and API nodes execute and route immediately. Tool-call transitions are

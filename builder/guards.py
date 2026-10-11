@@ -567,6 +567,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
             if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
                 raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
+    # A protected outcome is a recorded fact; no sourced identity row stands in
+    # for it. Rows are decoded above, so a code bound to that meaning counts.
+    # Checked after the row loops, so shapes they refuse keep their messages.
+    identity_rows = [*result.get("identity_close", {}).values(),
+                     *(row for rows in result.get("identity_close_choices", {}).values() for row in rows)]
+    if any(row["outcome"] in {"transferred", "promise", "paid", "no_promise"} for row in identity_rows):
+        raise GuardCompileError(["identity closing rows cannot use a protected-fact outcome (promise, paid, transferred, "
+                                 "no_promise or a code bound to one): only its recorded fact closes with it; a source "
+                                 "requiring otherwise is an unsupported constraint"])
     # Goal rows close only phases with no protected collections fact. Payment,
     # note and transfer goals keep their evidence-only closing semantics.
     goal_close = result.get("goal_close", {})
@@ -1161,6 +1170,9 @@ def guard_close(state, proposed, profile, maps):
         raise ValueError('callback-success closing requires a recorded callback')
     if proposal.get('reason') == 'no_callback' and state['callbacks']:
         raise ValueError('no_callback closing cannot hide a recorded callback')
+    # Whatever row selected it, a protected outcome closes only as its recorded fact.
+    if proposal['outcome'] in ('transferred', 'promise', 'paid', 'no_promise') and facts.get(proposal['outcome']) != proposal:
+        raise ValueError('protected closing outcome lacks its recorded fact')
     return proposal
 
 def guard_known_counts(state):

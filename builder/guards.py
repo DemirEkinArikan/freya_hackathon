@@ -1651,16 +1651,18 @@ def guard_continue(state, catalog):
 
 def guard_mistyped(data, spec):
     # The API hook records each trusted result field's raw JSON type, in sorted
-    # semantic order, before the string mapping erases it. A type that no
-    # declared response schema allows is malformed evidence. Absent and null
-    # keep the missing-value rules; no record at all is no type evidence.
+    # semantic order, before the string mapping erases it. A non-string type
+    # that no declared response schema allows is malformed evidence. A string
+    # is never type evidence, so a host that hands the hook strings keeps the
+    # earlier behaviour. Absent and null keep the missing-value rules; no
+    # record at all is no type evidence.
     kinds = str(data.get('_types') or '').split(',')
     if kinds == ['']:
         return False
     names = sorted(spec['results'])
     allowed = spec.get('result_types', dict())
     return len(kinds) != len(names) or any(
-        name in allowed and kind not in allowed[name] + ['absent', 'null']
+        name in allowed and kind != 'string' and kind not in allowed[name] + ['absent', 'null']
         and not (kind == 'integer' and 'number' in allowed[name]) for name, kind in zip(names, kinds))
 
 def guard_result(state, data, profile, catalog, expected_action):

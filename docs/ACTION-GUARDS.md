@@ -280,13 +280,21 @@ The hook also writes a second reserved field: the raw JSON type of each trusted
 result field (`absent`, `null`, `boolean`, `integer`, `number`, `string`,
 `array` or `object`). It does this because the kit's string mapping erases that
 type ("Booleans arrive as strings").
-- A type that no declared response schema allows for the field is uncertain
-  evidence. Nothing is recorded, the attempt becomes `unknown_persistence`, the
-  call is quarantined, and no protected close follows.
+- A non-string type that no declared response schema allows for the field is
+  uncertain evidence. Nothing is recorded, the attempt becomes
+  `unknown_persistence`, the call is quarantined, and no protected close follows.
 - A verification result with such a type ends identity as uncertain.
+- A string value is never type evidence. The kit shows a typed envelope, but no
+  hosted run has exercised the type record yet. A host that handed the hook
+  strings would otherwise quarantine every correct receipt of a boolean- or
+  integer-declared field. Such a host gets the earlier behaviour instead.
 - Absent and null values keep the missing-value rules.
 - Local semantic harnesses that send no type record get no type check. The
   compiled hook always writes one.
+- Known limit: the allowed types are merged across all declared response
+  statuses, and a field that any status leaves untyped is unchecked for every
+  status. A 200 receipt can therefore carry a type that only a 503 schema
+  declares. None of the known OpenAPI files has this shape.
 
 ## Current limits and next acceptance gates
 

@@ -65,10 +65,12 @@ class ResultTypeEvidenceTests(unittest.TestCase):
         self.assertTrue(state["quarantined"])
 
     def test_correctly_typed_receipts_are_unchanged(self):
-        for string_flag, receipt in ((True, {"ok": "true"}), (True, {"ok": "true", "error": None}),
-                                     (False, {"ok": True})):
+        # The last case is a boolean-declared API whose hook sees strings: a
+        # string is never type evidence, so it records as before.
+        for string_flag, receipt, close_ok in ((True, {"ok": "true"}, "true"), (True, {"ok": "true", "error": None}, "true"),
+                                               (False, {"ok": True}, True), (False, {"ok": "true"}, "true")):
             with self.subTest(string_flag=string_flag, receipt=receipt):
-                report, state = run(context(string_flag), receipt, "true" if string_flag else True)
+                report, state = run(context(string_flag), receipt, close_ok)
                 self.assertEqual([call["tool"] for call in report["calls"]], ["schedule_callback", "close_call"])
                 self.assertEqual(report["terminal_node"], "bg_terminal")
                 self.assertEqual(state["callbacks"], [{"customer_id": "member-7", "date": "2031-05-06", "time": "10:00"}])

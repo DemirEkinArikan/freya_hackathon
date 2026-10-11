@@ -2099,6 +2099,34 @@ def _entry_budget_code(*, abort: bool = False) -> str:
     return source
 
 
+def _ask_and_capture(nodes: dict) -> None:
+    """Capture each caller answer in the step that asked for it.
+
+    On the host a speaking LLM-entry step takes its offered completion only
+    after the caller's reply, so the reply arrives there. A silent answer step
+    behind that completion then answers the pending turn itself, asks a
+    question of its own and extracts the reply to that one instead, so an
+    identity answer reached the controller under another factor. The asking
+    step gets the answer step's extraction and its completion goes straight to
+    the answer step's single exit.
+    """
+    for name, node in nodes.items():
+        if node.get("passthrough") or node.get("extraction_schema") or (node.get("on_enter") or {}).get("type", "llm") != "llm":
+            continue
+        routes = [route for route in node.get("transitions", []) if route.get("is_tool_call") is True]
+        answers = [target for target in {route["target_node"] for route in routes} if target in nodes
+                   and not nodes[target].get("passthrough") and nodes[target].get("extraction_schema")
+                   and (nodes[target].get("on_enter") or {}).get("type") == "silent"]
+        rows = nodes[answers[0]].get("transitions", []) if len(answers) == 1 else []
+        if (len(rows) != 1 or rows[0].get("is_tool_call") or rows[0]["target_node"] in (name, answers[0])
+                or rows[0]["condition"].get("operator") not in ("matches_intent", "always")):
+            continue
+        node["extraction_schema"] = copy.deepcopy(nodes[answers[0]]["extraction_schema"])
+        for route in routes:
+            if route["target_node"] == answers[0]:
+                route["target_node"] = rows[0]["target_node"]
+
+
 def _bound_entries(nodes: dict, public_names: list[str]) -> None:
     """Bound both unattended-node waits and cycles through multiple nodes."""
     gates = {name: PREFIX + "gate_" + str(index)
@@ -2205,6 +2233,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
+    _ask_and_capture(nodes)
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.

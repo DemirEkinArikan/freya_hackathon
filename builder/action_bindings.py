@@ -26,6 +26,7 @@ CANONICAL = {
 }
 TARGETS = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
            "notes": ("add_note", "reason"), "queues": ("transfer_to_agent", "queue")}
+COLLECTION_ROLES = {"stage_promise", "commit_promises", "stage_note", "finalize_notes", "stage_transfer", "commit_transfer"}
 
 
 def _local_dispositions(policy: Mapping[str, Any]) -> bool:
@@ -51,40 +52,63 @@ def _vocab(policy: Mapping[str, Any]) -> dict[str, set[str]]:
     return result
 
 
-def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> dict[str, dict[str, str]]:
+def _unbound_permitted(policy: Mapping[str, Any]) -> bool:
+    """Only goals limited to identity, account reads and the close may leave close codes unbound."""
+    actions = rule_value(policy, "execution_actions")
+    return (isinstance(actions, list) and all(isinstance(a, str) for a in actions)
+            and set(actions) <= {"verify_identity", "get_account", "close_call"})
+
+
+def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
     vocab = _vocab(policy)
     declared = rule_value(policy, "wire_codes", {})
     if not isinstance(declared, dict):
         raise ActionBindingError("wire_codes must be an explicit mapping")
-    maps = {}
+    maps, unbound = {}, {}
     for category, values in vocab.items():
         if not values:
             continue
         mapping = declared.get(category)
         if mapping is None:
-            if not values <= CANONICAL[category]:
-                raise ActionBindingError("opaque " + category + " require explicit semantic mappings")
-            mapping = {value: value for value in sorted(values)}
-        if not isinstance(mapping, dict) or not mapping or any(
-                not isinstance(meaning, str) or meaning not in CANONICAL[category]
-                or not isinstance(wire, str) or not wire for meaning, wire in mapping.items()):
+            mapping = {value: value for value in sorted(values & CANONICAL[category])}
+        elif not isinstance(mapping, dict) or not mapping:
             raise ActionBindingError("unknown or invalid semantic mapping for " + category)
+        if any(not isinstance(meaning, str) or not isinstance(wire, str) or not wire for meaning, wire in mapping.items()):
+            raise ActionBindingError("unknown or invalid semantic mapping for " + category)
+        if not set(mapping) <= CANONICAL[category]:
+            raise ActionBindingError("wire_codes." + category + " keys must be builder meanings listed in the wire_codes"
+                                     " rule shape; a code whose source meaning is not listed there is never a key")
         if len(set(mapping.values())) != len(mapping):
             raise ActionBindingError("ambiguous semantic mapping for " + category)
-        if not values <= set(mapping.values()):
-            raise ActionBindingError("semantic mapping does not cover policy " + category)
         if any(wire in CANONICAL[category] and wire != meaning for meaning, wire in mapping.items()):
             raise ActionBindingError("canonical API values cannot be assigned conflicting meanings")
+        # A declared semantic key resolves to its unique wire code; the check
+        # above makes that resolution unambiguous. Anything else is unbound.
+        loose = {mapping.get(value, value) for value in values} - set(mapping.values())
+        if loose and (canonical_only or category not in ("outcomes", "reasons")
+                      or loose & set().union(*CANONICAL.values()) or not _unbound_permitted(policy)):
+            raise ActionBindingError(
+                "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
+                + " API value nor one of its declared meanings; only a close_call outcome or reason code whose source"
+                " meaning is not a builder meaning, and which is not itself a builder meaning name, may stay unbound,"
+                " and only in a goal whose roles are limited to verify_identity, get_account and close_call")
         if canonical_only and any(meaning != wire for meaning, wire in mapping.items()):
             raise ActionBindingError("opaque values require API-validated bindings")
         maps[category] = deepcopy(mapping)
+        if loose:
+            unbound[category] = sorted(loose)
+    close = rule_value(policy, "close_reasons", {})
+    if len({maps.get("outcomes", {}).get(k, k) for k in close}) != len(close):
+        raise ActionBindingError("close_reasons cites one outcome code twice through its semantic key")
     transfer = rule_value(policy, "transfer_reasons", {})
     if transfer:
-        outcome = maps.get("outcomes", {}).get("transferred")
-        allowed = rule_value(policy, "close_reasons", {}).get(outcome, [])
-        if outcome is None or not set(transfer.values()) <= set(allowed):
+        outcomes, reasons = maps.get("outcomes", {}), maps.get("reasons", {})
+        close = {outcomes.get(k, k): {reasons.get(r, r) for r in v}
+                 for k, v in rule_value(policy, "close_reasons", {}).items()}
+        outcome = outcomes.get("transferred")
+        if outcome is None or not {reasons.get(r, r) for r in transfer.values()} <= close.get(outcome, set()):
             raise ActionBindingError("transfer closing reasons are inconsistent with the permitted transferred outcome")
-    return maps
+    return maps, unbound
 
 
 def _api_field(operation: dict, semantic: str, policy: Mapping[str, Any], action: str) -> tuple[str, list[str], bool]:
@@ -135,7 +159,8 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
         raise ActionBindingError("allowed_actions must be operation names")
     categories = {}
     local_notes = _local_dispositions(policy)
-    for category, mapping in _maps(policy, canonical_only=False).items():
+    maps, unbound = _maps(policy, canonical_only=False)
+    for category, mapping in maps.items():
         if category == "notes" and local_notes:
             categories[category] = {"binding_kind": "local_disposition", "semantic_to_wire": deepcopy(mapping),
                                     "wire_to_semantic": {wire: meaning for meaning, wire in mapping.items()}}
@@ -146,18 +171,20 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict) -> dict:
             raise ActionBindingError("policy action lacks a permitted API operation: " + action)
         operation = catalogue[name]
         field, enum, constrained = _api_field(operation, semantic_field, policy, action)
-        if constrained and not set(mapping.values()) <= set(enum):
+        if constrained and not set(mapping.values()) | set(unbound.get(category, [])) <= set(enum):
             raise ActionBindingError("policy semantic codes do not match the API enum for " + category)
         categories[category] = {"semantic_to_wire": mapping, "wire_to_semantic": {wire: meaning for meaning, wire in mapping.items()},
                                 "operation": {key: operation[key] for key in ("name", "method", "url")},
                                 "field": field, "api_enum": deepcopy(enum), "api_enum_constrained": constrained}
+        if category in unbound:
+            categories[category]["unbound_codes"] = unbound[category]
     return _finish(policy, categories, digest(openapi), "api_validated")
 
 
 def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = None) -> dict:
     """Check detached data against this policy; absent data permits canonical identity only."""
     if binding is None:
-        maps = _maps(policy, canonical_only=True)
+        maps, _ = _maps(policy, canonical_only=True)
         return _finish(policy, {category: {"semantic_to_wire": mapping,
                                          "wire_to_semantic": {wire: meaning for meaning, wire in mapping.items()}}
                                for category, mapping in maps.items()}, "", "canonical_identity")
@@ -165,7 +192,7 @@ def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = No
         raise ActionBindingError("explicit action bindings must come from supplied API compilation")
     if binding.get("policy_sha256") != digest(policy) or binding.get("sha256") != digest({k: v for k, v in binding.items() if k != "sha256"}):
         raise ActionBindingError("action bindings changed or belong to another policy")
-    wanted = _maps(policy, canonical_only=False)
+    wanted, unbound = _maps(policy, canonical_only=False)
     local_notes = _local_dispositions(policy)
     if not isinstance(binding.get("categories"), dict) or set(binding["categories"]) != set(wanted):
         raise ActionBindingError("action bindings do not cover the policy vocabularies")
@@ -180,13 +207,16 @@ def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = No
         enum = data.get("api_enum") if isinstance(data, dict) else None
         constrained = data.get("api_enum_constrained") if isinstance(data, dict) else None
         operation = data.get("operation") if isinstance(data, dict) else None
-        if (not isinstance(data, dict) or set(data) != {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}
+        loose = unbound.get(category, [])
+        keys = {"semantic_to_wire", "wire_to_semantic", "operation", "field", "api_enum", "api_enum_constrained"}
+        if (not isinstance(data, dict) or set(data) != keys | ({"unbound_codes"} if loose else set())
+                or loose and data.get("unbound_codes") != loose
                 or data.get("semantic_to_wire") != mapping
                 or data.get("wire_to_semantic") != {wire: meaning for meaning, wire in mapping.items()}
                 or type(constrained) is not bool or not isinstance(enum, list)
                 or any(not isinstance(value, str) or not value for value in enum)
                 or len(set(enum)) != len(enum)
-                or constrained and (not enum or not set(mapping.values()) <= set(enum))
+                or constrained and (not enum or not set(mapping.values()) | set(loose) <= set(enum))
                 or not constrained and enum != []
                 or not isinstance(data.get("field"), str) or not data["field"]
                 or not isinstance(operation, dict) or set(operation) != {"name", "method", "url"}

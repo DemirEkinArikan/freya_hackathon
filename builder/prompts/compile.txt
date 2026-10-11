@@ -52,15 +52,20 @@ defines that concept. They are interface names, not predetermined banking rules:
   a boolean and a nonnegative business-day count, all derived from the brief.
 - note_reasons: array of permitted note-reason strings.
 - transfer_reasons: map from permitted queue names to their final closing reasons.
-- close_reasons: map from permitted outcome names to permitted reason arrays; an
-  empty array means that outcome has no reason.
+- close_reasons: map from permitted exact API outcome codes to permitted exact API
+  reason arrays; an empty array means that outcome has no reason. A semantic key
+  declared in wire_codes may stand for its code. An API close code the source
+  gives no supported meaning stays out of wire_codes (unbound); only goals whose
+  roles are limited to verify_identity, get_account and close_call may use unbound
+  codes, and an unbound code is never itself a builder meaning name.
 - require_confirmation: boolean indicating whether explicit write confirmation is required.
 - promise_failure_limit: positive integer limit on contract-confirmed failed promise attempts.
 - tool_aliases: map from a semantic action name to the supplied API operation name.
 
 - persuasion_limits: map from the supplied policy bands to nonnegative offer limits.
-- wire_codes: category maps (outcomes,reasons,notes,queues) from semantic meanings
-  to exact opaque API values, only when the supplied documents define the meanings.
+- wire_codes: category maps (outcomes,reasons,notes,queues) from the builder meanings
+  listed in its rule shape to exact opaque API values, only when the supplied
+  documents define those meanings. A code with any other meaning is never a key.
 - action_fields/result_fields: operation-to-semantic-field maps for renamed API fields.
 - product_fields: semantic product fields mapped to returned account field names.
 - account_disclosure_fields: use an explicit array of returned scalar fields only
@@ -89,6 +94,14 @@ defines that concept. They are interface names, not predetermined banking rules:
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.
 - close_precedence: ordered semantic outcome array derived from the final selection rule.
 - identity_close: failed/incomplete/unreached records with outcome and optional reason.
+- goal_close: optional verified/account_loaded arrays of
+  {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"} for
+  goals without promise, note or transfer roles: sourced close pairs after identity
+  succeeds without an account read, or after positive account evidence. Never use
+  promise, paid, transferred or no_promise meanings. Each pair appears once per
+  phase. With schedule_callback every close code is a bound wire_codes meaning,
+  and after a recorded callback only recorded_callback rows apply. One row is
+  fixed; several rows need a matching closing proposal.
 
 - identity_close_choices: optional unreached/incomplete arrays of
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.

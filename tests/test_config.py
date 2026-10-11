@@ -25,6 +25,13 @@ class LocalEnvironmentTests(unittest.TestCase):
         self.assertEqual(env['FREYA_API_KEY'], 'synthetic-key')
         self.assertEqual(generation_environment(env), {'HOME': '/tmp'})
 
+    def test_second_key_is_data_only_and_never_selected_or_generated(self):
+        self.path.write_text('FREYA_API_KEY=synthetic-key\nFREYA_API_KEY_2=synthetic-key-2\n')
+        env = {'HOME': '/tmp'}
+        load_local_environment(self.path, env)
+        self.assertEqual(env['FREYA_API_KEY'], 'synthetic-key')
+        self.assertEqual(generation_environment(env), {'HOME': '/tmp'})
+
     def test_invalid_input_does_not_execute_or_echo_values(self):
         for text in ('FREYA_API_KEY=$(touch forbidden-marker)', 'FREYA_API_KEY=`secret-command`',
                      'FREYA_API_KEY=private-value\nFREYA_API_KEY=duplicate',

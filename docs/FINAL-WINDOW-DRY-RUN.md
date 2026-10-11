@@ -130,8 +130,9 @@ baseline builds.
   5 minutes: under 15 s of tools, about 2 minutes to commit, push, open and merge the
   evidence PR, and about 2 minutes to copy and hash the attachments. That fits inside
   the 15-minute buffer, but the buffer is kept for sending and the receipt only.
-- With three attempts per brief started 20:02–20:07, all of them end by about 20:37.
+- With round 1 (two attempts per brief) started 20:02–20:05, all of them end by about 20:35.
   If each brief has one eligible attempt, the package is ready to send by about 21:00.
+  A brief that needs round 2 moves this to about 21:40.
 - The latest start for a retry round is **21:45**. It ends by 22:15, which leaves
   30 minutes to select, package and verify before 22:45 (T18-FINAL-WINDOW.md).
 
@@ -162,8 +163,8 @@ baseline builds.
 4. **Failed builds are slow.** All four builds on current runtime failed at 16–18
    minutes, and a live build can still fail at publication after 22 minutes. In parallel, each brief can have up to four attempts of at most 30 minutes
    started by 22:00 (20:05, 20:35, 21:05 and 21:35). One after the other, each brief
-   gets about two. Tonight's plan instead starts three attempts per brief at once,
-   and the latest retry start is 21:45.
+   gets about two. Tonight's plan instead starts two attempts per brief at once
+   (round 1 of the attempt matrix), and the latest retry start is 21:45.
 5. **The credential scan depends on the process environment.** The frozen checkout has
    no `.env`, which is correct. But the packager and bundle verifier, run plainly,
    then know no credential values and fall back to pattern checks. Run them through
@@ -209,7 +210,6 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    T18_SOURCE_COMMIT=<from the T17 freeze>
    T18_SOURCE_INVENTORY_SHA256=<from the T17 freeze>
    T18_BUILDER_MODEL=<from the T17 freeze>
-   T18_REASONING_EFFORT=<from the T17 freeze>
    export PATH="$PATH:/Users/demirekinarikan/.vscode/extensions/openai.chatgpt-26.1007.21434-darwin-arm64/bin/macos-aarch64"
    unset OPENAI_API_KEY
    withenv() { /opt/homebrew/bin/python3.11 -I -c 'import os, sys; sys.path.insert(0, os.getcwd()); from pathlib import Path; from builder.config import load_local_environment; load_local_environment(Path(sys.argv[1])); os.execv(sys.executable, [sys.executable, *sys.argv[2:]])' "$MAIN/.env" "$@"; }
@@ -284,31 +284,36 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    Record the receipt time and the sender of the files in a separate local note, not in
    `official-pins.json`.
 
-### About 20:02 (17:02 UTC): start three attempts per brief at once
+### About 20:02 (17:02 UTC): start round 1, strict high + strict medium per brief
 
-6. Start the attempts. That is six builders, each in its own
-   `artifacts/final/<label>/attempt-<k>/` with its own new slot. Starts alternate
-   between the briefs, 60 s apart, so the launcher runs for about 5 minutes; `nohup`
-   keeps it going if the terminal closes:
+6. Start round 1 of the [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix). That is
+   four builders, each in its own `artifacts/final/<label>/attempt-<k>/` with its own
+   new slot, spread over the logged-in Codex accounts. Starts alternate between the
+   briefs, 60 s apart, so the launcher runs for about 3 minutes; `nohup` keeps it
+   going if the terminal closes:
 
    ```sh
    nohup python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \
-     --model "$T18_BUILDER_MODEL" --reasoning-effort "$T18_REASONING_EFFORT" > artifacts/final-window/launch.log 2>&1 &
+     --model "$T18_BUILDER_MODEL" --round 1 > artifacts/final-window/launch.log 2>&1 &
    ```
 
-   Each builder stops itself at 1,800 s, so all of them end by about 20:37. None
+   Each builder stops itself at 1,800 s, so all of them end by about 20:35. None
    takes the simulation lease, because none runs its own hosted tests.
 7. While they run, poll about once a minute with
    `python3.11 tools/final_attempts.py health --env-file "$MAIN/.env"; withenv tools/final_attempts.py select`.
    A failed attempt whose error names `HTTP 50x` hit a platform failure, not a
    builder fault (T18-FINAL-WINDOW.md).
-   It prints one JSON line per attempt (status and the five criteria) and exits 2
-   while any attempt still runs. Exit 3 means a brief has no eligible attempt. Only
-   then, and no later than **21:45**, start a retry round for that brief alone:
-   add `--labels hidden-N` to the launch command. The new attempts continue the
-   numbering (4, 5, 6), and every earlier attempt stays untouched. Never retry a
-   brief that already has an eligible selection, and wait for a `health` probe with
-   `ok: true` first.
+   It prints one JSON line per attempt (status, effort and the seven criteria) and exits 2
+   while any attempt still runs. A brief whose attempts have all finished gets its
+   `selection.json` even then. When that record selects no attempt, or selects a
+   deterministic fallback export, start round 2 for that brief alone: in the step 6 command, replace `--round 1` with
+   `--round 2 --labels hidden-N` and `launch.log` with `launch-hidden-N-round-2.log`.
+   If every strict attempt of the brief ended on a
+   platform error, repeat `--round 1 --labels hidden-N` instead. The new attempts
+   continue the numbering (3, 4), and every earlier attempt stays untouched. A brief
+   still without an eligible attempt after round 2 may get one more round, no later
+   than **21:45**. The launcher refuses a round that cannot improve the selection.
+   Wait for a `health` probe with `ok: true` first.
 
 ### When `select` exits 0 (about 20:40)
 

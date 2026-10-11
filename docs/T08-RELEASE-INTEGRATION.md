@@ -6,10 +6,11 @@ retained partial successes with a single final close. Integration must exercise
 the original generated candidate accepted by T07. Passing source tests does not
 complete this dependency.
 
-The integration checkout starts at `4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b`,
+Codex T08 authored this lane on `4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b`,
 which includes the checked administrative-budget, input-format, authored-routing
-and routing-guidance changes in PR112/110/113/114. Production guards, compiler,
-prompts and generated outputs are unchanged by this evidence lane.
+and routing-guidance changes in PR112/110/113/114; a recorded handoff carried it
+onto main `3f2399d`. Production guards, compiler, prompts and generated outputs
+are unchanged by this evidence lane.
 
 ## Evidence boundary
 
@@ -21,7 +22,11 @@ outside every generator input and repair context. Never amend original generated
 policy, plan, workflow, manifests or failed logs to make a case pass.
 
 Run the checker after replacing these example paths with the original reviewed
-artifacts. The output must be new and outside the original run directory:
+artifacts. Run it from a checkout of this repository whose `builder/*.py`,
+`builder/prompts/*.txt` and `benchmarks/*.py` bytes equal the candidate's
+`builder-source.json` (for example a detached worktree at the build's source
+commit); otherwise the loader refuses. The output must be new and outside the
+original run directory:
 
 ```sh
 python3.11 tools/t08_release_matrix.py \
@@ -41,6 +46,13 @@ an explicit replay `script`, complete ordered `expected_calls` containing
 `tool` and `arguments`, and final-state `assertions` containing a JSON-pointer
 `path` and independent expected `equals` value. Pending or unsupported rows
 retain their `reason`. The module docstring defines the complete format.
+
+A `partial_success_close_once` row needs a promise dispatch or executed commit
+plus `recorded_promises` and `closed` assertions; its complete ordered calls fix
+zero or one close, so quarantine endings without a close remain valid rows. If
+a reviewed case whose assertions already name the required state is rejected for
+lacking an executed API/state witness, the candidate did not execute that
+operation: record a failure and never edit the case to pass.
 
 The report's requirement status is explicitly a **local assertion status**;
 independent case adequacy, source interpretation, T07/task acceptance and hosted

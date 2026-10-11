@@ -227,8 +227,10 @@ def _relevant(requirement, report, assertions, context):
     if requirement == "deferred_notes_transfer":
         return staged_note and {"pending_notes", "pending_promises"} <= paths and any(
             aliases.get(role, role) in calls for role in ("add_note", "transfer_to_agent"))
-    return (aliases.get("create_promise", "create_promise") in calls
-            and aliases.get("close_call", "close_call") in calls and {"recorded_promises", "closed"} <= paths)
+    # Complete ordered expected_calls plus the closed assertion pin zero or one
+    # close, so quarantine endings without a close remain expressible.
+    committed = "commit_promises" in {node.get("action") for name, node in context["plan"]["nodes"].items() if name in steps}
+    return bool(aliases.get("create_promise", "create_promise") in calls or committed) and {"recorded_promises", "closed"} <= paths
 
 
 def evaluate(candidate, cases, *, max_steps=256, seconds=30):

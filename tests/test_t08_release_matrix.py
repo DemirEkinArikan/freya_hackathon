@@ -268,7 +268,9 @@ class ReleaseMatrixTests(unittest.TestCase):
     def test_partial_success_then_qualified_failure_preserves_recorded_promise(self):
         script = scenario(self.context, self.aliases, renamed=True)
         second = deepcopy(script['responses'][2]['envelope']['data']['evidence_products'][0])
-        second.update(asset_reference='synthetic-second', delay_marker=4)
+        # The approved readback labels products by kind; a second KIND_A product
+        # would be indistinguishable and the guard correctly refuses consent.
+        second.update(asset_reference='synthetic-second', kind_wire='KIND_B', delay_marker=4, floor_beta=20)
         script['responses'][2]['envelope']['data']['evidence_products'].append(second)
         script['frames'].insert(4, frame(self.context, 'stage', product='synthetic-second', amount='20.00', day='2031-05-06'))
         failed = deepcopy(script['responses'][3])
@@ -291,6 +293,29 @@ class ReleaseMatrixTests(unittest.TestCase):
         self.assertEqual([call['arguments']['input_product_id'] for call in calls
                           if call['tool'] == self.aliases['create_promise']],
                          ['synthetic-product', 'synthetic-second', 'synthetic-second'])
+
+    def test_partial_success_then_unknown_result_quarantines_without_close(self):
+        # Undeclared HTTP 500: persistence unknown, so no retry, note or close.
+        script = scenario(self.context, self.aliases, renamed=True)
+        second = deepcopy(script['responses'][2]['envelope']['data']['evidence_products'][0])
+        second.update(asset_reference='synthetic-second', kind_wire='KIND_B', delay_marker=4, floor_beta=20)
+        script['responses'][2]['envelope']['data']['evidence_products'].append(second)
+        script['frames'].insert(4, frame(self.context, 'stage', product='synthetic-second', amount='20.00', day='2031-05-06'))
+        script['frames'] = script['frames'][:7]
+        unknown = deepcopy(script['responses'][3])
+        unknown['envelope'] = {'status_code': 500, 'data': {'evidence_ok': False, 'evidence_error': 'ERR_BUSY'}}
+        script['responses'][4:] = [unknown]
+        terms = {'amount_cents': 2000, 'date': '2031-05-06'}
+        row = self.ready(script, ('partial_success_close_once',), [
+            {'path': '/final_state/recorded_promises', 'equals': {'synthetic-product': terms}},
+            {'path': '/final_state/pending_promises', 'equals': {'synthetic-second': terms}},
+            {'path': '/final_state/quarantined', 'equals': True}, {'path': '/final_state/closed', 'equals': False}])
+        second_call = deepcopy(row['expected_calls'][3])
+        second_call['arguments']['input_product_id'] = 'synthetic-second'
+        row['expected_calls'][4:] = [second_call]
+        result = evaluate(self.candidate, self.cases)
+        self.assertEqual(result['cases'][0]['status'], 'PASS')
+        self.assertEqual(result['requirements']['partial_success_close_once']['local_assertion_status'], 'PASS')
 
     def test_cli_persists_pending_local_report_and_never_overwrites(self):
         with tempfile.TemporaryDirectory(dir=self.directory) as temp:

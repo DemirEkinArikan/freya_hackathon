@@ -78,22 +78,28 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
                              "Clears the pending confirmation snapshot; staging does not record a bank promise."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "An amount that is not positive, is below the product's floor_fields amount or exceeds its past_due amount is refused.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted."]},
     "commit_promises": {
         "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
-        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
+        "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted."]},
     "stage_note": {
         "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
                              "Clears the pending confirmation snapshot; staging does not record a bank note."],
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
-                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
+                       "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted."]},
     "finalize_notes": {
         "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise; an empty set with no staged disposition is refused.",
                              "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
-        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
+        "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."],
+        "rejections": ["A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted."]},
     "stage_transfer": {
         "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
-                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
+                             "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer.",
+                             "Afterwards only commit_transfer and close_call are accepted."],
         "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory."]},
     "commit_transfer": {
         "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],

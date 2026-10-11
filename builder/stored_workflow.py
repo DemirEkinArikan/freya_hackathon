@@ -67,6 +67,10 @@ def assert_equivalent_stored_workflow(stored: dict, authored: dict) -> None:
         raise ValueError("Stored workflow differs from authored workflow at " + location)
 
     def compare(actual, expected, path=()):
+        if type(actual) in (int, float) and type(expected) in (int, float):
+            if actual != expected:  # The platform stores an integral float such as 1.0 as 1.
+                fail(path)
+            return
         if type(actual) is not type(expected):
             fail(path)
         if isinstance(expected, dict):

@@ -61,7 +61,7 @@ declaring the gap; the sealed controller refuses the dependent promise or close
 rather than invent a value. Retries happen only through attempt_scopes: the
 controller never replays close_call or an unscoped write and never reports a
 failed write as recorded. Keep a declaration whenever a plausible source reading
-restricts writes, disclosures or closes more tightly than the typed interface
+restricts tool calls, disclosures or closes more tightly than the typed interface
 can enforce.
 
 When supplied sources declare variables available at call start, retain their

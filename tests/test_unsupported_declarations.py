@@ -91,7 +91,7 @@ class DeclarationFeedbackTests(unittest.TestCase):
         self.assertIn("Source silence is not a requirement", header)
         self.assertIn("identity close they\nneither assign nor explicitly require", header)
         self.assertIn("never replays close_call or an unscoped write", header)
-        self.assertIn("Keep a declaration whenever a plausible source reading\nrestricts", header)
+        self.assertIn("Keep a declaration whenever a plausible source reading\nrestricts tool calls, disclosures or closes", header)
         self.assertNotIn("degraded", header)
 
 

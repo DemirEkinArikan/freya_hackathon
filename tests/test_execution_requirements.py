@@ -68,6 +68,20 @@ def add_rule(policy, kind, value):
 
 
 class ExecutionRequirementsTests(unittest.TestCase):
+    def test_sourced_confirmation_question_pair_passes_together_and_not_alone(self):
+        policy, sources, api = packet()
+        wording = 'For commit_promises, after the read-back ask exactly: "Do you confirm?".'
+        sources[0]["text"] += " " + wording
+        sources[0]["sha256"] = policy["sources"][0]["sha256"] = digest(sources[0]["text"])
+        for kind, value in (("confirmation_question", "Do you confirm?"),
+                            ("confirmation_question_actions", ["commit_promises"])):
+            policy["rules"].append({"id": kind, "kind": kind, "value": value,
+                                    "source": {"id": "synthetic", "quote": wording}})
+        self.assertTrue(compile_execution_requirements(policy, sources, api)["actions"])
+        policy["rules"].pop()
+        with self.assertRaisesRegex(ExecutionRequirementsError, "missing: confirmation_question_actions"):
+            compile_execution_requirements(policy, sources, api)
+
     def test_complete_selected_scope_is_hash_bound_and_detached(self):
         policy, sources, api = packet()
         before = copy.deepcopy((policy, sources, api))

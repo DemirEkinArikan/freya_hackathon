@@ -49,21 +49,32 @@ The value stays out of the profile embedded in sealed code, so code nodes,
 routes and quarantine semantics are byte-identical with or without the rule.
 Without it, the end stays silent. The one line serves every stop that reaches
 `bg_quarantine`: an unknown or contradictory write result, an initialization
-(input) failure and a controller fault. So it can be said before any booking
-was discussed, or after an earlier write was recorded. Entry-budget and
+(input) failure, a controller fault and a refused close. So it can be said
+before any booking was discussed, or after an earlier write was recorded. Entry-budget and
 turn-budget stops, and close results, end at the silent `bg_terminal`.
 `tests/test_uncertain_stop_line.py` covers this; it includes an env-gated
 (`FREYA_CALLBACK_R3_ARTIFACTS`) replay of the retained callback round-3
 uncertain cases.
 
 Close preparation has only one bank dispatch route: a permitted `allow` result.
-Every other outcome takes a terminal rather than authored recovery: the
-quarantine end when quarantined, otherwise the silent `bg_terminal`.
-This makes a conversation's turn-limit exit finite even when no valid bank
-disposition can be formed. It reports neither successful closure nor a bank
-write that did not occur. Ordinary correctable non-close input remains
-recoverable, and explicitly qualified negative-persistence retries still use
-their immutable request.
+Every other outcome is a refused close. It sets the quarantine flag and takes
+the quarantine end rather than authored recovery, so a call never ends
+without a close and without the flag. Returning to dialogue cannot help:
+closing proposals are captured before the farewell, and immediate routing
+extracts no new answer. This makes a conversation's turn-limit exit finite
+even when no valid bank disposition can be formed. It reports neither
+successful closure nor a bank write that did not occur. Ordinary correctable
+non-close input remains recoverable, and explicitly qualified
+negative-persistence retries still use their immutable request.
+
+One refusal has an evidence-decided close instead. A proposal naming a row
+that requires a recorded callback, when none is recorded, closes through the
+identity scope's or goal phase's single row requiring no recorded callback.
+In brief A, rule 7 makes that row `no_callback`. Without exactly one such row,
+the claim stays refused. Those rows never carry a protected outcome, and the
+final recorded-fact check still applies. `tests/test_refused_close.py` covers
+both behaviours, with an env-gated (`FREYA_PUBLIC_A_RUN`) replay of the
+retained public-A plan (PA29/PA32 shapes).
 
 `tests/test_guard_termination.py` executes the real compiled code, mappings and
 route conditions with an independently invented renamed/opaque API contract.

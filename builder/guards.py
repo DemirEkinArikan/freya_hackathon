@@ -2024,7 +2024,7 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     spec = {"phase": phase, "action": action, "inputs": inputs, "profile": profile,
             "catalog": {k: {n: v for n, v in op.items() if n != "tool"} for k, op in catalog.items()},
             "maps": maps, "result_vars": result_vars}
-    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
+    tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\nvars['bg_outcome'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
         tail += "    vars['bg_control_entries'] = '0'\n"
@@ -2068,7 +2068,15 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
         tail += "    if refusal and facts['call_status'] != 'quarantined':\n        facts['latest_action'] = dict(action=spec['action'], status='refused', reason=refusal)\n        vars['bg_facts'] = guard_json(facts)\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
+    # Which fixed sentence the caller hears before the next step (K4); set last,
+    # and only for a view that is still active (no quarantine or close).
+    outcome = {"prepare": "refusal", "confirm": "'not_confirmed' if route == 'blocked' else ''",
+               "result": "'rejected' if route == 'failure' else ''"}.get(phase)
+    if outcome and action != "close_call":
+        tail += "    vars['bg_outcome'] = (" + outcome + ") if facts['call_status'] == 'active' else ''\n"
     tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = 'unclear'\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
+    if phase == "prepare" and action != "close_call":
+        tail += "    vars['bg_outcome'] = 'blocked'\n"
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
     # A refused close has no eligible close left to prove, so it is flagged, never a silent unflagged end.
@@ -2108,6 +2116,26 @@ def _confirmation_speech(profile: dict, action: str) -> dict:
     question = profile.get("confirmation_question") if action in profile.get("confirmation_question_actions", []) else None
     text = terms + ". " + question if question else "Please confirm these exact terms: " + terms + ". Do you agree?"
     return {"on_enter": {"type": "tts", "text": text}, "task_message": wait}
+
+
+# Hosted readiness K4: after refusals the speaking dialogue claimed verification,
+# invented account facts and called refused writes recorded. Code now picks the
+# first sentence after a refused or rejected action; it states only what was
+# not done and holds no brief text. The kernel's refusal codes, then the
+# compiler's own: a declined confirmation, a rejected result, an unlisted fault.
+OUTCOME_SPEECH = {
+    "closed": "That step is no longer open on this call.",
+    "not_verified": "I can't do that before your identity is verified.",
+    "order": "I can't do that yet, because another step has to come first.",
+    "missing_input": "I'm sorry, I still need a clear detail before I can do that.",
+    "out_of_policy": "I'm sorry, I can't accept that as it stands.",
+    "blocked": "I could not complete that step.",
+    "not_confirmed": "Without a clear yes to those exact terms, I have not recorded them.",
+    "rejected": "That last request did not go through.",
+}
+_OUTCOME_RULE = ("Speak only account facts that the runtime view shows, and only when it shows account.loaded true; say "
+                 "identity is verified only when it shows identity.status verified. After a refused or rejected action the "
+                 "caller first hears a fixed sentence saying so: never contradict it or say that action succeeded.")
 
 
 def _terminal() -> dict:
@@ -2373,6 +2401,20 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         route = copy.deepcopy(quarantine_route)
         route["condition"]["conditions"] += [{"variable": node + "_failure_count", "operator": "greater_than", "operand": 0}, *extra]
         return route
+    spoken = {}
+
+    def said(codes, target):
+        # Rows after the quarantine row: the code step's outcome code selects a
+        # fixed line, spoken before the public target step continues the call.
+        rows = []
+        for code in codes:
+            relay = PREFIX + "say_" + code + "_" + target
+            spoken[relay] = {"name": relay, "node_type": "conversation", "on_enter": {"type": "tts", "text": OUTCOME_SPEECH[code]},
+                             "task_message": "Say nothing.", "passthrough": True,
+                             "passthrough_default_transition": target, "transitions": [_transition(target)]}
+            rows.append({"target_node": relay, "description": "outcome " + code, "condition": {"logic": "or", "conditions": [
+                {"variable": "bg_outcome", "operator": "equals", "operand": code}]}})
+        return rows
     entries = []
     for name, node in sorted(plan["nodes"].items()):
         if node["node_type"] != "guard_action":
@@ -2406,6 +2448,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             # close is quarantined above and ends at the quarantine terminal,
             # without fabricating a bank close or persistence claim.
             routes = [sealed(name), _transition(api, "allow"), _transition("bg_terminal")]
+        else:
+            routes[1:1] = said(("closed", "not_verified", "order", "missing_input", "out_of_policy", "blocked"), blocked)
         nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
         entries.append(name)
         if not operation:
@@ -2450,12 +2494,15 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [
                     {"variable": "bg_consent", "operator": "equals", "operand": value} for value in ("yes", "no", "unclear")]}}]}
             nodes[accept] = _code_node(accept, _code("confirm", action, {}, profile, catalog, maps, result_vars),
-                [sealed(accept), _transition(api, "allow"), _transition(blocked)])
+                [sealed(accept), *said(("not_confirmed",), blocked), _transition(api, "allow"), _transition(blocked)])
         nodes[reconcile] = _code_node(reconcile, _code("result", action, {}, profile, catalog, maps, result_vars),
             ([_transition("bg_terminal")] if action == "close_call" else
-             [sealed(reconcile, {"variable": "bg_route", "operator": "equals", "operand": "sent"}),
+             [sealed(reconcile, {"variable": "bg_route", "operator": "equals", "operand": "sent"}), *said(("rejected",), failure),
               _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
+    if set(spoken) & set(nodes):
+        raise GuardCompileError(["outcome speech node name collision"])
+    nodes.update(spoken)
     # A lone intent row into an LLM-entry decision that can send the caller
     # back costs a routing-model call per answer that the decision judges
     # anyway. The kit evaluates always without a model call, after the
@@ -2486,13 +2533,10 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     _bound_entries(nodes, list(plan["nodes"]))
     routing_changes += _one_route_per_target(nodes)
     workflow = {"initial_node": "bg_init", "nodes": nodes}
-    if "system_prompt" in plan:
-        workflow["system_prompt"] = copy.deepcopy(plan["system_prompt"])
-    if rules:
-        authored = workflow.get("system_prompt", "")
-        if not isinstance(authored, str):
-            raise GuardCompileError(["plan system_prompt must be text"])
-        workflow["system_prompt"] = (authored + "\n\n" if authored else "") + rules
+    authored = plan.get("system_prompt", "")
+    if not isinstance(authored, str):
+        raise GuardCompileError(["plan system_prompt must be text"])
+    workflow["system_prompt"] = "\n\n".join(part for part in (authored, rules, _OUTCOME_RULE) if part)
     manifest = {"version": 1, "plan_sha256": digest(plan), "contract_sha256": contract["sha256"],
                 "openapi_sha256": digest(openapi), "execution_policy_sha256": execution_policy["sha256"],
                 "bindings_sha256": (bindings or {}).get("sha256", ""), "workflow_sha256": digest(workflow),

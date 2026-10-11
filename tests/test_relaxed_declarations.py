@@ -14,8 +14,8 @@ from builder.action_bindings import ActionBindingError, compile_action_bindings
 from builder.build import PROJECT, _extract_policy, execute, make_workflow_prompt
 from builder.contract import PolicyContractError, compile_policy_contract
 from builder.execution_requirements import compile_execution_requirements, validate_plan_execution
-from builder.guards import (_catalogue, _profile, compile_guarded_workflow, required_execution_kinds, run_guard_step,
-                            validate_guarded_workflow)
+from builder.guards import (_OUTCOME_RULE, _catalogue, _profile, compile_guarded_workflow, required_execution_kinds,
+                            run_guard_step, validate_guarded_workflow)
 from builder.policy import compile_execution_policy
 from builder.runtime import Deadline, Trace
 from builder.safety import digest
@@ -160,7 +160,8 @@ class PromptEnforcedDialogueTests(unittest.TestCase):
         self.assertIn("Bank rule for this step that no system check enforces: " + PROTECTED.replace("{{notes}}", "((notes))"), talk)
         self.assertNotIn(AMBIGUOUS, talk)
         stripped = copy.deepcopy(workflow)
-        del stripped["system_prompt"]
+        self.assertTrue(system.endswith("\n\n" + _OUTCOME_RULE))
+        stripped["system_prompt"] = _OUTCOME_RULE
         stripped["nodes"]["talk"]["task_message"] = talk[:talk.index("\n\nBank rule for this step")]
         policy["unsupported_constraints"] = [entry("dialogue_only")]
         strict, _ = guarded(policy, sources, api)
@@ -176,7 +177,7 @@ class PromptEnforcedDialogueTests(unittest.TestCase):
         self.assertTrue(workflow["system_prompt"].startswith("Speak English.\n\nBank rules that no system check enforces."))
         strict = compile_policy_contract(*declared(entry("dialogue_only")))
         self.assertEqual(compile_guarded_workflow(proposal, strict, api, execution, bindings)["workflow"]["system_prompt"],
-                         "Speak English.")
+                         "Speak English.\n\n" + _OUTCOME_RULE)
 
     def test_plan_prompt_lists_the_rules_only_in_relaxed_mode(self):
         policy, sources, api = relaxed_policy()

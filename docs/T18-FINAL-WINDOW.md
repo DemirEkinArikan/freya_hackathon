@@ -84,7 +84,7 @@ tonight they run none.
 | Round | Briefs | Attempts per brief |
 |---|---|---|
 | 1 | both, at 20:02 | strict high, strict medium |
-| 2 | only a brief whose finished round 1 left no selected attempt | relaxed high, relaxed medium |
+| 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | relaxed high, relaxed medium |
 
 - **Strict** is the builder's default declaration handling. **Relaxed** is the
   builder's last-resort declaration mode (R1, issue 8 comment 6108951431). A
@@ -100,11 +100,13 @@ tonight they run none.
   selection:
   - any further round until `select` has recorded every attempt of that brief as
     finished;
-  - round 1 for a brief whose selected attempt is strict;
-  - round 2 for a brief with any selected attempt.
+  - round 1 for a brief whose selected attempt is a strict model-plan export;
+  - round 2 for a brief whose selected attempt is a model-plan export.
 
   A brief whose selection is relaxed may still get one more `--round 1` by 21:45,
-  because selection prefers a strict export.
+  because selection prefers a strict export. A brief whose selection is the
+  builder's deterministic fallback plan (R5) may get either round, because every
+  model-plan export ranks before it.
 - **Codex accounts.** The launcher spreads the attempts over the logged-in Codex
   accounts: `~/.codex` and every `~/.codex-acct<N>` with an `auth.json` and no
   `DISABLED` file. It passes each one to its builder as `CODEX_HOME`. With two
@@ -151,13 +153,17 @@ release, in `package_submission.ATTEMPT_ORDER`:
    policy and inputs, `validate_workflow`, and the stored export equivalent to the
    authored graph. These are the bundle verifier's per-run checks.
 3. The packager's per-run gates pass (`validate_trace` and `validate_run`).
-4. Strict declaration mode before relaxed. A relaxed attempt is selected only
-   when no strict attempt passes 1–3, even if it has fewer diagnostics or
-   finished earlier.
-5. Fewest diagnostics. Each rejected policy or plan error and each format
+4. A model-plan export before an export of the builder's deterministic fallback
+   plan (`plan_origin: deterministic_fallback` in the manifest, R5). The fallback
+   is a floor: it is selected only when no model-plan attempt passes 1–3, even a
+   relaxed one.
+5. Strict declaration mode before relaxed. Among attempts of the same plan
+   origin, a relaxed attempt is selected only when no strict attempt passes 1–3,
+   even if it has fewer diagnostics or finished earlier.
+6. Fewest diagnostics. Each rejected policy or plan error and each format
    failure in the trace counts as one, and so does each `unsupported_constraints`
    entry left in the final policy.
-6. Earliest finish (trace end), then the lower attempt number.
+7. Earliest finish (trace end), then the lower attempt number.
 
 Only an attempt that passes 1–3 can be selected. `select` writes
 `artifacts/final/<label>/selection.json`, which lists every attempt with its

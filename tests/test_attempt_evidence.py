@@ -199,7 +199,7 @@ class AttemptEvidenceTests(unittest.TestCase):
         broken["initial_node"] = "missing"
         generator = self.proposal_generator([broken] * 3)
         with self.assertRaisesRegex(ValueError, "bounded repairs"):
-            execute(self.args("--generate-only"), generator=generator,
+            execute(self.args("--generate-only", "--no-plan-fallback"), generator=generator,
                     client_factory=lambda **kw: self.fail("Freya touched"))
         run = self.run_directory()
         self.assertEqual(sorted(path.name for path in (run / "attempts").iterdir()),

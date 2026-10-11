@@ -400,7 +400,8 @@ def _final_evidence(payload: dict[str, bytes], index: dict, commit: str, source_
 
 def check_recompilation(run_dir: Path, run: dict, export: dict, briefs: list, api: dict) -> None:
     """Recompile a run's selected attempt exactly from its frozen policy and ordered (name, text) briefs."""
-    if run.get("selected_attempt_directory") not in {f"attempts/plan-{number:03d}" for number in (1, 2, 3)}:
+    # Three model plan attempts at most, then the builder's deterministic fallback plan.
+    if run.get("selected_attempt_directory") not in {f"attempts/plan-{number:03d}" for number in (1, 2, 3, 4)}:
         raise ValueError("guard_compilation")
     selected = run_dir / run["selected_attempt_directory"]
     authored = _strict_json((selected / "workflow.json").read_bytes())

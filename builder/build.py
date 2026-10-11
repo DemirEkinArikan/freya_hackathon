@@ -9,7 +9,6 @@ import json
 import os
 from pathlib import Path
 import sys
-import time
 from typing import Any, Callable
 
 if __package__ in (None, ""):
@@ -47,7 +46,20 @@ EXPORT_RESERVE = 300
 MAX_REPAIRS = 2
 POLICY_INITIAL_CAP = 900
 POLICY_REPAIR_CAP = 450
+WORKFLOW_CAP = 900
+# Kept from policy repairs for the first plan call. In a replay of 11 Oct call
+# times, a larger reserve refused policy repairs that would have succeeded and
+# a smaller one changed timing success by at most 0.07.
 FIRST_WORKFLOW_RESERVE = 450
+# A repair rewrites its whole document: about 61 s plus 0.0044 s per character of
+# the previous attempt's compact JSON (47 validation repairs completed on 11 Oct
+# took 0.62-1.19 times this). A repair starts only when its allocation covers 90%
+# of the estimate; otherwise the build stops with the real failure instead of
+# timing out. A format repair has no previous document, so only the 61 s base is
+# checked; the two on 11 Oct took 261 s and 443 s.
+REPAIR_BASE_SECONDS = 61
+REPAIR_SECONDS_PER_CHARACTER = 0.0044
+REPAIR_ADMISSION_FRACTION = 0.9
 FORMAT_REPAIR_GUIDANCE = ("Return only the exact required outer JSON object. Serialize each inner object "
                          "as a valid JSON string; escape quotes, backslashes and control characters once "
                          "for each JSON layer. Do not return commentary, duplicate keys or nonfinite numbers.")
@@ -172,28 +184,57 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
     return template + "\n\nAUTHORIZED INPUTS:\n" + canonical_json(payload)
 
 
+def _admit_repair(trace, deadline, stage, attempt, previous, failure, *, cap, reserve):
+    """Start a repair only if it can finish before the reserve; otherwise keep the real failure."""
+    size = len(json.dumps(previous, ensure_ascii=False, separators=(",", ":"))) if previous is not None else 0
+    estimate = REPAIR_BASE_SECONDS + REPAIR_SECONDS_PER_CHARACTER * size
+    available = min(cap, deadline.remaining() - reserve)
+    admitted = available >= REPAIR_ADMISSION_FRACTION * estimate
+    trace.emit("repair_admission", stage=stage, attempt=attempt, admitted=admitted,
+               estimated_seconds=round(estimate, 1), available_seconds=round(available, 2),
+               reserve_seconds=reserve, remaining_seconds=round(deadline.remaining(), 2))
+    if not admitted:
+        raise DeadlineExceeded(f"No time for a repair ({max(available, 0):.0f} s available, "
+                               f"about {estimate:.0f} s needed): {failure}")
+
+
+def _stage_completed(trace, deadline, durations, stage, started, **fields):
+    """Add one stage interval, measured on the build deadline clock, to the trace and totals."""
+    elapsed = round(deadline.elapsed() - started, 3)
+    durations[stage] = round(durations.get(stage, 0) + elapsed, 3)
+    trace.emit("stage_completed", stage=stage, elapsed_seconds=elapsed,
+               remaining_seconds=round(deadline.remaining(), 2), **fields)
+
+
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True):
-    repair = None
+    repair = failure = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     for attempt in range(MAX_REPAIRS + 1):
-        deadline.require(seconds=1, reserve=reserve)
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
+        if repair:
+            _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
+                          cap=cap, reserve=reserve)
+        deadline.require(seconds=1, reserve=reserve)
         allocated = deadline.timeout(cap, reserve=reserve)
         trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
                    allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
                    first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
                    remaining_seconds=round(deadline.remaining(), 2))
+        started = deadline.elapsed()
         try:
             extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
                                            purpose="Extract banking policy and source/API bindings",
                                            max_seconds=allocated, reserve_seconds=reserve)
         except GenerationFormatError as exc:
             _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
-            trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1)
+            trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
+                       elapsed_seconds=round(deadline.elapsed() - started, 3))
             if attempt == MAX_REPAIRS:
                 raise
+            failure = str(exc)
             repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
             continue
+        elapsed = round(deadline.elapsed() - started, 3)
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)
         policy = extracted.get("policy")
         try:
@@ -206,13 +247,15 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
                 {"policy": policy, "validation_errors": errors}, secrets=secrets))
-            trace.emit("policy_validation", passed=False, errors=errors)
+            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed)
             if attempt == MAX_REPAIRS:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
+            failure = "Policy extraction failed: " + "; ".join(errors)
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
-                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"])
+                   selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
+                   attempt=attempt + 1, elapsed_seconds=elapsed)
         return copy.deepcopy(policy), compiled, requirements, attempt
     raise AssertionError("unreachable policy extraction state")
 
@@ -372,6 +415,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     attempt_number = 0
     source_record = None
     evaluator_input = None
+    stage_durations = {}
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -403,7 +447,10 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
                                    "policy_repair_cap_seconds": POLICY_REPAIR_CAP,
                                    "first_workflow_reserve_seconds": FIRST_WORKFLOW_RESERVE,
-                                   "workflow_cap_seconds": 900},
+                                   "workflow_cap_seconds": WORKFLOW_CAP,
+                                   "repair_admission": {"base_seconds": REPAIR_BASE_SECONDS,
+                                                        "seconds_per_character": REPAIR_SECONDS_PER_CHARACTER,
+                                                        "fraction": REPAIR_ADMISSION_FRACTION}},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
             "evaluator_input": evaluator_input,
         })
@@ -429,9 +476,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
 
         generator = generator or CodexGenerator(run_dir, trace, deadline, executable=args.codex, model=args.model,
                                                 reasoning_effort=args.reasoning_effort)
-        stage_durations = {}
         trace.emit("stage_started", stage="policy")
-        stage_started = time.monotonic()
+        stage_started = deadline.elapsed()
         if args.policy_file:
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
@@ -446,9 +492,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
                 workflow_pending=mode != "extract-policy-only")
             policy_origin = "extracted"
-        stage_durations["policy"] = round(time.monotonic() - stage_started, 3)
-        trace.emit("stage_completed", stage="policy", elapsed_seconds=stage_durations["policy"],
-                   repairs=policy_repairs, origin=policy_origin)
+        _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
+                         repairs=policy_repairs, origin=policy_origin)
         frozen_policy = copy.deepcopy(policy)
         policy_sha256 = digest(frozen_policy)
         contract_sha256 = _write_policy_artifacts(run_dir, {"policy": frozen_policy}, sources, openapi, trace)
@@ -467,12 +512,15 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="policy_extracted", remaining_seconds=deadline.remaining())
         client = None
-        repair = None
+        repair = failure = None
         tests = None
         repairs = policy_repairs
         workflow_repairs = 0
         adopted = False
         while True:
+            if repair:
+                _admit_repair(trace, deadline, "plan", attempt_number + 1, repair.get("previous_plan"), failure,
+                              cap=WORKFLOW_CAP, reserve=EXPORT_RESERVE)
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
             attempt_number += 1
             attempt_dir = run_dir / "attempts" / f"plan-{attempt_number:03d}"
@@ -485,14 +533,14 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             _attempt_status(attempt_dir, attempt_record, secret_values)
             trace.emit("stage_started", stage="workflow", attempt=workflow_repairs + 1,
                        contract_sha256=contract_sha256, attempt_directory=attempt_record["directory"])
-            stage_started = time.monotonic()
+            stage_started = deadline.elapsed()
             workflow_prompt = make_workflow_prompt(compiled, openapi, repair, execution_requirements=requirements)
             _attempt_snapshot(attempt_dir, "generation-context.json",
                               {"contract_sha256": contract_sha256, "prompt": workflow_prompt}, secret_values)
             try:
                 generated = generator.generate_plan(workflow_prompt, contract_sha256=contract_sha256)
             except GenerationFormatError as exc:
-                elapsed = round(time.monotonic() - stage_started, 3)
+                elapsed = round(deadline.elapsed() - stage_started, 3)
                 stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + elapsed, 3)
                 _attempt_snapshot(attempt_dir, "generation-format.json", {"format_error": exc.code}, secret_values)
                 _attempt_status(attempt_dir, attempt_record, secret_values, status="format_rejected", phase="generation")
@@ -503,13 +551,13 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     raise
                 repairs += 1
                 workflow_repairs += 1
+                failure = str(exc)
                 repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
                 continue
             _attempt_snapshot(attempt_dir, "proposal.json", generated, secret_values)
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
-            stage_durations["workflow"] = round(stage_durations.get("workflow", 0) + time.monotonic() - stage_started, 3)
-            trace.emit("stage_completed", stage="workflow", elapsed_seconds=round(time.monotonic() - stage_started, 3),
-                       attempt=workflow_repairs + 1)
+            _stage_completed(trace, deadline, stage_durations, "workflow", stage_started, attempt=workflow_repairs + 1)
+            stage_started = deadline.elapsed()
             if digest(frozen_policy) != policy_sha256 or compile_policy_contract(frozen_policy, sources, openapi)["sha256"] != contract_sha256:
                 raise ValueError("Frozen policy contract changed during workflow generation")
             if not isinstance(generated, dict) or set(generated) != {"plan", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
@@ -552,16 +600,19 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 attempt_open = False
                 _write_json(run_dir / f"candidate.rejected-{repairs + 1}.json", sanitize(
                     {"candidate": candidate, "validation_errors": errors}, secrets=secret_values))
-                trace.emit("validation", passed=False, errors=errors, attempt=attempt_number)
+                trace.emit("validation", passed=False, errors=errors, attempt=attempt_number,
+                           elapsed_seconds=round(deadline.elapsed() - stage_started, 3))
                 if repairs >= MAX_REPAIRS:
                     raise ValueError("Candidate validation failed after bounded repairs: " + "; ".join(errors))
                 repairs += 1
                 workflow_repairs += 1
+                failure = "Candidate validation failed: " + "; ".join(errors)
                 repair = {"validation_errors": errors, "previous_plan": sanitize(plan, secrets=secret_values)}
                 continue
             _attempt_status(attempt_dir, attempt_record, secret_values, status="validated", phase="compilation",
                             plan_sha256=digest(plan), workflow_sha256=digest(candidate["workflow"]))
-            trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]), attempt=attempt_number)
+            trace.emit("validation", passed=True, rules=len(candidate["policy"]["rules"]), attempt=attempt_number,
+                       elapsed_seconds=round(deadline.elapsed() - stage_started, 3))
             _write_json(run_dir / "plan.json", plan)
             _write_json(run_dir / "execution-policy.json", execution_policy)
             _write_json(run_dir / "action-bindings.json", bindings)
@@ -587,6 +638,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                      status="generated_validated", remaining_seconds=deadline.remaining())
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            stage_started = deadline.elapsed()
             if client is None:
                 lease_path = getattr(args, "simulation_lease", None)
                 client = client_factory(deadline=deadline, reserve=EXPORT_RESERVE,
@@ -620,16 +672,19 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 raise ValueError("Deployed definition failed validation: " + "; ".join(deployed_errors))
             trace.emit("deployment", **{k: v for k, v in deployment.items() if k != "workflow"},
                        steps=len(deployment["workflow"]["nodes"]), tools=len(operations(openapi)), attempt=attempt_number)
+            _stage_completed(trace, deadline, stage_durations, "deployment", stage_started, attempt=attempt_number)
             _attempt_status(attempt_dir, attempt_record, secret_values, status="published", phase="deployment")
             if evaluator_input is None:
                 break
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
+            stage_started = deadline.elapsed()
             if test_runner is None:
                 from benchmarks.hosted import run_builder_tests
                 test_runner = run_builder_tests
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="testing")
             cases_path = _verify_evaluator_input(evaluator_input, run_dir)
             tests = test_runner(client, deployment, cases_path, attempt_dir, deadline)
+            _stage_completed(trace, deadline, stage_durations, "testing", stage_started, attempt=attempt_number)
             _attempt_snapshot(attempt_dir, "tests.json", tests, secret_values)
             # Canonical convenience result remains the selected/latest tested
             # candidate; every authoritative attempt snapshot is retained above.
@@ -649,15 +704,18 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 raise ValueError("The supplied hosted acceptance cases still fail after bounded repairs")
             repairs += 1
             workflow_repairs += 1
+            failure = "The supplied hosted acceptance cases still fail"
             repair = {"test_summary": _repair_test_summary(tests, frozen_policy),
                       "previous_plan": sanitize(plan, secrets=secret_values)}
 
         client.reserve = 0
         deadline.require()
+        stage_started = deadline.elapsed()
         if evaluator_input is not None:
             _verify_evaluator_input(evaluator_input, run_dir)
         _attempt_status(attempt_dir, attempt_record, secret_values, phase="export")
         exported = client.export_workflow(deployment, run_dir / "submission.workflow.json")
+        _stage_completed(trace, deadline, stage_durations, "export", stage_started, attempt=attempt_number)
         _attempt_snapshot(attempt_dir, "export.json", exported, secret_values)
         # An export response can arrive after its allocation. Preserve it as
         # evidence, but never report a build exceeding the global limit as done.
@@ -697,7 +755,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                          "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
                                                          "evaluator_input": evaluator_input,
                                                          "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
-        trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining())
+        trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining(),
+                   stage_durations=stage_durations)
         raise
 
 

@@ -16,6 +16,8 @@ from urllib.parse import urlsplit
 from .policy import rule_value, validate_policy
 from .safety import assert_no_secrets
 from .call_variables import CallVariablesError, declared_call_variables
+from .contract import PolicyContractError, _resolve_schema_refs
+from .toolbindings import resolve_refs
 
 NODE_TYPES = {"conversation", "api_request", "code", "end_call", "transfer_call",
               "integration", "knowledge_base", "reschedule_call", "invoke_agent", "exit"}
@@ -568,6 +570,38 @@ def _tool(tool: Any, path: str, errors: list[str], operations: dict, placement: 
     return name, handler
 
 
+def extraction_entry_errors(variable: Any, ep: str) -> list[str]:
+    """Kit extraction-entry rules, shared by final validation and the guard plan check."""
+    if not isinstance(variable, dict) or not isinstance(variable.get("name"), str) or not _NAME.fullmatch(variable["name"]):
+        return [ep + ": extracted variable requires name"]
+    errors = []
+    if not isinstance(variable.get("type"), str) or variable["type"] not in {"string", "integer", "float", "boolean", "date", "datetime", "name", "phone_number"}:
+        errors.append(ep + ": unknown extraction type")
+    if type(variable.get("min_confidence")) not in {int, float} or not 0 <= variable["min_confidence"] <= 1:
+        errors.append(ep + ": min_confidence must be explicit and within 0..1")
+    if "enum" in variable:
+        errors.append(ep + ": extraction uses documented enum_values, not enum")
+    if "enum_values" in variable:
+        values = variable["enum_values"]
+        if not isinstance(values, list) or not values:
+            errors.append(ep + ": enum_values must be a nonempty array")
+        elif variable.get("type") in {"string", "date", "datetime", "name", "phone_number"} and any(not isinstance(v, str) for v in values):
+            errors.append(ep + ": textual extraction enums require string values")
+    if "max_retries" in variable and (type(variable["max_retries"]) is not int or variable["max_retries"] < 0):
+        errors.append(ep + ": max_retries must be a nonnegative integer")
+    if "validation_pattern" in variable:
+        try:
+            if not isinstance(variable["validation_pattern"], str):
+                raise TypeError
+            re.compile(variable["validation_pattern"])
+        except (TypeError, re.error, OverflowError, RecursionError):
+            errors.append(ep + ": validation_pattern must be a valid regex string")
+    custom = variable.get("extraction_prompt")
+    if custom and (not isinstance(custom, str) or any("{{" + key + "}}" not in custom for key in ("extractor.speech", "extractor.conversation.last-10", "extractor.type_preamble", "extractor.variables_list"))):
+        errors.append(ep + ": custom extraction prompt omits required input placeholders")
+    return errors
+
+
 def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping[str, Any] | None = None,
                       *, guard_context: Mapping[str, Any] | None = None) -> list[str]:
     errors: list[str] = []
@@ -578,7 +612,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     if errors:
         return errors
     if guard_context is not None:
-        from .guards import validate_guarded_workflow
+        from .guards import _confirmation_speech, validate_guarded_workflow
         if not isinstance(guard_context, Mapping):
             errors.append("guard_context must be controller-owned compilation inputs")
         else:
@@ -605,7 +639,14 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         errors.append("workflow.agent_config must be omitted for this event")
     if not isinstance(openapi, Mapping):
         return errors + ["openapi must be an object"]
-    operations = _operations(openapi)
+    try:
+        # Read schemas as the contract catalogue binds them: strict local refs, then compatible allOf.
+        checked = _resolve_schema_refs(openapi, openapi)
+        operations = _operations(resolve_refs(checked, checked))
+    except PolicyContractError as exc:
+        return errors + ["openapi: " + message for message in exc.errors]
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        return errors + ["openapi: unsupported schema reference or allOf composition"]
     nodes = workflow.get("nodes")
     globals_ = workflow.get("global_nodes", {})
     if not isinstance(nodes, dict) or not nodes:
@@ -679,13 +720,12 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                     # Custom wording gains the compiler's protected readback
                     # only after byte-exact controller recompilation above.
                     # An authored copy or a node prefix alone proves nothing.
-                    question = (guard_context.get("execution_policy", {}).get("profile", {}).get("confirmation_question")
-                                if guard_context is not None else None)
-                    compiled_question = (isinstance(question, str) and isinstance(name, str)
-                                         and name.startswith("bg_") and name.endswith("_confirm")
-                                         and node[field] == {"type": "tts", "text": "{{bg_readback}}. " + question})
-                    readback = (field == "on_enter" and (compiled_question or node[field] == {
-                        "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"}))
+                    speech = ([_confirmation_speech(guard_context.get("execution_policy", {}).get("profile", {}), action)
+                               for action in ("commit_promises", "commit_transfer", "schedule_callback")]
+                              if guard_context is not None and isinstance(name, str)
+                              and name.startswith("bg_") and name.endswith("_confirm") else [])
+                    readback = field == "on_enter" and (any(node[field] == entry["on_enter"] for entry in speech) or node[field] == {
+                        "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"})
                     text_bindings(node[field], "node." + str(name) + "." + field, readback=readback)
     initial = workflow.get("initial_node")
     if not isinstance(initial, str) or initial not in nodes:
@@ -854,34 +894,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
             errors.append(path + ": extraction_schema must be an array")
         else:
             for i, variable in enumerate(extraction):
-                ep = f"{path}.extraction_schema[{i}]"
-                if not isinstance(variable, dict) or not isinstance(variable.get("name"), str) or not _NAME.fullmatch(variable["name"]):
-                    errors.append(ep + ": extracted variable requires name")
-                    continue
-                if not isinstance(variable.get("type"), str) or variable["type"] not in {"string", "integer", "float", "boolean", "date", "datetime", "name", "phone_number"}:
-                    errors.append(ep + ": unknown extraction type")
-                if type(variable.get("min_confidence")) not in {int, float} or not 0 <= variable["min_confidence"] <= 1:
-                    errors.append(ep + ": min_confidence must be explicit and within 0..1")
-                if "enum" in variable:
-                    errors.append(ep + ": extraction uses documented enum_values, not enum")
-                if "enum_values" in variable:
-                    values = variable["enum_values"]
-                    if not isinstance(values, list) or not values:
-                        errors.append(ep + ": enum_values must be a nonempty array")
-                    elif variable.get("type") in {"string", "date", "datetime", "name", "phone_number"} and any(not isinstance(v, str) for v in values):
-                        errors.append(ep + ": textual extraction enums require string values")
-                if "max_retries" in variable and (type(variable["max_retries"]) is not int or variable["max_retries"] < 0):
-                    errors.append(ep + ": max_retries must be a nonnegative integer")
-                if "validation_pattern" in variable:
-                    try:
-                        if not isinstance(variable["validation_pattern"], str):
-                            raise TypeError
-                        re.compile(variable["validation_pattern"])
-                    except (TypeError, re.error):
-                        errors.append(ep + ": validation_pattern must be a valid regex string")
-                custom = variable.get("extraction_prompt")
-                if custom and (not isinstance(custom, str) or any("{{" + key + "}}" not in custom for key in ("extractor.speech", "extractor.conversation.last-10", "extractor.type_preamble", "extractor.variables_list"))):
-                    errors.append(ep + ": custom extraction prompt omits required input placeholders")
+                errors.extend(extraction_entry_errors(variable, f"{path}.extraction_schema[{i}]"))
         if name in globals_:
             _condition(node.get("condition"), path + ".condition", errors)
             excluded = node.get("excluded_nodes", [])

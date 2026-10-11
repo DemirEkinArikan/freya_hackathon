@@ -16,6 +16,7 @@ from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
 from .call_variables import declared_call_variables
+from .validation import extraction_entry_errors
 
 PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
@@ -169,7 +170,7 @@ def _hash_checked(value: Any, label: str) -> None:
 
 def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                  call_variables: tuple[str, ...] = ()) -> list[str]:
-    errors = []
+    errors, entry_errors = [], []
     if not isinstance(plan, dict) or set(plan) - {"initial_node", "nodes", "system_prompt"}:
         return ["plan supports only initial_node, nodes and system_prompt"]
     nodes = plan.get("nodes")
@@ -224,8 +225,16 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                 errors.append(name + ": unsupported action")
                 continue
             inputs = node.get("inputs", {})
-            if not isinstance(inputs, dict) or not _INPUTS[action] <= set(inputs) or set(inputs) - _INPUTS[action] - _OPTIONAL_INPUTS.get(action, set()):
-                errors.append(name + ": wrong semantic input fields")
+            required, optional = _INPUTS[action], _OPTIONAL_INPUTS.get(action, set())
+            given = set(inputs) if isinstance(inputs, dict) else set()
+            if not isinstance(inputs, dict) or not required <= given or given - required - optional:
+                errors.append(name + ": wrong semantic input fields for " + action + ": inputs must be an object with "
+                              + ("required " + ", ".join(sorted(required)) if required else "no required fields")
+                              + (" and optional " + ", ".join(sorted(optional)) if optional else "")
+                              + "; missing: " + (", ".join(sorted(required - given)) or "none")
+                              + "; unsupported: " + (", ".join(sorted(given - required - optional)) or "none")
+                              + ". Each value names a public extracted variable holding the proposal;"
+                              " the controller validates it and does not choose it")
             elif not all(variable(value) for value in inputs.values()):
                 errors.append(name + ": action inputs must reference untrusted public variables")
             for field in ("success_node", "blocked_node", "failure_node"):
@@ -262,11 +271,12 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                         or fallback.get("is_tool_call", False) is not False
                         or fallback.get("target_node") != default):
                     errors.append(name + ": passthrough requires a public default and matching ordinary final always fallback")
-            for entry in extraction:
+            for index, entry in enumerate(extraction):
                 if not isinstance(entry, dict) or not variable(entry.get("name")):
                     errors.append(name + ": extraction cannot write protected or engine variables")
                 elif set(entry) - {"name", "type", "description", "enum_values", "validation_pattern", "max_retries", "min_confidence", "extraction_prompt"}:
                     errors.append(name + ": unsupported extraction fields")
+                entry_errors.extend(extraction_entry_errors(entry, "node." + name + ".extraction_schema[" + str(index) + "]"))
             if any(not isinstance(t, dict) or not isinstance(t.get("condition"), dict) or set(t) - {"target_node", "description", "condition", "is_tool_call"} for t in transitions):
                 errors.append(name + ": transitions must be documented transition objects")
             for target in [t.get("target_node") for t in transitions if isinstance(t, dict)] + [node.get("max_turn_transition")]:
@@ -276,7 +286,9 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
             errors.append(name + ": authored nodes must be conversation or guard_action")
     if not any(isinstance(n, dict) and n.get("action") == "close_call" for n in nodes.values()):
         errors.append("plan requires a guarded close_call; authored terminals are forbidden")
-    return errors
+    # Final validation applies the same entry rules to the verbatim compiled
+    # entries, so alone they do not stop compilation and hide its other errors.
+    return errors + entry_errors if errors else []
 
 
 def _dated_variants(contract: dict, profile: dict, kind: str) -> dict:
@@ -411,6 +423,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
+    wording = profile.get("confirmation_readback")
+    if "confirmation_readback" in profile and not _profile_errors("confirmation_readback", wording):
+        provenance = contract.get("active_rules", {}).get("confirmation_readback", {}).get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or any(
+                not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", source["quote"]) for item in wording["clauses"]) for source in provenance):
+            errors.append("confirmation_readback wording must occur literally in its own sourced quotation")
+        confirmed = set(profile.get("confirmation_actions", [])) | ({"commit_promises"} if profile.get("require_confirmation") is True else set())
+        if selected_actions & set(wording["actions"]) - confirmed:
+            errors.append("confirmation_readback names a selected action that requires no confirmation")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1940,6 +1961,17 @@ def _code_node(name: str, code: str, transitions: list[dict]) -> dict:
                     "timeout_ms": {"type": "number", "default": 10000}}}}}], "transitions": transitions}
 
 
+def _confirmation_speech(profile: dict, action: str) -> dict:
+    """Compiler-owned confirmation entry; sourced clauses are spoken verbatim."""
+    wait = ("Wait for a clear yes or no about the exact terms just read. "
+            "Do not change terms, call tools, or treat another topic as agreement.")
+    wording = profile.get("confirmation_readback", {})
+    terms = "{{bg_readback}}" + "".join("; " + clause for clause in (wording["clauses"] if action in wording.get("actions", []) else []))
+    question = profile.get("confirmation_question") if action in profile.get("confirmation_question_actions", []) else None
+    text = terms + ". " + question if question else "Please confirm these exact terms: " + terms + ". Do you agree?"
+    return {"on_enter": {"type": "tts", "text": text}, "task_message": wait}
+
+
 def _terminal() -> dict:
     return {"name": "bg_terminal", "node_type": "end_call", "on_enter": {"type": "silent"},
             "disable_inactivity_monitor": True, "terminal": {"type": "function", "function": {
@@ -2114,10 +2146,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                  + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
-            question = ("{{bg_readback}}. " + profile["confirmation_question"] if action in profile.get("confirmation_question_actions", [])
-                        else "Please confirm these exact terms: {{bg_readback}}. Do you agree?")
-            nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": question},
-                "task_message": "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement.",
+            nodes[confirm] = {"name": confirm, "node_type": "conversation", **_confirmation_speech(profile, action),
                 "extraction_schema": [{"name": "bg_consent", "type": "string", "enum_values": ["yes", "no", "unclear"], "description": "Only a fresh unconditional affirmative answer to all exact terms just read is yes. A refusal is no. Any changed term, condition, question or other topic is unclear.", "min_confidence": 0.95, "max_retries": 0}],
                 "max_node_turns": 1, "max_turn_transition": accept,
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [

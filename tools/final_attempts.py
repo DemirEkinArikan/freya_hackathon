@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """T18 final window: parallel builder attempts per hidden brief, declared-order selection.
 
-launch    Start N new attempts per label at once from this frozen checkout. Each is one
-          unattended builder/build.py run with its own output directory and new slot,
-          inside the builder's own 1,800-second deadline.
+launch    Start N new attempts per label from this frozen checkout, interleaved and
+          --stagger-seconds apart. Each is one unattended builder/build.py run with
+          its own output directory and new slot, inside the builder's own 1,800-second
+          deadline. A staging health probe before each start is recorded as evidence.
 select    Rank every attempt of a label by package_submission.ATTEMPT_ORDER and write
           artifacts/final/<label>/selection.json. Exit 2 while an attempt still runs,
           3 when no attempt is eligible. Attempt directories are never changed.
 manifest  Write artifacts/submission/manifest.json from both selections.
+health    Append one read-only staging probe to artifacts/final/health.jsonl.
 """
 from __future__ import annotations
 
@@ -16,15 +18,19 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from builder.config import load_local_environment
+from builder.platform import FreyaClient
+from builder.runtime import Deadline
 from tools import package_submission as package
 from tools import verify_submission_bundle as verifier
 
@@ -61,6 +67,28 @@ def _alive(pid):
     except PermissionError:
         pass
     return True
+
+
+def _probe(env):
+    """One read-only staging request, appended to health.jsonl. Evidence only, never a launch gate."""
+    started, record = time.monotonic(), {'time': dt.datetime.now(dt.timezone.utc).isoformat(), 'ok': True}
+    try:
+        FreyaClient(api_key=env.get('FREYA_API_KEY', ''), deadline=Deadline(10)).request('GET', '/api/v2/workspaces')
+    except Exception as exc:  # Keep only the status: platform errors can echo a response body.
+        status = re.search(r'HTTP (\d{3})', str(exc))
+        record.update(ok=False, error=f'HTTP {status[1]}' if status else 'transport' if 'transport' in str(exc) else type(exc).__name__)
+    record['seconds'] = round(time.monotonic() - started, 2)
+    (ROOT / FINAL).mkdir(parents=True, exist_ok=True)
+    with open(ROOT / FINAL / 'health.jsonl', 'a', encoding='utf-8') as log:
+        log.write(json.dumps(record) + '\n')
+    return record
+
+
+def _env(env_file):
+    env = dict(os.environ)
+    load_local_environment(env_file, env)
+    env.pop('OPENAI_API_KEY', None)
+    return env
 
 
 def _state(directory):
@@ -119,12 +147,11 @@ def launch(args):
         raise ValueError('Run the launcher with Python 3.11; every builder inherits its interpreter')
     if args.attempts < 1:
         raise ValueError('--attempts must be at least 1')
-    spec, env = _spec(), dict(os.environ)
+    spec = _spec()
     for label in args.labels:
         if not all((ROOT / path).is_file() for path in [*spec[label]['briefs'], spec[label]['tool_api']]):
             raise ValueError(f'{label}: an input file in spec.json is missing')
-    load_local_environment(args.env_file, env)
-    env.pop('OPENAI_API_KEY', None)
+    env = _env(args.env_file)
     if not env.get('FREYA_API_KEY', '').strip():
         raise ValueError('FREYA_API_KEY is not available to the builders')
     if shutil.which('codex', path=env.get('PATH')) is None:
@@ -133,25 +160,29 @@ def launch(args):
     requested = args.attempts * len(args.labels)
     if running + requested > args.max_running:
         raise ValueError(f'{running} builders are running; {requested} more would exceed --max-running {args.max_running}')
-    for label in args.labels:
-        inputs = spec[label]
-        for _ in range(args.attempts):
-            existing = _attempts(label)
-            number = int(existing[-1].name[8:]) + 1 if existing else 1
-            relative = f'{FINAL}/{label}/attempt-{number}'
-            (ROOT / relative).mkdir(parents=True)  # Never reuses an attempt directory.
-            started = dt.datetime.now(dt.timezone.utc)
-            argv = [sys.executable, 'builder/build.py', *(item for brief in inputs['briefs'] for item in ('--brief', brief)),
-                    '--tool-api', inputs['tool_api'], '--output-dir', relative,
-                    '--slot', f'final-{label}-a{number}-{started:%Y%m%dT%H%M%SZ}',
-                    '--simulation-lease', str(args.simulation_lease),
-                    '--model', args.model, '--reasoning-effort', args.reasoning_effort]
-            with open(ROOT / relative / 'builder.log', 'wb') as log:
-                process = subprocess.Popen(argv, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
-                                           stderr=subprocess.STDOUT, start_new_session=True)
-            record = {'label': label, 'attempt': number, 'pid': process.pid, 'started_at': started.isoformat(), 'argv': argv}
-            (ROOT / relative / 'launch.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
-            print(json.dumps({'label': label, 'attempt': number, 'pid': process.pid, 'output_dir': relative}), flush=True)
+    # Interleaved and spread, so one platform blip cannot reach every attempt at the same moment.
+    for index, label in enumerate(args.labels * args.attempts):
+        if index:
+            time.sleep(args.stagger_seconds)
+        inputs, existing = spec[label], _attempts(label)
+        number = int(existing[-1].name[8:]) + 1 if existing else 1
+        relative = f'{FINAL}/{label}/attempt-{number}'
+        (ROOT / relative).mkdir(parents=True)  # Never reuses an attempt directory.
+        health = _probe(env)
+        started = dt.datetime.now(dt.timezone.utc)
+        argv = [sys.executable, 'builder/build.py', *(item for brief in inputs['briefs'] for item in ('--brief', brief)),
+                '--tool-api', inputs['tool_api'], '--output-dir', relative,
+                '--slot', f'final-{label}-a{number}-{started:%Y%m%dT%H%M%SZ}',
+                '--simulation-lease', str(args.simulation_lease),
+                '--model', args.model, '--reasoning-effort', args.reasoning_effort]
+        with open(ROOT / relative / 'builder.log', 'wb') as log:
+            process = subprocess.Popen(argv, cwd=ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
+                                       stderr=subprocess.STDOUT, start_new_session=True)
+        record = {'label': label, 'attempt': number, 'pid': process.pid, 'started_at': started.isoformat(), 'argv': argv,
+                  'staging_health': health}
+        (ROOT / relative / 'launch.json').write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps({'label': label, 'attempt': number, 'pid': process.pid, 'output_dir': relative,
+                          'staging_health': health}), flush=True)
     return 0
 
 
@@ -208,6 +239,11 @@ def manifest(args):
     return 0
 
 
+def health(args):
+    print(json.dumps(_probe(_env(args.env_file))))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -218,13 +254,15 @@ def main(argv=None):
     start.add_argument('--simulation-lease', type=Path, required=True)
     start.add_argument('--attempts', type=int, default=3, help='New attempts per label')
     start.add_argument('--max-running', type=int, default=6, help='Machine cap on concurrently running builders')
+    start.add_argument('--stagger-seconds', type=float, default=60, help='Pause between consecutive starts')
     start.add_argument('--labels', nargs='+', choices=LABELS, default=list(LABELS))
     pick = commands.add_parser('select')
     pick.add_argument('--labels', nargs='+', choices=LABELS, default=list(LABELS))
     commands.add_parser('manifest').add_argument('--team', required=True)
+    commands.add_parser('health').add_argument('--env-file', type=Path, required=True)
     args = parser.parse_args(argv)
     try:
-        return {'launch': launch, 'select': select, 'manifest': manifest}[args.command](args)
+        return {'launch': launch, 'select': select, 'manifest': manifest, 'health': health}[args.command](args)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as exc:
         print(json.dumps({'status': 'failed', 'error': str(exc)}), file=sys.stderr)
         return 1

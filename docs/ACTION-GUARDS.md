@@ -276,6 +276,18 @@ This avoids unverified assumptions about automatic API pre-action keys being
 named after the operation or node. The pinned kit documents the envelope and
 post-hook-before-mapping order in `docs/tools-and-code.md`.
 
+The hook also writes a second reserved field: the raw JSON type of each trusted
+result field (`absent`, `null`, `boolean`, `integer`, `number`, `string`,
+`array` or `object`). It does this because the kit's string mapping erases that
+type ("Booleans arrive as strings").
+- A type that no declared response schema allows for the field is uncertain
+  evidence. Nothing is recorded, the attempt becomes `unknown_persistence`, the
+  call is quarantined, and no protected close follows.
+- A verification result with such a type ends identity as uncertain.
+- Absent and null values keep the missing-value rules.
+- Local semantic harnesses that send no type record get no type check. The
+  compiled hook always writes one.
+
 ## Current limits and next acceptance gates
 
 Local tests execute the identical embedded kernel, not a second implementation

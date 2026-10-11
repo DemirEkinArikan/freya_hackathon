@@ -194,8 +194,8 @@ class RelaxedBindingTests(unittest.TestCase):
     def test_exact_enum_close_codes_stay_unguarded_only_in_relaxed_mode(self):
         policy, sources, api = declared()
         unguarded_code(policy, api)
-        with self.assertRaisesRegex(ActionBindingError, "reasons vocabulary has a code that is neither"):
-            compile_action_bindings(policy, api)
+        with self.assertRaisesRegex(ActionBindingError, "a goal with schedule_callback leaves close codes unbound only when"):
+            compile_action_bindings(policy, api)  # its table has no bound callback code
         binding = compile_action_bindings(policy, api, declarations="relaxed")
         self.assertEqual(binding["declaration_mode"], "relaxed")
         self.assertEqual(binding["categories"]["reasons"]["unbound_codes"], ["SYS_DOWN"])

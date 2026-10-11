@@ -79,9 +79,11 @@ class CompiledProtectedOutcomeTests(unittest.TestCase):
                 witness(policy, sources)
                 with self.assertRaisesRegex(ExecutionRequirementsError, message):
                     compile_execution_requirements(policy, sources, api)
-        policy, sources, api = goal(["verify_identity", "close_call"], {"callback": []})
-        with self.assertRaisesRegex(ExecutionRequirementsError, "policy outcomes vocabulary has a code"):
-            compile_execution_requirements(policy, sources, api)  # unbound code named like a builder meaning
+        # A code named like the callback meaning binds to it, so a row without that evidence never compiles.
+        policy, sources, api = goal(["verify_identity", "close_call"], {"callback": []},
+                                    {"verified": [{"outcome": "callback", "requires": "none"}]})
+        with self.assertRaisesRegex(ExecutionRequirementsError, "callback reasons require matching callback evidence"):
+            compile_execution_requirements(policy, sources, api)
 
     def test_legitimate_closes_still_send_their_rows_and_recorded_facts(self):
         rows = {"verified": [{"outcome": "GOAL_DONE", "reason": "GOAL_MATCH", "requires": "none"}]}

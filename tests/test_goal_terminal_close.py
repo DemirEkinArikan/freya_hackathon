@@ -306,15 +306,21 @@ class GoalTerminalCloseTests(unittest.TestCase):
         with self.assertRaisesRegex(ExecutionRequirementsError, "wire_codes.outcomes keys must be builder meanings"):
             compile_execution_requirements(policy, sources, api)
 
-    def test_callback_goal_cannot_leave_close_codes_unbound(self):
-        # The same codes compile in an identity-only goal. With schedule_callback every
-        # close code needs a builder meaning, so callback evidence checks always apply.
+    def test_callback_goal_leaves_close_codes_unbound_only_with_its_callback_code_bound(self):
+        # The same codes compile in an identity-only goal. With schedule_callback the code that
+        # reports a recorded callback must be bound first, so callback evidence checks always apply.
         for category, close in (("outcomes", {"GOAL_DONE": []}),
                                 ("reasons", {"not_verified": ["identity_failed", "GOAL_MATCH"]})):
             with self.subTest(category=category):
                 compile_execution_requirements(*goal(["verify_identity", "close_call"], close))
-                with self.assertRaisesRegex(ExecutionRequirementsError, "policy " + category + " vocabulary has a code"):
+                with self.assertRaisesRegex(ExecutionRequirementsError, "leaves close codes unbound only when the close code that reports a recorded callback is bound"):
                     compile_execution_requirements(*goal(["verify_identity", "schedule_callback", "close_call"], close))
+                policy, sources, api = goal(["verify_identity", "schedule_callback", "close_call"], dict(close, CB_DONE=[]))
+                rule(policy, "wire_codes")["value"]["outcomes"] = dict(
+                    {meaning: meaning for meaning in ("promise", "paid", "transferred", "no_promise", "not_verified", "not_reached")},
+                    callback="CB_DONE")
+                witness(policy, sources)
+                compile_execution_requirements(policy, sources, api)
         with self.assertRaisesRegex(ExecutionRequirementsError, "policy reasons vocabulary has a code"):
             compile_execution_requirements(*goal(["verify_identity", "close_call"], {"GOAL_DONE": ["paid"]}))
 
@@ -337,11 +343,11 @@ class GoalTerminalCloseTests(unittest.TestCase):
                 else:
                     self.assertEqual((session.body["outcome"], session.body["reason"]), ("not_reached", "refused"))
 
-    def test_payment_goal_cannot_leave_close_codes_unbound(self):
+    def test_payment_goal_with_a_callback_role_needs_its_callback_code_bound(self):
         policy, sources, api = packet(local=True)
         rule(policy, "close_reasons")["value"]["GOAL_DONE"] = []
         extend_enum(api, "outcome", "GOAL_DONE")
-        with self.assertRaisesRegex(ExecutionRequirementsError, "policy outcomes vocabulary has a code"):
+        with self.assertRaisesRegex(ExecutionRequirementsError, "leaves close codes unbound only when the close code that reports a recorded callback is bound"):
             compile_execution_requirements(policy, sources, api)
 
     def test_goal_rows_are_refused_with_payment_roles_or_collection_meanings(self):

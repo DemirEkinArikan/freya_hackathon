@@ -76,22 +76,24 @@ _CONTROLLER_STATE_EFFECTS = {
     "stage_promise": {
         "accepted_staging": ["Stores a pending promise for the selected product and removes that product's pending local disposition.",
                              "Clears the pending confirmation snapshot; staging does not record a bank promise."],
-        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
     "commit_promises": {
         "accepted_staging": ["Prepares the frozen staged promise batch; preparation and confirmation do not establish recording."],
         "positive_recording": ["Each validated positive result with its required persisted-record identity moves that product's pending promise into recorded promises."]},
     "stage_note": {
         "accepted_staging": ["Stores the selected product's pending disposition and removes its pending promise.",
                              "Clears the pending confirmation snapshot; staging does not record a bank note."],
-        "rejections": ["An already recorded promise or recorded note for that product prevents staging."]},
+        "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
+                       "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
     "finalize_notes": {
-        "accepted_staging": ["Requires every loaded product resolved by a recorded promise or staged disposition, with no pending promise.",
+        "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise.",
                              "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
         "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
     "stage_transfer": {
         "accepted_staging": ["Stores a pending handoff, discards all pending promises and pending dispositions, and resets notes_finalized.",
                              "Preserves recorded promises; no persisted record is deleted and staging does not record a transfer."],
-        "rejections": ["Any recorded note or existing handoff prevents staging; supplied queue prerequisites remain mandatory."]},
+        "rejections": ["Any recorded note, existing handoff or queue without a transfer_prerequisites entry prevents staging; supplied queue prerequisites remain mandatory."]},
     "commit_transfer": {
         "accepted_staging": ["Prepares the already staged handoff; sending it does not establish transfer success."],
         "positive_recording": ["Validated positive transfer evidence marks that handoff recorded."]},
@@ -341,9 +343,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                                 or choice.get("requires") not in ("none", "recorded_callback", "no_recorded_callback")
                                 or "reason" in choice and (not isinstance(choice["reason"], str) or not choice["reason"])):
                             errors.append("identity_close_choices require outcome, optional nonempty reason and supported evidence")
-        elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account"} for k, v in value.items())):
-            errors.append("transfer_prerequisites requires queue-to-none/identity/account mapping")
-        elif kind == "promise_readback":
+        elif kind == "transfer_prerequisites" and (not isinstance(value, dict) or not value or any(not isinstance(k, str) or v not in {"none", "identity", "account", "unstated"} for k, v in value.items())):
+            errors.append("transfer_prerequisites requires queue-to-none/identity/account/unstated mapping")
+        elif kind == "promise_readback" and value not in ("product_type", "none"):
             if (not isinstance(value, dict) or set(value) - {"product_fields", "value_labels"}
                     or not isinstance(value.get("product_fields"), list) or not value["product_fields"]
                     or any(not isinstance(f, str) or not f or f in {"customer_id", "product_id"} for f in value["product_fields"])
@@ -389,6 +391,16 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         # This is not an invented cross-product policy rule or sort order;
         # explicitly supplied resolution rules still take precedence.
         result.setdefault("resolve_all_products", True)
+    readback = result.get("promise_readback")
+    if readback == "none":
+        # A sourced absence of any commitment readback, never a way around a
+        # required confirmation; no product field is read back at all.
+        if result.get("require_confirmation") is True or "commit_promises" in result.get("confirmation_actions", []):
+            raise GuardCompileError(["promise_readback none conflicts with a required commitment confirmation"])
+        del result["promise_readback"]
+    elif readback == "product_type":
+        # Only the protected product type that already selects floors.
+        result["promise_readback"] = {"product_fields": ["type"]}
     resolution = result.get("resolve_all_products")
     formats = result.get("call_input_formats")
     if formats is not None:
@@ -399,7 +411,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                 not re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", source["quote"]) for name in formats)
                 for source in provenance):
             raise GuardCompileError(["formatted call-input names must occur literally in their own sourced rule"])
-    if isinstance(resolution, dict):
+    if isinstance(resolution, dict) and "selector" in resolution:
         selector = resolution["selector"]
         if selector not in declared_call_variables(contract):
             raise GuardCompileError(["product-resolution selector requires a source-declared read-only call input"])
@@ -458,8 +470,10 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             raise GuardCompileError(["supplied promise failure disposition requires its explicit note_reasons/local-disposition binding"])
     if set(result.get("confirmation_actions", [])) - {"commit_promises", "commit_transfer", "schedule_callback"}:
         raise GuardCompileError(["confirmation_actions includes an unsupported customer-write action"])
-    if set(result.get("transfer_prerequisites", {})) != set(result.get("transfer_reasons", {})):
-        raise GuardCompileError(["transfer prerequisite queues must exactly match permitted transfer queues"])
+    # A permitted closing queue without a supplied prerequisite entry is never
+    # dispatched; closing vocabulary alone grants no transfer.
+    if set(result.get("transfer_prerequisites", {})) - set(result.get("transfer_reasons", {})):
+        raise GuardCompileError(["transfer prerequisite queues must belong to permitted transfer queues"])
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
     for proposal in result.get("identity_close", {}).values():
@@ -746,7 +760,10 @@ def guard_order(state, profile):
 def guard_product_turn(state, pid, profile):
     if pid in state['pending_promises'] or pid in state['pending_notes']:
         return
-    remaining = [p['product_id'] for p in guard_order(state, profile) if p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['recorded_notes'] and p['product_id'] not in state['pending_promises'] and p['product_id'] not in state['pending_notes']]
+    # A sourced overdue scope neither waits on nor writes for other products.
+    rule = profile.get('resolve_all_products')
+    overdue = isinstance(rule, dict) and rule.get('products') == 'overdue'
+    remaining = [p['product_id'] for p in guard_order(state, profile) if (not overdue or p['days_late'] >= 1) and p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['recorded_notes'] and p['product_id'] not in state['pending_promises'] and p['product_id'] not in state['pending_notes']]
     if not remaining or remaining[0] != pid:
         raise ValueError('product proposals must follow supplied policy order')
 
@@ -865,18 +882,25 @@ def guard_call_inputs(state, profile):
             state['quarantined'] = True
             raise ValueError('protected call-input datetime is malformed')
     rule = profile.get('resolve_all_products')
-    if isinstance(rule, dict):
+    if isinstance(rule, dict) and 'selector' in rule:
         value = captured.get(rule['selector'])
         if type(value) is not str or value not in rule['by_value']:
             state['quarantined'] = True
             raise ValueError('protected product-resolution selector is missing or unknown')
 
-def guard_resolve_all_products(state, profile):
+def guard_resolve_all_products(state, profile, finalizing=False):
+    # Products that must be resolved; legacy booleans keep note finalization
+    # over every loaded product.
     rule = profile['resolve_all_products']
     if type(rule) is bool:
-        return rule
-    guard_call_inputs(state, profile)
-    return rule['by_value'][state['call_inputs'][rule['selector']]]
+        return list(state['products']) if rule or finalizing else list()
+    if 'selector' in rule:
+        guard_call_inputs(state, profile)
+        if not rule['by_value'][state['call_inputs'][rule['selector']]]:
+            return list()
+    if rule.get('products') == 'overdue':
+        return [p for p in state['products'] if p['days_late'] >= 1]
+    return list(state['products'])
 
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
@@ -1187,7 +1211,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
             return state, 'done', dict(), ''
         if action == 'stage_transfer':
             queue = guard_decode('queues', inputs['queue'], maps)
-            if queue not in profile['transfer_reasons'] or state['recorded_notes'] or state['transfer']:
+            if queue not in profile['transfer_reasons'] or queue not in profile['transfer_prerequisites'] or state['recorded_notes'] or state['transfer']:
                 raise ValueError('transfer not permitted in current state')
             prerequisite = profile['transfer_prerequisites'][queue]
             if prerequisite in ('identity', 'account') and state['identity_status'] != 'verified' or prerequisite == 'account' and not state['account_loaded']:
@@ -1218,7 +1242,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
                     items.append(dict(customer_id=state['customer_id'], product_id=pid, amount=amount, date=item['date']))
             operation = 'create_promise'
         elif action == 'finalize_notes':
-            if state['pending_promises'] or not state['products'] or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['pending_notes'] for p in state['products']):
+            if state['pending_promises'] or not state['products'] or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['pending_notes'] for p in guard_resolve_all_products(state, profile, True)):
                 raise ValueError('all products need resolved promises or staged dispositions')
             state['notes_finalized'] = True
             if not profile['record_notes']:
@@ -1255,9 +1279,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         elif action == 'close_call':
             if state['pending_promises'] or state['pending_notes'] and not state['notes_finalized'] or state['transfer'].get('status') in ('pending', 'failed'):
                 raise ValueError('closing has unresolved commitments, dispositions or transfer')
-            if state['account_loaded'] and guard_resolve_all_products(state, profile) and state['transfer'].get('status') != 'recorded':
+            required = guard_resolve_all_products(state, profile) if state['account_loaded'] else list()
+            if required and state['transfer'].get('status') != 'recorded':
                 dispositions = state['recorded_notes'] if profile['record_notes'] else state['pending_notes'] if state['notes_finalized'] else dict()
-                if any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in dispositions for p in state['products']):
+                if any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in dispositions for p in required):
                     raise ValueError('policy requires every product resolved before close')
             proposal = guard_close(state, inputs, profile, maps)
             operation = 'close_call'

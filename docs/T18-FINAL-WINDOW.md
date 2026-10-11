@@ -96,9 +96,10 @@ tonight they run none.
 
 Every attempt passes `--provider claude --model claude-opus-5-5 --reasoning-effort high`
 to the builder. `high` is the strongest effort that fits 30 minutes. On 11 October
-(18:16–18:31 Istanbul) one first policy call (the builder's own prompt for public
+(18:16–18:34 Istanbul) one first policy call (the builder's own prompt for public
 Brief A + B, structured output) took 353 s and 45,159 output tokens at `high`, and
-808 s and 104,671 output tokens at `xhigh`; `max` was still running after 900 s. The builder
+808 s and 104,671 output tokens at `xhigh`. At `max` it thought for 1,057 s, until
+the 128,000-token output limit, and returned no policy. The builder
 gives the first policy call 900 s, and the plan and export still need their own
 time, so `xhigh` and `max` do not fit, and hidden briefs may be longer. Both
 attempts of a round use `high`: when both export, selection prefers the earlier

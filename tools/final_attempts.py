@@ -48,7 +48,7 @@ DIAGNOSTIC_EVENTS = {'policy_validation', 'validation', 'policy_format_validatio
 # Tonight's attempt matrix per brief: (provider, declaration mode, reasoning effort) for each round.
 # Claude everywhere (founder, 18:05 Istanbul): the Codex cells run only with --providers ... codex.
 # high is the strongest Claude effort that fits 30 minutes: the first policy call on public A+B took 353 s
-# at high and 808 s at xhigh, against the builder's 900 s policy cap (issue 19).
+# at high and 808 s at xhigh, against the builder's 900 s policy cap; max returned no policy (issue 19).
 ROUNDS = {1: (('claude', 'strict', 'high'), ('claude', 'strict', 'high'), ('codex', 'strict', 'high'), ('codex', 'strict', 'medium')),
           2: (('claude', 'relaxed', 'high'), ('claude', 'relaxed', 'high'), ('codex', 'relaxed', 'high'), ('codex', 'relaxed', 'medium'))}
 

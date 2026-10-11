@@ -172,7 +172,8 @@ def _local_disposition_errors(actions: list[str], contract: dict, execution: dic
     return []
 
 
-def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> dict[str, Any]:
+def compile_execution_requirements(policy: Any, sources: Any, openapi: Any, *,
+                                   declarations: str = "strict") -> dict[str, Any]:
     """Check source/typed/API coverage and return detached, hash-bound JSON.
 
     The public compiler probe checks the same catalogue and cross-rule guards
@@ -180,7 +181,7 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
     Literal provenance proves a witness exists, not its interpretation.
     """
     try:
-        contract = compile_policy_contract(policy, sources, openapi)
+        contract = compile_policy_contract(policy, sources, openapi, declarations=declarations)
     except PolicyContractError as exc:
         raise ExecutionRequirementsError(list(exc.errors)) from exc
     catalogue = execution_action_catalogue()
@@ -248,7 +249,7 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
     if errors:
         raise ExecutionRequirementsError(errors)
     try:
-        bindings = compile_action_bindings(policy, openapi)
+        bindings = compile_action_bindings(policy, openapi, declarations=declarations)
         if "commit_promises" in actions and "promise_failure_disposition" in active:
             # Use the same notes-then-reasons decoding as the sealed kernel,
             # through controller-validated mappings, without inventing codes.
@@ -285,14 +286,14 @@ def compile_execution_requirements(policy: Any, sources: Any, openapi: Any) -> d
 
 
 def validate_plan_execution(plan: Any, descriptor: Any, policy: Any,
-                            sources: Any, openapi: Any) -> list[str]:
+                            sources: Any, openapi: Any, *, declarations: str = "strict") -> list[str]:
     """Reject context substitution and added or omitted selected capabilities.
 
     Call the ordinary sealed compiler next. This check neither changes frozen
     policy nor accepts a self-hashed caller assertion as coverage evidence.
     """
     try:
-        expected = compile_execution_requirements(policy, sources, openapi)
+        expected = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
         if canonical_json(descriptor) != canonical_json(expected):
             return ["frozen execution requirements descriptor differs from the policy/source/API/compiler context"]
         required_execution_kinds(plan)

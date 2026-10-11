@@ -60,9 +60,10 @@ defines that concept. They are interface names, not predetermined banking rules:
 - close_reasons: map from permitted exact API outcome codes to permitted exact API
   reason arrays; an empty array means that outcome has no reason. A semantic key
   declared in wire_codes may stand for its code. An API close code the source
-  gives no supported meaning stays out of wire_codes (unbound); only goals whose
-  roles are limited to verify_identity, get_account and close_call may use unbound
-  codes, and an unbound code is never itself a builder meaning name.
+  gives no supported meaning stays out of wire_codes (unbound) in any goal; a row
+  whose code reports a booking requires recorded_callback, and an unbound code is
+  never a builder meaning name of its own category, a queue name or human. With
+  schedule_callback, the code that reports a recorded callback binds to callback.
 - require_confirmation: boolean indicating whether explicit write confirmation is required.
 - promise_failure_limit: positive integer limit on contract-confirmed failed promise attempts.
 - tool_aliases: map from a semantic action name to the supplied API operation name.

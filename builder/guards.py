@@ -22,16 +22,23 @@ PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
 CONTROLLED_ENTRY_LIMIT = 2048
 DEFAULT_CONVERSATION_TURNS = 10
+# Kit extraction confidence comes from token probabilities and a value below
+# min_confidence is discarded without trace. A clear spoken date scored 0.889
+# on the platform; 0.7 is the kit's lowest documented threshold. Free-value
+# proposals are validated by the sealed kernel and the bank before any effect.
+PROPOSAL_MIN_CONFIDENCE = 0.7
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _INPUTS = {
-    "verify_identity": {"field", "answer"}, "get_account": set(),
+    "verify_identity": {"answer"}, "get_account": set(),
     "stage_promise": {"product_id", "amount", "date"},
     "commit_promises": set(), "stage_note": {"product_id", "reason"},
     "finalize_notes": set(), "stage_transfer": {"queue"},
     "commit_transfer": set(), "schedule_callback": {"date", "time"},
     "close_call": set(),
 }
-_OPTIONAL_INPUTS = {"commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
+# The controller supplies the identity factor itself; a proposed field is used
+# only for an identity_factor_state latest_check correction of a passed factor.
+_OPTIONAL_INPUTS = {"verify_identity": {"field"}, "commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
 _OPERATIONS = {"verify_identity": "verify_identity", "get_account": "get_account",
                "commit_promises": "create_promise", "finalize_notes": "add_note",
                "commit_transfer": "transfer_to_agent", "schedule_callback": "schedule_callback",
@@ -574,6 +581,11 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
     for scope, proposal in result.get("identity_close", {}).items():
+        if proposal["outcome"] == "callback":
+            # Every row of a phase shares its outcome, and the phase also closes without a callback.
+            raise GuardCompileError(["identity_close outcomes cannot be bound to callback: that phase also closes without "
+                                     "a recorded callback; a callback reason in identity_close_choices requiring "
+                                     "recorded_callback can report one"])
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed and "reason" not in proposal:
             # A reasonless phase row refined by sourced choices only supplies
@@ -598,9 +610,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             if reason in seen:
                 raise GuardCompileError(["identity closing choices have duplicate decoded reasons"])
             seen.add(reason)
-            if reason == "callback" and choice["requires"] != "recorded_callback":
+            if "callback" in (choice["outcome"], reason) and choice["requires"] != "recorded_callback":
                 raise GuardCompileError(["callback-success closing choices require recorded_callback evidence"])
-            if reason == "no_callback" and choice["requires"] != "no_recorded_callback":
+            if "no_callback" in (choice["outcome"], reason) and choice["requires"] != "no_recorded_callback":
                 raise GuardCompileError(["no_callback closing choices require no_recorded_callback evidence"])
     # A protected outcome is a recorded fact; no sourced identity row stands in
     # for it. Rows are decoded above, so a code bound to that meaning counts.
@@ -625,8 +637,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             if (row["outcome"] in {"transferred", "promise", "paid", "no_promise"} or allowed is None
                     or (allowed and reason not in allowed) or (not allowed and reason)):
                 raise GuardCompileError(["goal closing rows require sourced non-collection outcomes and reasons"])
-            if (reason == "callback" and row["requires"] != "recorded_callback"
-                    or reason == "no_callback" and row["requires"] != "no_recorded_callback"):
+            if ("callback" in (row["outcome"], reason) and row["requires"] != "recorded_callback"
+                    or "no_callback" in (row["outcome"], reason) and row["requires"] != "no_recorded_callback"):
                 raise GuardCompileError(["goal closing callback reasons require matching callback evidence"])
             if (row["outcome"], reason) in seen:
                 raise GuardCompileError(["goal closing rows are duplicated"])
@@ -1227,9 +1239,10 @@ def guard_close(state, proposed, profile, maps):
     allowed = reasons[proposal['outcome']]
     if (allowed and proposal.get('reason') not in allowed) or (not allowed and proposal.get('reason')):
         raise ValueError('closing reason outside policy')
-    if proposal.get('reason') == 'callback' and not state['callbacks']:
+    # An outcome or reason code bound to a callback meaning claims that evidence.
+    if 'callback' in (proposal['outcome'], proposal.get('reason')) and not state['callbacks']:
         raise ValueError('callback-success closing requires a recorded callback')
-    if proposal.get('reason') == 'no_callback' and state['callbacks']:
+    if 'no_callback' in (proposal['outcome'], proposal.get('reason')) and state['callbacks']:
         raise ValueError('no_callback closing cannot hide a recorded callback')
     # Whatever row selected it, a protected outcome closes only as its recorded fact.
     if proposal['outcome'] in ('transferred', 'promise', 'paid', 'no_promise') and facts.get(proposal['outcome']) != proposal:
@@ -1451,12 +1464,16 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         fields = profile['identity_fields']
         if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit'):
             raise ValueError('identity is complete or exhausted')
-        field = inputs['field']
         expected = next(f for f in fields if f not in state['verified_fields'])
-        # The latest completed check controls a factor: a correction of a
-        # passed factor is checked again after its pass is withdrawn.
-        recheck = profile.get('identity_factor_state') == 'latest_check' and field in state['verified_fields']
-        if field != expected and not recheck or not str(inputs['answer']).strip():
+        # The controller checks the next factor in policy order itself.
+        # Extracted values persist for the call, so a proposal only selects a
+        # latest_check correction of a passed factor (its pass is withdrawn
+        # first); an absent or passed proposal cannot block the next check,
+        # and a proposed later factor is refused.
+        proposed = str(inputs.get('field') or '')
+        recheck = profile.get('identity_factor_state') == 'latest_check' and proposed in state['verified_fields']
+        field = proposed if recheck else expected
+        if proposed in fields and proposed not in state['verified_fields'] and proposed != expected or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
         if recheck:
             state['verified_fields'].remove(field)
@@ -2244,6 +2261,12 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
+    bound = {value for node in plan["nodes"].values() if node["node_type"] == "guard_action"
+             for value in node.get("inputs", {}).values()}
+    for node in nodes.values():
+        for entry in node.get("extraction_schema", []):
+            if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
+                entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
     _node_discipline(nodes)
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()

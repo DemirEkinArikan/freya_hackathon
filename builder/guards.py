@@ -2329,6 +2329,22 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             ([_transition("bg_terminal")] if action == "close_call" else
              [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
+    # A lone intent row into an LLM-entry decision that can send the caller
+    # back costs a routing-model call per answer that the decision judges
+    # anyway. The kit evaluates always without a model call, after the
+    # caller's turn. An earlier row to the decision would merge with it.
+    for name, node in nodes.items():
+        rows = node.get("transitions", [])
+        target = nodes.get(rows[-1].get("target_node"), {}) if rows and not node.get("passthrough") else {}
+        exits = target.get("transitions", [])
+        if (rows[-1:] and rows[-1]["condition"].get("operator") == "matches_intent" and exits
+                and not any(row.get("is_tool_call") or row.get("target_node") == rows[-1]["target_node"]
+                            or "matches_intent" in canonical_json(row["condition"]) for row in rows[:-1])
+                and not rows[-1].get("is_tool_call") and (target.get("on_enter") or {}).get("type") == "llm"
+                and not target.get("extraction_schema") and not target.get("passthrough")
+                and all(row.get("is_tool_call") is True for row in exits) and any(row.get("target_node") == name for row in exits)):
+            rows[-1]["condition"] = {"operator": "always"}
+            node.pop("routing_prompt", None)
     _bound_entries(nodes, list(plan["nodes"]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:

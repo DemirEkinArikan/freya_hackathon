@@ -252,17 +252,15 @@ class ReplaySchedulingTests(unittest.TestCase):
         with self.assertRaisesRegex(ReplayError, "follows matches_intent"):
             self.run_script(nodes, [caller()])
 
-    def test_duplicate_targets_keep_list_order_without_merge_emulation(self):
-        # The kit merges duplicate targets at load but does not document the
-        # merged position; the compiled controller relies on list order.
+    def test_non_adjacent_duplicate_targets_with_a_fallback_are_refused(self):
+        # The kit merges duplicate targets at load, unconditional if one is always,
+        # at an undocumented position that can shadow the routes between them.
         nodes = {"talk": conversation("talk", [route("later", equals("now", "2031-05-03")),
                                                route("close", equals("now", "2031-05-02")),
                                                route("later")], passthrough="later"),
                  "later": conversation("later", [route("close")])}
-        report = self.run_script(nodes)
-        self.assertEqual(report["status"], "terminated")
-        self.assertNotIn("later", [item["node"] for item in report["steps"]])
-        self.assertEqual(report["frames_consumed"], 0)
+        with self.assertRaisesRegex(ReplayError, "non-adjacent routes share a target"):
+            self.run_script(nodes)
         nodes["talk"]["transitions"][0]["condition"] = intent()
         with self.assertRaisesRegex(ReplayError, "follows matches_intent"):
             self.run_script(nodes)

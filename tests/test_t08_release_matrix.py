@@ -55,7 +55,9 @@ class ReleaseMatrixTests(unittest.TestCase):
             'plan': deepcopy(cls.plan), 'contract_sha256': contract_sha256}
         args = parser().parse_args(['--brief', str(cls.brief), '--tool-api', str(cls.api),
                                    '--policy-file', str(policy_path), '--output-dir', str(cls.directory / 'runs'), '--generate-only'])
-        manifest = execute(args, generator=generator, client_factory=lambda **kw: (_ for _ in ()).throw(AssertionError('no network')))
+        # The shared synthetic plan routes by many intents; this suite tests the matrix, not the hosted routing gate.
+        with patch('builder.build.plan_routing_errors', return_value=[]):
+            manifest = execute(args, generator=generator, client_factory=lambda **kw: (_ for _ in ()).throw(AssertionError('no network')))
         cls.run_dir = ROOT / manifest['run_directory']
         cls.inputs = [{'id': 'brief-1', 'path': str(cls.brief), 'sha256': digest(TEXT)}]
         cls.candidate = load_candidate(cls.run_dir, cls.api, cls.inputs)

@@ -2070,6 +2070,35 @@ def _bound_entries(nodes: dict, public_names: list[str]) -> None:
         nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition("bg_terminal")])
 
 
+def _prompt_enforced(contract: dict, plan: dict, catalog: dict, nodes: dict) -> str:
+    """Compile a relaxed contract's prompt-enforced limitations into dialogue text.
+
+    Returns the system_prompt block (each frozen requirement with its cited active
+    source quotes) and appends each requirement to the task_message of every
+    conversation node that routes into an action the entry concerns: one whose
+    required kinds a cited rule has, or that the requirement names. Strict
+    contracts have no entries and change nothing. Braces become parentheses so no
+    text reads as a workflow template.
+    """
+    entries = contract.get("prompt_enforced_limitations") or []
+    lines = ["Bank rules that no system check enforces. Follow each of them yourself in the conversation:"]
+    roles = {action: spec["operation_role"] for action, spec in execution_action_catalogue().items()}
+    for entry in entries:
+        quotes = "; ".join('"' + source["quote"] + '"' for source in entry["sources"] if isinstance(source.get("quote"), str))
+        lines.append("- " + entry["requirement"].strip() + (" Source: " + quotes if quotes else ""))
+        kinds = {kind for kind, rule in contract["active_rules"].items() if set(rule["rule_ids"]) & set(entry["rule_ids"])}
+        named = set(re.findall(r"[A-Za-z][A-Za-z0-9_]*", entry["requirement"]))
+        concerned = {action for action, role in roles.items() if _REQUIRED[action] & kinds
+                     or {action, role, catalog.get(role, {}).get("name")} & named}
+        reminder = ("\n\nBank rule for this step that no system check enforces: "
+                    + entry["requirement"].strip().replace("{", "(").replace("}", ")"))
+        for name, node in plan["nodes"].items():
+            if node["node_type"] == "conversation" and any(plan["nodes"].get(route.get("target_node"), {}).get("action")
+                                                           in concerned for route in node.get("transitions", [])):
+                nodes[name]["task_message"] = nodes[name].get("task_message", "") + reminder
+    return "\n".join(lines).replace("{", "(").replace("}", ")") if entries else ""
+
+
 def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, execution_policy: dict,
                               bindings: dict | None = None) -> dict:
     """Return detached ``workflow`` and ``guard_manifest``; perform no I/O.
@@ -2114,6 +2143,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
+    rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
     # A quarantine terminal never fabricates a successful bank close. It is
@@ -2211,6 +2241,11 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:
         workflow["system_prompt"] = copy.deepcopy(plan["system_prompt"])
+    if rules:
+        authored = workflow.get("system_prompt", "")
+        if not isinstance(authored, str):
+            raise GuardCompileError(["plan system_prompt must be text"])
+        workflow["system_prompt"] = (authored + "\n\n" if authored else "") + rules
     manifest = {"version": 1, "plan_sha256": digest(plan), "contract_sha256": contract["sha256"],
                 "openapi_sha256": digest(openapi), "execution_policy_sha256": execution_policy["sha256"],
                 "bindings_sha256": (bindings or {}).get("sha256", ""), "workflow_sha256": digest(workflow),

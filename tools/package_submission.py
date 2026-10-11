@@ -339,12 +339,18 @@ def validate_provenance(path, run, events):
             or len(catalog_events) != len(substantive)
             or any(digest({key: event.get(key) for key in catalog}) != digest(catalog) for event in catalog_events)):
         raise ValueError('Generation model catalog differs from the tool-free audit/configuration')
-    for call in substantive:
-        start = events.index(call)
-        next_calls = [events.index(later) for later in calls if events.index(later) > start]
-        stop = min(next_calls) if next_calls else len(events)
-        if sum(start < events.index(event) < stop for event in catalog_events) != 1:
-            raise ValueError('Each substantive generation call requires its matching restricted model catalog')
+    call_positions = [index for index, event in enumerate(events) if _event_name(event) == 'model_call']
+    catalog_positions = [index for index, event in enumerate(events) if _event_name(event) == 'generation_model_catalog']
+    for stop in call_positions:
+        call = events[stop]
+        if type(call.get('prompt_characters')) is not int or call['prompt_characters'] <= 0:
+            continue
+        # Runtime prepares and records the restricted catalog before sending
+        # the prompt. A later catalog cannot establish pre-call restrictions,
+        # and each call requires its own catalog after the preceding call/audit.
+        start = max([events.index(audit), *(index for index in call_positions if index < stop)])
+        if sum(start < index < stop for index in catalog_positions) != 1:
+            raise ValueError('Each substantive generation call requires its matching restricted model catalog before the call')
     return [source_path, provenance_path]
 
 

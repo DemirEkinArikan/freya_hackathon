@@ -2388,7 +2388,13 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             "            kinds.append('absent' if name not in result['data'] else 'null' if value is None else 'boolean' if value is True or value is False"
             " else 'integer' if isinstance(value, int) else 'number' if isinstance(value, float) else 'string' if isinstance(value, str)"
             " else 'array' if isinstance(value, list) else 'object' if isinstance(value, dict) else 'other')\n"
-            "        result['data']['bg_result_types'] = ','.join(kinds)\nexcept Exception:\n    pass\n")
+            "        result['data']['bg_result_types'] = ','.join(kinds)\nexcept Exception:\n    pass\n"
+            # The hosted mapping turns a JSON array or object into an empty
+            # string (11 Oct, a 200 get_account with three products), so the
+            # kernel needs the container as JSON text. A separate block, so a
+            # failure here never erases the status and type evidence above.
+            "try:\n    import json\n    for name in " + repr(names) + ":\n        if isinstance(result['data'].get(name), (list, dict)):\n"
+            "            result['data'][name] = json.dumps(result['data'][name], allow_nan=False)\nexcept Exception:\n    pass\n")
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}

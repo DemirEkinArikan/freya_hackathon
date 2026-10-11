@@ -145,6 +145,68 @@ class CurrentCompilerMutationTests(unittest.TestCase):
              patch("builtins.eval", side_effect=AssertionError("validator evaluated candidate code")):
             self.assertTrue(validate_code(source), "dunder declarations hide unbounded iteration")
 
+    def test_dynamic_type_classes_cannot_hide_an_unbounded_iterator(self):
+        safe = "try:\n    vars['status'] = 'ready'\nexcept Exception:\n    vars['status'] = 'failed'"
+        methods = "{'__iter__': lambda self: self, '__next__': lambda self: 0}"
+        sources = {
+            "type_call": f"Infinite = type('Infinite', (), {methods})\n",
+            "type_of_type": f"Infinite = type(int)('Infinite', (), {methods})\n",
+            "alias": f"make = type\nInfinite = make('Infinite', (), {methods})\n",
+            "container": f"Infinite = [type][0]('Infinite', (), {methods})\n",
+            "starred": f"spec = ('Infinite', (), {methods})\nInfinite = type(*spec)\n",
+        }
+        with patch("builtins.exec", side_effect=AssertionError("validator ran an infinite iterator")), \
+             patch("builtins.eval", side_effect=AssertionError("validator evaluated candidate code")):
+            # The compiler's own type checks stay valid.
+            self.assertEqual(validate_code("value = 1\nok = type(value) is not int and type(value) not in (float,)\n"
+                                           "same = type(value) is type(ok)\n" + safe), [])
+            for name, source in sources.items():
+                with self.subTest(form=name):
+                    errors = validate_code(source + "for value in Infinite():\n    pass\n" + safe)
+                    self.assertTrue(any("dynamic classes" in error for error in errors), errors)
+
+    def test_growing_the_iterated_list_inside_its_loop_is_rejected(self):
+        safe = "try:\n    vars['status'] = 'ready'\nexcept Exception:\n    vars['status'] = 'failed'"
+        sources = {
+            "append": "for value in items:\n    items.append(value)\n",
+            "extend": "for value in items:\n    items.extend([value])\n",
+            "insert": "for value in items:\n    items.insert(0, value)\n",
+            "augmented": "for value in items:\n    items += [value]\n",
+            "slice": "for value in items:\n    items[len(items):] = [value]\n",
+            "comprehension": "[items.append(value) for value in items]\n",
+            "lazy_wrapper": "for index, value in enumerate(items):\n    items.append(value)\n",
+            "alias": "again = items\nfor value in items:\n    again.append(value)\n",
+            "unbound_method": "for value in items:\n    list.append(items, value)\n",
+            "vars_mapping": "vars['queue'] = items\nfor value in vars['queue']:\n    vars['queue'].append(value)\n",
+        }
+        with patch("builtins.exec", side_effect=AssertionError("validator ran an unbounded loop")), \
+             patch("builtins.eval", side_effect=AssertionError("validator evaluated candidate code")):
+            for source in ("for value in list(items):\n    items.append(value)\n",
+                           "for value in items[:]:\n    items.append(value)\n",
+                           "copied = []\nfor value in items:\n    copied.append(value)\n"):
+                with self.subTest(bounded=source):
+                    self.assertEqual(validate_code("items = [0]\n" + source + safe), [])
+            for name, source in sources.items():
+                with self.subTest(form=name):
+                    errors = validate_code("items = [0]\n" + source + safe)
+                    self.assertTrue(any("growing an iterated collection" in error for error in errors), errors)
+            errors = validate_code("items = [0]\nadd = items.append\nfor value in items:\n    add(value)\n" + safe)
+            self.assertTrue(any("growth methods must be called directly" in error for error in errors), errors)
+
+    def test_current_gate_code_rejects_dynamic_iterators_and_self_growth(self):
+        gate = self.original["nodes"]["talk"]["passthrough_default_transition"]
+        original_code = self.original["nodes"][gate]["pre_actions"][0]["function"]["parameters"]["properties"]["code"]["default"]
+        sources = {
+            "dynamic classes": "Infinite = type('Infinite', (), {'__iter__': lambda self: self, '__next__': lambda self: 0})\n"
+                               "for value in Infinite():\n    pass",
+            "growing an iterated collection": "items = [0]\nfor value in items:\n    items.append(value)",
+        }
+        for message, source in sources.items():
+            with self.subTest(message=message):
+                errors = self.mutated(lambda workflow: workflow["nodes"][gate]["pre_actions"][0]["function"]["parameters"]
+                                      ["properties"]["code"].update(default=original_code + "\n" + source))
+                self.assertTrue(any(message in error for error in errors), errors)
+
     def test_current_api_rejects_external_url_invalid_result_path_and_null_gate(self):
         changes = {
             "external_url": lambda workflow: workflow["nodes"]["bg_close_api"]["pre_actions"][0]["function"]

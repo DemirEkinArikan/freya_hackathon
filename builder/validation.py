@@ -33,6 +33,9 @@ _FORBIDDEN_ATTRIBUTES = {"read", "read_text", "read_bytes", "write_text", "write
                          "environ", "getenv", "open", "exec", "eval", "compile", "getattr",
                          "setattr", "delattr", "globals", "locals", "builtins"}
 _EVENT_NODE_TYPES = {"conversation", "api_request", "code", "end_call"}
+_GROWTH = {"append", "extend", "insert"}
+_LAZY = {"enumerate", "zip", "map", "filter"}
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
 
 def _obj(value: Any) -> dict[str, Any]:
@@ -135,6 +138,15 @@ def _definite_vars(nodes: list[ast.stmt]) -> set[str]:
     return assigned
 
 
+def _iterated(expr: ast.expr) -> list[ast.expr]:
+    """Objects a loop over expr keeps reading lazily; copies such as list(x) or x[:] are excluded."""
+    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id in _LAZY:
+        return [item for arg in expr.args for item in _iterated(arg)]
+    if isinstance(expr, ast.GeneratorExp):
+        return [item for generator in expr.generators for item in _iterated(generator.iter)]
+    return [expr]
+
+
 def validate_code(code: Any, path: str = "code", *, require_fallback: bool = True,
                   guard_request_config: bool = False) -> list[str]:
     errors: list[str] = []
@@ -225,6 +237,14 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
             errors.append(path + ": exception fallback classes must not be rebound")
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in _FORBIDDEN_CALLS:
             errors.append(path + ": unsafe builtin references are forbidden, including aliases")
+        if isinstance(node, ast.Name) and node.id == "type":
+            call = parents.get(node)
+            if not (isinstance(call, ast.Call) and call.func is node and len(call.args) == 1 and not call.keywords
+                    and not isinstance(call.args[0], ast.Starred) and isinstance(parents.get(call), ast.Compare)):
+                errors.append(path + ": type may only inspect one value inside a comparison; dynamic classes are forbidden")
+        if (isinstance(node, ast.Attribute) and node.attr in _GROWTH
+                and not (isinstance(parents.get(node), ast.Call) and parents[node].func is node)):
+            errors.append(path + ": collection growth methods must be called directly")
         if isinstance(node, ast.Attribute) and (node.attr.startswith("_") or node.attr in _FORBIDDEN_ATTRIBUTES):
             errors.append(path + ": unsafe/file/network/real-clock attribute is forbidden")
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in _FORBIDDEN_CALLS:
@@ -252,6 +272,45 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
             if not (isinstance(parent, ast.Subscript) and parent.value is node
                     and isinstance(parent.slice, ast.Constant) and parent.slice.value == "body"):
                 errors.append(path + ": request config may only access literal body; URL/method/headers are protected")
+    try:
+        # Growing the list a loop is reading never ends. Plain name aliases such as y = x or
+        # y = vars['k'] are followed; stores into containers or attributes are not.
+        links: dict[str, set[str]] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and isinstance(node.value, (ast.Name, ast.Attribute, ast.Subscript)):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        value = ast.unparse(node.value)
+                        links.setdefault(target.id, set()).add(value)
+                        links.setdefault(value, set()).add(target.id)
+        def same(expr: ast.AST) -> set[str]:
+            found, pending = set(), [ast.unparse(expr)]
+            while pending:
+                text = pending.pop()
+                if text not in found:
+                    found.add(text)
+                    pending.extend(links.get(text, ()))
+            return found
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _GROWTH:
+                receivers = node.args[:1] if same(node.func.value) & {"list", "bytearray"} else [node.func.value]
+            elif isinstance(node, ast.AugAssign):
+                receivers = [node.target]
+            elif isinstance(node, ast.Assign):
+                receivers = [t.value for t in node.targets if isinstance(t, ast.Subscript) and isinstance(t.slice, ast.Slice)]
+            else:
+                continue
+            grown = set().union(*(same(receiver) for receiver in receivers))
+            child, ancestor = node, parents.get(node)
+            while grown and ancestor is not None:
+                iterables = ([ancestor.iter] if isinstance(ancestor, (ast.For, ast.AsyncFor)) and child in ancestor.body
+                             else [g.iter for g in ancestor.generators] if isinstance(ancestor, _COMPREHENSIONS) else [])
+                if any(grown & same(item) for iterable in iterables for item in _iterated(iterable)):
+                    errors.append(path + ": growing an iterated collection inside its loop is unbounded")
+                    break
+                child, ancestor = ancestor, parents.get(ancestor)
+    except RecursionError:
+        errors.append(path + ": code exceeds local validation complexity limit")
     if require_fallback:
         tries = [node for node in tree.body if isinstance(node, ast.Try)]
         if not tries or any(not node.handlers for node in tries):

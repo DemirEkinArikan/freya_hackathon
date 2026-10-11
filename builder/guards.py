@@ -470,6 +470,8 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         scope["goals"] = [codes.get(key, key) for key in scope["goals"]]
         if len(set(scope["goals"])) != len(scope["goals"]):
             raise GuardCompileError(["per-goal close codes collide through frozen code bindings"])
+        if codes and set(scope["goals"]) - set(codes.values()):
+            raise GuardCompileError(["per-goal close goals must be keys or codes of the wire_codes category named by selector"])
         # A goal that must resolve products is a collecting goal: it closes on
         # its protected fact, never on a goal row.
         rule = result.get("resolve_all_products", False) if loads_account else False
@@ -1717,7 +1719,7 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):
-            if 'account_failed' in profile.get('goal_close', dict()):
+            if 'account_failed' in guard_goal_close(state, profile):
                 # Only an exact declared non-2xx receipt valid for that status
                 # schema is definite; any other negative receipt raises, and
                 # the result handler quarantines it.

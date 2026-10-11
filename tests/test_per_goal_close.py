@@ -10,6 +10,7 @@ from builder.execution_requirements import ExecutionRequirementsError, compile_e
 from builder.safety import digest, read_json
 from builder.validation import validate_code
 from test_execution_requirements import add_rule, packet, rule
+from test_goal_terminal_close import declare_failure, respond
 from test_goal_requirements import PRODUCT, SealedSession, compiled, witness
 
 
@@ -167,6 +168,9 @@ class PerGoalCloseTests(unittest.TestCase):
                                     "source-declared read-only call input"),
             "codes collide through the selector category": (values(dict(SCOPED, goals=["contact", CONTACT]),
                                                                    wire={"contact": CONTACT}), "collide"),
+            "goal outside the selector category": (values(dict(SCOPED, goals=["GOAL_UNKNOWN"]), resolution=False,
+                                                          wire={"contact": CONTACT, "collect": COLLECT}),
+                                                   "keys or codes of the wire_codes category"),
         }
         for name, (packed, message) in cases.items():
             with self.subTest(name), self.assertRaisesRegex(ExecutionRequirementsError, message):
@@ -180,6 +184,30 @@ class PerGoalCloseTests(unittest.TestCase):
                       dict(SCOPED, goals=CONTACT), dict(SCOPED, selector="bg_state"), {"selector": SELECTOR, "goals": [CONTACT]}):
             with self.subTest(shape=shape), self.assertRaises(ExecutionRequirementsError):
                 compile_execution_requirements(*values(shape))
+
+    def test_failed_account_latch_arms_only_in_listed_goal_calls(self):
+        packed = values(dict(SCOPED, account_failed=[CALLBACK, NO_CALLBACK]))
+        declare_failure(packed[2])
+        for goal in (CONTACT, COLLECT, OTHER):
+            for status in (200, 502, 503):  # ok=false on 200, an undeclared status, the declared definite one
+                with self.subTest(goal=goal, status=status):
+                    session = call(packed, goal)
+                    verify(session)
+                    session.action("get_account")
+                    respond(session, "get_account", {"ok": False, "error": "invented outage"}, status)
+                    if goal == CONTACT:
+                        # A listed call latches: the definite receipt is final, any other quarantines.
+                        self.assertEqual((session.state["account_failed"], session.state["quarantined"]),
+                                         (status == 503, status != 503))
+                        if status == 503:
+                            session.action("close_call", outcome="", reason="")
+                            self.assertEqual((session.body["outcome"], session.body["reason"]), ("not_reached", "no_callback"))
+                    else:
+                        # Unlisted calls keep the unlatched, unquarantined negative read and may read again.
+                        self.assertEqual(session.variables["bg_route"], "failure")
+                        self.assertFalse(session.state["quarantined"] or session.state["account_failed"])
+                        session.action("get_account")
+                        self.assertEqual(session.variables["bg_route"], "allow")
 
     def test_selector_category_may_name_listed_goals_by_semantic_key(self):
         wire = {"contact": CONTACT, "collect": COLLECT, "other": OTHER}

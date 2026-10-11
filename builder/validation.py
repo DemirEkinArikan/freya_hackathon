@@ -356,6 +356,53 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
     return sorted(set(errors))
 
 
+_SCHEMA_TYPES = {"string": str, "date": str, "datetime": str, "name": str, "phone_number": str,
+                 "integer": int, "float": (int, float), "boolean": bool}
+
+
+def code_write_schema_errors(code: Any, schemas: Mapping[str, list], path: str) -> list[str]:
+    """The platform drops a code write that the variable's extraction schema refuses."""
+    try:
+        tree = ast.parse(code)
+    except (TypeError, ValueError, SyntaxError, RecursionError):
+        return []  # validate_code reports unparsable code
+    errors = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "vars" and node.func.attr in {"update", "setdefault"} and schemas):
+            errors.append(path + ": vars." + node.func.attr + " cannot be checked against declared variable schemas")
+        if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            continue
+        for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+            for item in ast.walk(target):
+                if not (isinstance(item, ast.Subscript) and isinstance(item.value, ast.Name) and item.value.id == "vars"):
+                    continue
+                name = item.slice.value if isinstance(item.slice, ast.Constant) else None
+                if not isinstance(name, str):
+                    if schemas:
+                        errors.append(path + ": a computed vars name cannot be checked against declared variable schemas")
+                    continue
+                if name not in schemas:
+                    continue
+                value = node.value if item is target and not isinstance(node, ast.AugAssign) else None
+                if not isinstance(value, ast.Constant):
+                    errors.append(path + ": code writes a computed value to " + name + ", which has a declared extraction schema")
+                    continue
+                for entry in schemas[name]:
+                    kind = _SCHEMA_TYPES.get(entry.get("type"), object)
+                    pattern = entry.get("validation_pattern")
+                    try:
+                        refused = (not isinstance(value.value, kind) or type(value.value) is bool and entry.get("type") != "boolean"
+                                   or "enum_values" in entry and value.value not in entry["enum_values"]
+                                   or pattern is not None and not (isinstance(value.value, str) and re.fullmatch(pattern, value.value)))
+                    except (TypeError, re.error, RecursionError, OverflowError):
+                        refused = True
+                    if refused:
+                        errors.append(path + ": code writes " + repr(value.value) + " to " + name
+                                      + ", which its declared extraction schema refuses (the platform drops the write)")
+    return errors
+
+
 def _mapping(mapping: Any, path: str, errors: list[str]) -> None:
     if not isinstance(mapping, list):
         errors.append(path + ": response_mapping must be an array")
@@ -658,6 +705,13 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
     if overlap:
         errors.append("normal/global node names must not overlap")
     all_nodes = {**nodes, **globals_}
+    # The platform checks code writes against every extraction declaration of
+    # the same name, workflow-wide (hosted readiness check, 27 dropped resets).
+    schemas: dict[str, list] = {}
+    for node in all_nodes.values():
+        for entry in _obj(node).get("extraction_schema", []) if isinstance(_obj(node).get("extraction_schema"), list) else []:
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+                schemas.setdefault(entry["name"], []).append(entry)
     # Public data bindings are declarations, not evidence of runtime persistence.
     # Exact trusted recompilation separately seals all protected code and state.
     operation_names = {value[0] for value in operations.values() if isinstance(value[0], str)}
@@ -781,6 +835,9 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                 continue
             for i, tool in enumerate(tools):
                 function_name, handler = _tool(tool, f"{path}.{placement}[{i}]", errors, operations, placement, policy)
+                if handler == "__function__:code_exec":
+                    code = _obj(_obj(_obj(_obj(tool.get("function")).get("parameters")).get("properties")).get("code")).get("default")
+                    errors.extend(code_write_schema_errors(code, schemas, f"{path}.{placement}[{i}].code"))
                 if handler == "__function__:api_call":
                     api_nodes.add(name)
                     if function_name == "close_call":

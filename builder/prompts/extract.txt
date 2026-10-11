@@ -44,8 +44,10 @@ not bank rules, default permissions or authority for values. Use it to check
 representability and reachability; approved sources still authorize policy.
 A requirement that a typed kind or a stated controller effect enforces is
 supported: encode it there and do not declare it. Reconcile diagnostics without
-inventing values, erasing operative constraints or deleting a fatal declaration
-before its requirement is encoded or its category is corrected with a reason.
+inventing values or erasing operative constraints. A fatal declaration leaves only
+when a typed rule that enforces its requirement replaces it. Change a category
+only when it was wrong, never to pass the build: a restriction the controller
+would allow stays protected_unenforceable and rejects the build.
 Preserve literal witnesses and separately bound API qualifications.
 
 Each unsupported_constraints entry is an object with category, requirement,
@@ -60,8 +62,9 @@ category is exactly one of:
   or close code. It does not reject the build.
 - controller_stricter: the sealed controller refuses something the source asks
   for, such as a retry, a replay or a close it never performs. Add
-  controller_effect, an exact excerpt of the controller_state_effects or
-  rule_shapes text that makes the refusal. It does not reject the build; the
+  controller_effect, an exact whole-word excerpt of the controller_state_effects
+  or rule_shapes text that states the refusal itself, not a permission or a
+  description. It does not reject the build; the
   limitation is recorded in the frozen contract.
 - protected_unenforceable: a sourced restriction on a protected fact (a write, a
   disclosure, identity or account evidence, or the bank close) that no typed kind
@@ -72,8 +75,10 @@ category is exactly one of:
   from the same source statement, that encodes the source's own safe fallback.
 Source silence is not ambiguity: when the sources give no value for a case,
 encode only the supplied values; the controller refuses the dependent promise,
-note or close rather than invent one. Retries happen only through attempt_scopes;
-the controller never replays close_call or an unscoped write.
+note or close rather than invent one. Omission adds no gate: map a supplied
+selector code whose goal has no stated product-resolution requirement to false,
+since an omitted code quarantines every call that carries it. Retries happen only
+through attempt_scopes; the controller never replays close_call or an unscoped write.
 
 When supplied sources declare variables available at call start, retain their
 exact names in a source-backed call_variables array, including the declaration

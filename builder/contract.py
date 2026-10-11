@@ -24,11 +24,16 @@ _TYPED_KINDS = _PROFILE_KINDS | _EXECUTION_ONLY_KINDS | {"execution_actions", "c
 _DECLARATION_KEYS = {"category", "requirement", "rule_ids", "justification", "controller_effect", "fallback_rule"}
 _DECLARATION_REPAIR = (
     "resolve each fatal unsupported_constraints entry by encoding its requirement in a typed rule that enforces it "
-    "and deleting the entry, or by correcting its category with a justification: dialogue_only for wording, ordering, "
-    "utterances, dialogue counters and speech-only triggers kept in active descriptive rules, naming no protected "
-    "action, field, typed kind or code; controller_stricter when the sealed controller refuses what the source asks, "
-    "with controller_effect quoting that refusal exactly from controller_state_effects or rule_shapes; source_ambiguous "
-    "only with a typed fallback_rule cited from the same source statement")
+    "and deleting the entry, or, only when its category was wrong, by correcting the category with a justification: "
+    "dialogue_only for wording, ordering, utterances, dialogue counters and speech-only triggers kept in active "
+    "descriptive rules, naming no protected action, field, typed kind or code; controller_stricter when the sealed "
+    "controller refuses what the source asks, with controller_effect quoting that refusal exactly, in whole words, "
+    "from controller_state_effects or rule_shapes; source_ambiguous only with a typed fallback_rule cited from the same "
+    "source statement. Never change a category to pass the build: a restriction the controller would allow stays "
+    "protected_unenforceable, an ambiguity without that fallback stays source_ambiguous, and both keep rejecting it")
+# A controller_effect must itself state a refusal, not a permission, description or cut-off fragment.
+_REFUSAL = re.compile(r"\b(?:refus|prevent|forbid|quarantin|exhaust|terminal|block)\w*"
+                      r"|\b(?:never|cannot|only|requires|no|not|ends|at most)\b", re.IGNORECASE)
 
 
 class PolicyContractError(ValueError):
@@ -279,9 +284,11 @@ def _declarations(policy: Mapping[str, Any], openapi: Any) -> tuple[list[str], l
             problem = ("cannot be dialogue_only: its requirement names a protected action, field, typed kind or code, "
                        "or its rule_ids are not active descriptive rules")
         elif category == "controller_stricter" and not (
-                isinstance(entry.get("controller_effect"), str) and len(entry["controller_effect"].strip()) >= 20
-                and any(entry["controller_effect"] in text for text in controller_texts)):
-            problem = "needs controller_effect quoting the refusal exactly from controller_state_effects or rule_shapes"
+                isinstance(effect := entry.get("controller_effect"), str) and len(effect.strip()) >= 20
+                and _REFUSAL.search(effect)
+                and any(re.search(r"(?<!\w)" + re.escape(effect.strip()) + r"(?!\w)", text) for text in controller_texts)):
+            problem = ("needs controller_effect quoting a refusal exactly, in whole words, from controller_state_effects "
+                       "or rule_shapes")
         elif category == "protected_unenforceable":
             problem = "is a protected restriction no typed kind or controller effect enforces"
         elif category == "source_ambiguous" and not (

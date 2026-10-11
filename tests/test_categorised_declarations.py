@@ -24,6 +24,7 @@ CLOSE_REFUSAL = "Every close result is terminal; negative or uncertain evidence 
 UNSCOPED_REPLAY = ("they are never replayed unless a source rule scopes them by call or exact_request with their "
                    "own limit and definite_failure_resume")
 HANDOFF = "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted."
+GOAL_SCOPED = "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."
 
 
 def entry(category, requirement="Greet the caller before asking anything.", rule_ids=("greeting",), **extra):
@@ -63,7 +64,7 @@ class CategorisedDeclarationTests(unittest.TestCase):
         errors = errors_of(policy, sources, api)
         self.assertIn("policy contains unsupported constraints", errors)
         self.assertIn("policy.unsupported_constraints[0] has no declaration category and rejects the build", errors)
-        self.assertTrue(any("correcting its category with a justification" in error for error in errors))
+        self.assertTrue(any("only when its category was wrong, by correcting the category" in error for error in errors))
         self.assertFalse(any("Invented" in error or "keep it unchanged" in error for error in errors))
 
     def test_dialogue_only_and_controller_stricter_are_frozen_as_contract_limitations(self):
@@ -117,13 +118,18 @@ class CategorisedDeclarationTests(unittest.TestCase):
         self.assertEqual(len(contract["declared_limitations"]), 1)
 
     def test_controller_stricter_needs_an_exact_controller_refusal(self):
-        for effect in ("A close is final.", "close", CLOSE_REFUSAL.replace("terminal", "final"), None):
+        effects = execution_action_catalogue()["commit_promises"]["controller_state_effects"]
+        permission = effects["positive_recording"][0]  # verbatim, but it records rather than refuses
+        cut = CLOSE_REFUSAL[:38]  # "...is terminal; negati": names a refusal, but ends inside a word
+        for effect in ("A close is final.", "close", CLOSE_REFUSAL.replace("terminal", "final"), None, permission,
+                       "an optional object conta", "Keeps the requested factor pending; send", cut):
             with self.subTest(effect=effect):
                 extra = {} if effect is None else {"controller_effect": effect}
                 errors = errors_of(*declared(entry("controller_stricter", rule_ids=["close_reasons"], **extra)))
                 self.assertIn("policy.unsupported_constraints[0] (controller_stricter) needs controller_effect quoting "
-                              "the refusal exactly from controller_state_effects or rule_shapes and rejects the build", errors)
-        for effect in (UNSCOPED_REPLAY, HANDOFF):
+                              "a refusal exactly, in whole words, from controller_state_effects or rule_shapes and "
+                              "rejects the build", errors)
+        for effect in (UNSCOPED_REPLAY, HANDOFF, CLOSE_REFUSAL[:40], GOAL_SCOPED):
             with self.subTest(effect=effect):
                 contract = compile_policy_contract(*declared(entry("controller_stricter", rule_ids=["close_reasons"],
                                                                    controller_effect=effect)))
@@ -176,7 +182,9 @@ class CategorisedDeclarationTests(unittest.TestCase):
         self.assertEqual(repair["validation_errors"], rejected["validation_errors"])
         self.assertTrue(any(error.startswith("policy.unsupported_constraints[1] (protected_unenforceable)")
                             for error in repair["validation_errors"]))
-        self.assertTrue(any("encoding its requirement in a typed rule" in error for error in repair["validation_errors"]))
+        guidance = next(error for error in repair["validation_errors"] if "encoding its requirement in a typed rule" in error)
+        self.assertIn("Never change a category to pass the build: a restriction the controller would allow stays "
+                      "protected_unenforceable", guidance)
 
     def test_guidance_defines_categories_and_states_the_kernel_refusals(self):
         policy, sources, api = packet()
@@ -188,10 +196,20 @@ class CategorisedDeclarationTests(unittest.TestCase):
         self.assertNotIn("Keep a declaration whenever", header)
         self.assertNotIn("an array of strings", header)
         self.assertNotIn("cannot faithfully enforce remain explicit failures", header)
+        flat = " ".join(header.split())
+        for text in ("Change a category only when it was wrong, never to pass the build: a restriction the controller "
+                     "would allow stays protected_unenforceable and rejects the build.",
+                     "map a supplied selector code whose goal has no stated product-resolution requirement to false",
+                     "an exact whole-word excerpt of the controller_state_effects or rule_shapes text that states the "
+                     "refusal itself"):
+            self.assertIn(text, flat)
         actions = json.loads(data)["execution_interface"]["actions"]
         self.assertIn("exceeds its past_due amount is refused", " ".join(actions["stage_promise"]["controller_state_effects"]["rejections"]))
         for action in ("stage_promise", "commit_promises", "stage_note", "finalize_notes"):
             self.assertIn(HANDOFF, actions[action]["controller_state_effects"]["rejections"])
+        # The kernel side is pinned by test_per_goal_close (a listed goal cannot use these roles).
+        for action in ("stage_promise", "commit_promises", "stage_note", "finalize_notes", "stage_transfer", "commit_transfer"):
+            self.assertIn(GOAL_SCOPED, actions[action]["controller_state_effects"]["rejections"])
         self.assertEqual(actions, execution_action_catalogue())
 
 

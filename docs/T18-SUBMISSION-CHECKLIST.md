@@ -46,6 +46,10 @@ the channel the instructions came from. Do not guess an address.
 
 - [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
       the extraction check in SUBMISSION-PACKAGE.md all pass.
+- [ ] On that ZIP, `verify_submission_bundle.py --commit <evidence commit>` and
+      `verify_hidden_release.py --official-pins <operator pins>` both pass
+      ([S07-BUNDLE-VERIFICATION.md](S07-BUNDLE-VERIFICATION.md)). Their two JSON
+      reports and the ZIP SHA-256 are posted on issue 19. Do not send otherwise.
 - [ ] Each `<brief>.workflow.json` and trace attachment has the same SHA-256 as
       its ZIP member and its selected run file.
 - [ ] Evidence HEAD pushed; its PR merged with matching head.

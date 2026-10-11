@@ -70,6 +70,9 @@ class PackageTests(unittest.TestCase):
             plan = {'synthetic_plan': name}
             bindings, execution = {'synthetic_bindings': name}, {'synthetic_execution': name}
             guards = {'synthetic_guards': name}
+            requirements = {'version': 1, 'policy_sha256': digest(policy), 'contract_sha256': contract['sha256'],
+                            'openapi_sha256': digest({}), 'actions': ['close_call']}
+            requirements['sha256'] = digest(requirements)
             source = capture_source_provenance(self.root, config)
             source['captured_at'] = '2026-10-10T12:00:00Z'
             (self.root / (name + ".json")).write_text(json.dumps(wf))
@@ -98,7 +101,8 @@ class PackageTests(unittest.TestCase):
             run.update(model=config['model'], reasoning_effort='high', builder_source_sha256=source['builder_source_sha256'],
                        builder_source_record_sha256=digest(source))
             run.update(action_guard_compilation_verified=True, plan_sha256=digest(plan),
-                       guard_manifest_sha256=digest(guards), authored_workflow_sha256=digest(wf['workflow']))
+                       guard_manifest_sha256=digest(guards), authored_workflow_sha256=digest(wf['workflow']),
+                       execution_requirements_sha256=requirements['sha256'])
             attempt = {'number': 1, 'directory': 'attempts/plan-001', 'phase': 'complete', 'status': status,
                        'export_sha256': digest(wf), 'tool_api_sha256': digest({}), 'policy_contract_sha256': contract['sha256'],
                        'policy_sha256': digest(policy), 'plan_sha256': digest(plan), 'workflow_sha256': digest(wf['workflow'])}
@@ -110,8 +114,10 @@ class PackageTests(unittest.TestCase):
             (run_path / 'build-provenance.json').write_text(json.dumps(bind_run_provenance(source, run, events)))
             (run_path / 'policy.json').write_text(json.dumps(policy))
             (run_path / 'policy.contract.json').write_text(json.dumps(contract))
+            (run_path / 'execution-requirements.json').write_text(json.dumps(requirements))
             artifacts = {'plan.json': plan, 'action-bindings.json': bindings, 'execution-policy.json': execution,
                          'guard-manifest.json': guards, 'workflow.json': wf['workflow'],
+                         'execution-requirements.json': requirements,
                          'proposal.json': {'plan': plan, 'contract_sha256': contract['sha256']},
                          'guard-context.json': {'plan': plan, 'contract': contract, 'bindings': bindings, 'execution_policy': execution}}
             for filename, value in artifacts.items():
@@ -150,7 +156,7 @@ class PackageTests(unittest.TestCase):
 
     def test_export_and_trace_must_match_and_failed_run_is_not_ready(self):
         with patch.object(subprocess, "run", return_value=SimpleNamespace(stdout="a" * 40)):
-            self.assertEqual(len(package.check_manifest(self.evidence())), 38)
+            self.assertEqual(len(package.check_manifest(self.evidence())), 42)
             with self.assertRaisesRegex(ValueError, "failed traces"):
                 package.check_manifest(self.evidence(status="failed"))
             with self.assertRaisesRegex(ValueError, "generated-only"):

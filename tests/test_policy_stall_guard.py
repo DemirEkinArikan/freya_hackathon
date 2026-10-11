@@ -220,6 +220,34 @@ class FirstPolicyRetryTests(unittest.TestCase):
         admission = next(row for row in self.run_events() if row["event"] == "repair_admission")
         self.assertEqual((admission["available_seconds"], admission["estimated_seconds"]), (450, 61))
 
+    def test_retry_leaves_time_to_export_the_fallback_plan_after_a_timed_out_plan_call(self):
+        # stress-dev-11/12 with R5: a 900 s high policy timeout, a 450 s medium retry, then the plan
+        # call times out in its 150 s and the deterministic fallback plan exports in the 300 s left.
+        timeout = GenerationTimeout("Codex generation exceeded its allocated time")
+        generator, deadline = self.clocked("high", (900, timeout), (450, fixture()))
+        clock, spent = deadline.clock, [0.0]
+        deadline.clock = lambda: clock() + spent[0]
+
+        def plan_call(prompt, *, contract_sha256):
+            spent[0] += deadline.timeout(900, reserve=300)
+            raise timeout
+        generator.generate_plan.side_effect = plan_call
+        clients = []
+
+        def factory(**kwargs):
+            clients.append(test_builder.FakeClient(**kwargs))
+            return clients[0]
+        manifest = execute(self.args(), generator=generator, client_factory=factory, deadline=deadline)
+        self.assertEqual((manifest["status"], manifest["plan_origin"], manifest["plan_fallback_reason"]),
+                         ("exported", "deterministic_fallback", str(timeout)))
+        self.assertEqual((generator.generate.call_count, generator.generate_plan.call_count, clients[0].exports),
+                         (2, 1, 1))
+        rows = events_of(build.PROJECT / manifest["run_directory"] / "trace.jsonl")
+        names = [row["event"] for row in rows]
+        self.assertLess(names.index("policy_generation_retry"), names.index("plan_fallback_decision"))
+        decision = next(row for row in rows if row["event"] == "plan_fallback_decision")
+        self.assertEqual((decision["started"], decision["remaining_seconds"]), (True, 300))
+
     def test_retry_without_time_keeps_the_real_failure(self):
         generator, deadline = self.clocked("high", (1460, GenerationTimeout("Codex generation exceeded its allocated time")))
         with self.assertRaisesRegex(DeadlineExceeded, r"No time for a repair \(40 s available.*exceeded its allocated time"):

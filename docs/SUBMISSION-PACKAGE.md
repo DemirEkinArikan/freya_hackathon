@@ -77,6 +77,7 @@ For each `runs` entry the packager resolves these original sibling files:
 | `attempts/plan-NNN/deployment.json` | Same published workflow/agent/version and graph as selected manifest/trace/export |
 | `attempts/plan-NNN/tests.json` | Required when selected trace records own hosted tests; agrees with manifest and trace |
 | `policy.json`, `policy.contract.json` | Original frozen policy and self-fingerprinted contract agree with the selected attempt and build |
+| `execution-requirements.json`, selected `attempts/plan-NNN/execution-requirements.json` | The same self-fingerprinted record, equal to the build's `execution_requirements_sha256`; its policy, contract and API fingerprints match the retained policy, contract and build |
 | Selected `proposal.json`, `plan.json`, `workflow.json`, `guard-manifest.json` | Proposal contract/plan, authored workflow and guard fingerprints agree with selected attempt, build and compilation trace |
 | Selected `action-bindings.json`, `execution-policy.json`, `guard-context.json` | Retained compiler context references the exact retained contract, plan, bindings and execution policy |
 | Ordered input files and matching OpenAPI | Fingerprints agree with exactly one input trace event and selected manifest |

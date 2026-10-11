@@ -34,4 +34,3 @@ rule, check rule_index for a rule of the same kind and replace it, or override
 it explicitly. Keep every rule_ids, overrides and fallback_rule reference to an
 existing rule. The patched policy is validated again in full; the extraction
 rules below apply unchanged.
-

@@ -165,7 +165,7 @@ def make_policy_prompt(sources: list[dict], openapi: dict, repair: dict | None =
     if patch:
         # The patch wire format replaces only the extraction role and wire paragraph.
         header = ((PROJECT / "builder/prompts/patch.txt").read_text(encoding="utf-8")
-                  + "Read every supplied source." + header.split("Read every supplied source.", 1)[1])
+                  + "\nRead every supplied source." + header.split("Read every supplied source.", 1)[1])
     payload = {"sources": sources, "openapi": openapi,
                "execution_interface": {"actions": execution_action_catalogue(),
                                        "rule_shapes": execution_rule_guidance()}}

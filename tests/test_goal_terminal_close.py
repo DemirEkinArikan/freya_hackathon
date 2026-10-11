@@ -1,14 +1,37 @@
 """Terminal closes for non-payment goals; invented codes, no model, bank or platform I/O."""
+import copy
 import json
 import os
 import unittest
 from pathlib import Path
 
 from builder.execution_requirements import ExecutionRequirementsError, compile_execution_requirements
+from builder.policy import execution_rule_guidance
 from builder.safety import digest, read_json
 from test_execution_requirements import add_rule, packet, rule
 import test_goal_requirements as goal_requirements
-from test_goal_requirements import PRODUCT, synthetic, witness
+from test_goal_requirements import PRODUCT, SealedSession, compiled, synthetic, witness
+from test_input_format_completeness import declare_offset_clock
+
+
+def respond(session, action, data, status):
+    """SealedSession.result with an actual envelope status (None: no transport status)."""
+    node = session.workflow["nodes"]["bg_" + session.entries[action] + "_api"]
+    envelope = {"data": copy.deepcopy(data)}
+    if status is not None:
+        envelope["status_code"] = status
+    exec(node["pre_actions"][0]["post_process_code"], {"result": envelope})
+    for mapping in node["response_mapping"]:
+        session.variables[mapping["variable"]] = envelope["data"].get(mapping["path"][5:], "")
+    session.code("bg_" + session.entries[action] + "_result")
+
+
+def declare_failure(api):
+    # 503 is a definite failure shape; the flags of 409 and 422 can never be false, so they are not.
+    for status, flag in (("503", {"enum": [False]}), ("409", {"enum": [True]}), ("422", {"const": True})):
+        api["paths"]["/get_account"]["post"]["responses"][status] = {"description": "Invented service response.",
+            "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "error"], "properties": {
+                "ok": dict(flag, type="boolean"), "error": {"type": "string", "minLength": 1}}}}}}
 
 
 def extend_enum(api, field, *codes):
@@ -111,6 +134,122 @@ class GoalTerminalCloseTests(unittest.TestCase):
         session.action("close_call", outcome="INFO_DONE", reason="")
         self.assertEqual(session.body["outcome"], "INFO_PART")
         self.assertEqual(session.body["reason"], "refused")
+
+    def failed_values(self, failed=None):
+        policy, sources, api = self.information_values()
+        rule(policy, "goal_close")["value"]["account_failed"] = failed or [
+            {"outcome": "INFO_FAULT", "reason": "service_error", "requires": "none"}]
+        rule(policy, "close_reasons")["value"]["INFO_FAULT"] = ["service_error"]
+        extend_enum(api, "outcome", "INFO_FAULT")
+        extend_enum(api, "reason", "service_error")
+        witness(policy, sources)
+        declare_failure(api)
+        return policy, sources, api
+
+    def test_definite_negative_account_receipt_latches_its_own_rows(self):
+        _, _, session = self.session(self.failed_values())
+        self.verify(session)
+        session.action("get_account")
+        respond(session, "get_account", {"ok": False, "error": "invented outage"}, 503)
+        self.assertEqual(session.variables["bg_route"], "failure")
+        self.assertEqual({key: session.state[key] for key in ("account_failed", "account_loaded", "quarantined")},
+                         {"account_failed": True, "account_loaded": False, "quarantined": False})
+        session.action("get_account")  # read once: no second request after a definite failure
+        self.assert_refused(session)
+        session.action("close_call", outcome="INFO_PART", reason="refused")  # a later stop cannot change the pair
+        self.assertEqual((session.body["outcome"], session.body["reason"]), ("INFO_FAULT", "service_error"))
+        respond(session, "close_call", {"ok": True}, 200)
+        self.assertTrue(session.state["closed"])
+
+    def test_several_failed_rows_need_a_matching_proposal(self):
+        failed = [{"outcome": "INFO_FAULT", "reason": "service_error", "requires": "none"},
+                  {"outcome": "INFO_PART", "reason": "refused", "requires": "none"}]
+        for proposal, expected in ((("INFO_DONE", ""), None), (("INFO_PART", "refused"), ("INFO_PART", "refused"))):
+            with self.subTest(proposal=proposal):
+                _, _, session = self.session(self.failed_values(failed))
+                self.verify(session)
+                session.action("get_account")
+                respond(session, "get_account", {"ok": False, "error": "invented outage"}, 503)
+                session.action("close_call", outcome=proposal[0], reason=proposal[1])
+                if expected is None:
+                    self.assert_refused(session)  # an account_loaded pair is not a failed-phase row
+                else:
+                    self.assertEqual((session.body["outcome"], session.body["reason"]), expected)
+
+    def test_failed_rows_need_the_receipt_and_never_follow_identity_or_a_loaded_account(self):
+        _, _, session = self.session(self.failed_values())
+        self.verify(session)
+        session.action("close_call", outcome="INFO_FAULT", reason="service_error")
+        self.assertEqual((session.body["outcome"], session.body["reason"]), ("INFO_PART", "refused"))
+        _, _, session = self.session(self.failed_values())
+        self.verify(session)
+        session.action("get_account")
+        respond(session, "get_account", {"ok": True, "products": [PRODUCT]}, 200)
+        self.assertFalse(session.state["account_failed"])
+        session.action("close_call", outcome="INFO_FAULT", reason="service_error")
+        self.assert_refused(session)
+
+    def test_uncertain_negative_account_receipts_quarantine_without_a_close(self):
+        cases = {"missing required field": (503, {"ok": False}),
+                 "empty required field": (503, {"ok": False, "error": ""}),
+                 "products on a failure": (503, {"ok": False, "error": "invented outage", "products": [PRODUCT]}),
+                 "success status": (200, {"ok": False, "error": "invented outage"}),
+                 "undeclared status": (502, {"ok": False, "error": "invented outage"}),
+                 "status whose flag cannot be false": (409, {"ok": False, "error": "invented outage"}),
+                 "status whose constant flag is true": (422, {"ok": False, "error": "invented outage"}),
+                 "no transport status": (None, {"ok": False, "error": "invented outage"}),
+                 "no body": (503, {}),
+                 "positive flag": (503, {"ok": True, "error": "invented outage"})}
+        for label, (status, data) in cases.items():
+            with self.subTest(label):
+                _, _, session = self.session(self.failed_values())
+                self.verify(session)
+                session.action("get_account")
+                respond(session, "get_account", data, status)
+                self.assertTrue(session.state["quarantined"])
+                self.assertFalse(session.state["account_failed"])
+                session.action("close_call", outcome="INFO_FAULT", reason="service_error")
+                self.assert_refused(session)
+
+    def test_goals_without_the_failed_phase_keep_unquarantined_negative_reads(self):
+        policy, sources, api = self.information_values()
+        declare_failure(api)
+        for status in (200, 503):
+            with self.subTest(status=status):
+                _, _, session = self.session((policy, sources, api))
+                self.verify(session)
+                session.action("get_account")
+                respond(session, "get_account", {"ok": False, "error": "invented outage"}, status)
+                self.assertEqual(session.variables["bg_route"], "failure")
+                self.assertFalse(session.state["quarantined"] or session.state["account_failed"])
+                session.action("close_call", outcome="INFO_DONE", reason="")
+                self.assertEqual((session.body["outcome"], session.body["reason"]), ("INFO_PART", "refused"))
+
+    def test_failed_phase_shape_and_role_limits(self):
+        guidance = execution_rule_guidance()["goal_close"]
+        self.assertIn("account_failed", guidance)
+        self.assertIn("is not an unsupported constraint", guidance)
+        for renamed in (None, "4²9"):  # no definite failure shape remains; a non-ASCII digit status is none either
+            policy, sources, api = self.failed_values()
+            responses = api["paths"]["/get_account"]["post"]["responses"]
+            response = responses.pop("503")
+            if renamed:
+                responses[renamed] = response
+            with self.subTest(renamed=renamed), self.assertRaisesRegex(ExecutionRequirementsError, "account_failed needs get_account"):
+                compile_execution_requirements(policy, sources, api)  # reported to policy repair, before any plan
+        policy, sources, api = self.failed_values()
+        rule(policy, "goal_close")["value"]["account_missing"] = rule(policy, "goal_close")["value"].pop("account_failed")
+        witness(policy, sources)
+        with self.assertRaisesRegex(ExecutionRequirementsError, "goal_close"):
+            compile_execution_requirements(policy, sources, api)
+        values = goal(["verify_identity", "get_account", "close_call"], {}, {"account_failed": [{"outcome": "paid", "requires": "none"}]},
+                      close_reasons={"paid": [], "not_verified": ["identity_failed"], "not_reached": []}, resolve_all_products=False)
+        with self.assertRaisesRegex(ExecutionRequirementsError, "non-collection outcomes"):
+            compile_execution_requirements(*values)
+        policy, sources, api = packet(local=True)
+        add_rule(policy, "goal_close", {"account_failed": [{"outcome": "not_reached", "requires": "none"}]})
+        with self.assertRaisesRegex(ExecutionRequirementsError, "goal_close cannot be combined"):
+            compile_execution_requirements(policy, sources, api)
 
     def callback_semantic_keys(self, *, wire_keyed=False):
         # Shape of the three rejected extractions of run 20261011T063051905603Z
@@ -258,8 +397,86 @@ class OriginalCallbackFailureReplay(unittest.TestCase):
                     with self.assertRaisesRegex(ExecutionRequirementsError, "unsupported constraints"):
                         compile_execution_requirements(policy, sources, api)
                 else:
-                    self.assertEqual(compile_execution_requirements(policy, sources, api)["actions"],
+                    # The brief requires an explicit UTC offset on now; with that format declared they compile.
+                    with self.assertRaisesRegex(ExecutionRequirementsError, "explicit UTC offset"):
+                        compile_execution_requirements(policy, sources, api)
+                    self.assertEqual(compile_execution_requirements(declare_offset_clock(policy, text, "brief-1"), sources, api)["actions"],
                                      ["close_call", "schedule_callback"])
+
+
+@unittest.skipUnless(os.environ.get("FREYA_ACCOUNT_FAILURE_RUN"), "original ignored run artifacts are local only")
+class OriginalAccountFailureReplay(unittest.TestCase):
+    """Read-only replay of an information run's three rejected extractions; no model call.
+
+    Each declared that a close after a definite negative account receipt, and its
+    first-end-condition latch, had no protected goal_close phase."""
+
+    def start(self, policy, sources, api):
+        _, context, workflow = compiled(policy, sources, api)
+        session = SealedSession(context, workflow)
+        session.variables.update(first_name="Invented", last_name="Caller", title="Mx", now="2031-05-02T11:00:00+00:00")
+        session.code("bg_init")
+        catalog = {node["action"]: node for node in context["plan"]["nodes"].values() if node.get("node_type") == "guard_action"}
+        self.assertEqual(set(catalog), {"verify_identity", "get_account", "close_call"})
+        for factor in rule(policy, "identity_fields")["value"]:
+            session.action("verify_identity", field=factor, answer="invented")
+            respond(session, "verify_identity", {"accepted": True, "subject_ref": "SYNTHETIC-GOAL-SESSION",
+                                                 "factor_tag": factor, "matched": True, "remaining": 2}, 200)
+        self.assertEqual(session.state["identity_status"], "verified")
+        return session
+
+    def test_rejected_extractions_fit_the_failed_phase_and_its_latch(self):
+        run = Path(os.environ["FREYA_ACCOUNT_FAILURE_RUN"])
+        inputs = Path(__file__).resolve().parents[1] / "docs" / "development-inputs" / "s04-account-information"
+        names = ("base-policy.md", "operations-email.txt", "privacy-memo.txt")
+        texts = [(inputs / name).read_text(encoding="utf-8") for name in names]
+        sources = [{"id": f"brief-{n}", "file": name, "sha256": digest(text), "text": text}
+                   for n, (name, text) in enumerate(zip(names, texts), 1)]
+        api = read_json(inputs / "bank.openapi.json")
+        recorded = next(json.loads(line) for line in (run / "trace.jsonl").read_text(encoding="utf-8").splitlines()
+                        if '"event": "inputs"' in line)
+        self.assertEqual([s["sha256"] for s in sources], [s["sha256"] for s in recorded["sources"]])
+        self.assertEqual(digest(api), recorded["tool_api_sha256"])
+        files = sorted(run.glob("policy.rejected-*.json"))
+        before = [path.read_bytes() for path in files]
+        self.assertEqual(len(files), 3)
+        for path in files:
+            policy = json.loads(path.read_text(encoding="utf-8"))["policy"]
+            with self.subTest(attempt=path.name):
+                with self.assertRaisesRegex(ExecutionRequirementsError, "unsupported constraints"):
+                    compile_execution_requirements(policy, sources, api)
+                # In memory only: declarations emptied, and the verified pair that never follows a loaded
+                # account (the one the declarations tie to the negative account receipt) becomes account_failed.
+                rows = rule(policy, "goal_close")["value"]
+                loaded = {(row["outcome"], row.get("reason", "")) for row in rows["account_loaded"]}
+                failed = [row for row in rows["verified"] if (row["outcome"], row.get("reason", "")) not in loaded]
+                stop = [row for row in rows["verified"] if (row["outcome"], row.get("reason", "")) in loaded]
+                self.assertEqual((len(failed), len(stop)), (1, 1))
+                rows.update(verified=stop, account_failed=failed)
+                policy["unsupported_constraints"] = []
+                pair = lambda row: (row["outcome"], row.get("reason"))
+                # Before any account evidence the failed pair is never eligible.
+                session = self.start(policy, sources, api)
+                session.action("close_call", outcome=failed[0]["outcome"], reason=failed[0].get("reason", ""))
+                self.assertEqual((session.body["completion_tag"], session.body.get("detail_tag")), pair(stop[0]))
+                # A definite declared receipt latches the failed pair, even after a later stop.
+                session = self.start(policy, sources, api)
+                session.action("get_account")
+                respond(session, "get_account", {"accepted": False, "subject_ref": "SYNTHETIC-GOAL-SESSION",
+                                                 "fault": "invented outage"}, 503)
+                self.assertTrue(session.state["account_failed"])
+                session.action("get_account")
+                self.assertFalse(session.variables["bg_body"])
+                session.action("close_call", outcome=stop[0]["outcome"], reason=stop[0].get("reason", ""))
+                self.assertEqual((session.body["completion_tag"], session.body.get("detail_tag")), pair(failed[0]))
+                # A receipt missing its required fault text is uncertain: quarantine, no close.
+                session = self.start(policy, sources, api)
+                session.action("get_account")
+                respond(session, "get_account", {"accepted": False, "subject_ref": "SYNTHETIC-GOAL-SESSION"}, 503)
+                self.assertTrue(session.state["quarantined"])
+                session.action("close_call", outcome=failed[0]["outcome"], reason=failed[0].get("reason", ""))
+                self.assertFalse(session.variables["bg_body"] or session.state["close_attempted"])
+        self.assertEqual(before, [path.read_bytes() for path in files])
 
 
 if __name__ == "__main__":

@@ -84,8 +84,8 @@ class CallInputFormatTests(unittest.TestCase):
                         {"bg_state": "offset_datetime"}, {"bank_token": "offset_datetime"}, {42: "offset_datetime"}):
             with self.subTest(formats=formats), self.assertRaises((PolicyContractError, ValueError)):
                 authored(formats)
-        with self.assertRaises(GuardCompileError):
-            compile_guarded_workflow(**authored({"now": "offset_datetime"}, names=["unrelated_input"]))
+        with self.assertRaisesRegex(PolicyContractError, "also be declared"):
+            authored({"now": "offset_datetime"}, names=["unrelated_input"])
         for quote in ("The supplied clock must have an explicit offset.", "now_extra needs an explicit offset."):
             with self.subTest(quote=quote), self.assertRaises(PolicyContractError):
                 authored({"now": "offset_datetime"}, quote=quote)

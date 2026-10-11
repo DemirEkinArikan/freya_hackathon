@@ -81,7 +81,7 @@ _DESCRIPTIVE_EXTENSION_GUIDANCE = {
 }
 _SHAPE_GUIDANCE = {
     "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
-    "call_input_formats": "optional nonempty object mapping source-declared read-only initial call-variable names to offset_datetime only. Each name occurs literally in this rule's quotation. Use only when the source expressly requires a date+time with explicit UTC offset; never infer formats from API schemas or add defaults. offset_datetime validates a full YYYY-MM-DD local calendar date, HH:MM with optional seconds/fraction, and explicit Z or +/-HH:MM offset on the raw sealed initial string before any bank request. Values/date/offset are retained without conversion; malformed/date-only/offset-less values quarantine and cannot be repaired through ordinary dialogue variables. Absence preserves legacy behavior; this grants no action or permission",
+    "call_input_formats": "optional nonempty object mapping source-declared read-only initial call-variable names to offset_datetime only. Each name occurs literally in this rule's quotation and is also declared in call_variables. Use only when the source expressly requires a date+time with explicit UTC offset, and then always, including for the engine clock now; never infer formats from API schemas or add defaults. offset_datetime validates a full YYYY-MM-DD local calendar date, HH:MM with optional seconds/fraction, and explicit Z or +/-HH:MM offset on the raw sealed initial string before any bank request. Values/date/offset are retained without conversion; malformed/date-only/offset-less values quarantine and cannot be repaired through ordinary dialogue variables. Absence preserves legacy behavior; this grants no action or permission",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
@@ -119,7 +119,7 @@ _SHAPE_GUIDANCE = {
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
     "identity_close": "an optional object containing exactly failed, incomplete, unreached; each scope is an object containing outcome (nonempty string) and optional reason (nonempty string). Include only source-supplied dispositions; do not invent identity outcomes/reasons from permitted API vocabulary. Absence authorizes no identity closing choice: the protected handler may close on an eligible recorded account/transfer fact, otherwise it safely refuses without a bank close. This safety fallback does not satisfy an explicit policy requirement to record a close",
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
-    "goal_close": 'an optional object with only verified and/or account_loaded keys, for goals that select no promise, note or transfer role. verified applies once identity is verified and no account is loaded; account_loaded after positive account evidence. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons, each outcome/reason pair once per phase; collections meanings (promise, paid, transferred, no_promise) are never permitted. With schedule_callback every close code must be a bound wire_codes meaning, and after a recorded callback only recorded_callback rows are eligible. One eligible row is fixed; several rows require a matching closing proposal. Other evidence conditions are unsupported constraints',
+    "goal_close": 'an optional object with only verified, account_loaded and/or account_failed keys, for goals that select no promise, note or transfer role. verified applies once identity is verified without account evidence; account_loaded after positive account evidence; account_failed after a definite negative account receipt (declared non-2xx get_account status, success flag false, mapped fields valid). With account_failed declared, other negative account receipts quarantine without a close; a recorded one is final: only account_failed rows apply, so omit there any pair the source says cannot override the receipt. Each is a nonempty array of objects containing outcome, optional reason and requires ("none"/"recorded_callback"/"no_recorded_callback"), using sourced close codes from close_reasons, each outcome/reason pair once per phase; collections meanings (promise, paid, transferred, no_promise) are never permitted. With schedule_callback every close code must be a bound wire_codes meaning, and after a recorded callback only recorded_callback rows are eligible. One eligible row is fixed; several rows require a matching closing proposal. A condition resting only on what is said in the conversation has no protected evidence: list its pair in each phase where it can apply, for the workflow to establish and propose; this is not an unsupported constraint. Other evidence conditions are unsupported constraints',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
     "resolve_all_products": 'a boolean, or an object with {selector: initial call-input name, by_value: {supplied string code: boolean}} when the source explicitly gives goal-dependent product resolution, and/or products: "overdue" when the source scopes resolution to overdue products (protected integer days_late >= 1) instead of every returned product; {products: "overdue"} alone applies to every call. selector occurs literally in this rule\'s quotation and is declared by the source-backed read-only call_variables rule. Use actual supplied selector codes, never invented goal labels, defaults, or an inferred wire category. An explicitly supplied wire_codes category named exactly selector may bind semantic keys to actual codes; other categories are unrelated. Missing, non-string or unknown initial selector values quarantine; later dialogue variables cannot relax the sealed initial scope. This changes only which products must be resolved before the final close and, for the object form, before note finalization (a selected false requires none); never allowed outcomes or actions',
@@ -133,6 +133,32 @@ def execution_rule_guidance() -> dict[str, str]:
     """Describe typed interfaces and identified descriptive formats, not values."""
     guidance = {**_SHAPE_GUIDANCE, **_DESCRIPTIVE_EXTENSION_GUIDANCE}
     return {kind: guidance[kind] for kind in sorted(guidance)}
+
+
+_OFFSET_WORDING = re.compile(r"\b(?:utc|gmt|time[- ]?zone)\s+offsets?\b"
+                             r"|\boffsets?\s+(?:from|to)\s+(?:utc|gmt)\b|\bexplicit\s+time[- ]?zones?\b", re.I)
+_NOT_REQUIRED = re.compile(r"\b(?:no|not|never|without|optional|optionally|may|if|unless|ignore[sd]?|omit(?:s|ted)?)\b|n['’]t\b", re.I)
+_STATED_OFFSET = re.compile(r"(?<![\d:])(?<!\d\s)[+-]\d{2}:\d{2}(?!\d)"
+                            r"|\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?![\d:]|[.,]\d|\s*(?:[Zz]\b|[+-]\d))")
+_DATE_TIME = re.compile(r"\bdate\b.*\btime\b|\bdatetime\b|\btimestamp\b", re.I | re.S)
+
+
+def offset_datetime_inputs(texts: Any, names: Any) -> set[str]:
+    """Input names a source statement requires to carry an explicit UTC offset.
+
+    Literal wording only: a statement (sentence, list item or table row) that
+    names the input beside UTC/time-zone offset wording, with no negation or
+    optionality cue, no stated offset value and no offset-less example
+    date-time; a name other than the engine clock now also needs date and time
+    wording. Unclear wording is left to extraction review.
+    """
+    found = set()
+    for text in texts:
+        for statement in re.split(r"\n\s*\n|\n(?=\s*(?:[|#*-]|\d+[.)]\s))|(?<=[.!?])\s+", text):
+            if _OFFSET_WORDING.search(statement) and not (_NOT_REQUIRED.search(statement) or _STATED_OFFSET.search(statement)):
+                found.update(name for name in names if (name == "now" or _DATE_TIME.search(statement))
+                             and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", statement))
+    return found
 
 
 def _json_type(value: Any) -> str:
@@ -373,7 +399,7 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                         and ("reason" not in choice or text(choice["reason"]))
                         for choices in value.values() for choice in choices)
     elif kind == "goal_close":
-        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"verified", "account_loaded"}
+        valid = (isinstance(value, dict) and bool(value) and set(value) <= {"verified", "account_loaded", "account_failed"}
                  and all(isinstance(rows, list) and bool(rows) and all(
                      isinstance(row, dict) and set(row) <= {"outcome", "reason", "requires"} and text(row.get("outcome"))
                      and row.get("requires") in ("none", "recorded_callback", "no_recorded_callback")

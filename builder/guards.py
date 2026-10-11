@@ -390,6 +390,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         # explicitly supplied resolution rules still take precedence.
         result.setdefault("resolve_all_products", True)
     resolution = result.get("resolve_all_products")
+    formats = result.get("call_input_formats")
+    if formats is not None:
+        if set(formats) - set(declared_call_variables(contract)):
+            raise GuardCompileError(["formatted call inputs require source-declared read-only names"])
+        provenance = contract["active_rules"]["call_input_formats"].get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or any(
+                not re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", source["quote"]) for name in formats)
+                for source in provenance):
+            raise GuardCompileError(["formatted call-input names must occur literally in their own sourced rule"])
     if isinstance(resolution, dict):
         selector = resolution["selector"]
         if selector not in declared_call_variables(contract):
@@ -835,6 +844,26 @@ def guard_call_inputs(state, profile):
         state['quarantined'] = True
         raise ValueError('protected call-input snapshot has an absent value')
     guard_json(captured)
+    for name, format_name in profile.get('call_input_formats', dict()).items():
+        value = captured.get(name)
+        if format_name != 'offset_datetime' or type(value) is not str:
+            state['quarantined'] = True
+            raise ValueError('protected call-input format is malformed')
+        match = re.fullmatch(r'([0-9]{4}-[0-9]{2}-[0-9]{2})[Tt ]([0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?)(Z|[+-][0-9]{2}:[0-9]{2})', value)
+        if match is None:
+            state['quarantined'] = True
+            raise ValueError('protected call input requires a date, time and explicit offset')
+        offset = match.group(3)
+        if offset != 'Z' and (int(offset[1:3]) > 23 or int(offset[4:6]) > 59):
+            state['quarantined'] = True
+            raise ValueError('protected call-input offset is malformed')
+        try:
+            parsed = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if parsed.utcoffset() is None:
+                raise ValueError('missing offset')
+        except Exception:
+            state['quarantined'] = True
+            raise ValueError('protected call-input datetime is malformed')
     rule = profile.get('resolve_all_products')
     if isinstance(rule, dict):
         value = captured.get(rule['selector'])

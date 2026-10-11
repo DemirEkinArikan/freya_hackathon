@@ -140,6 +140,19 @@ class DemotionBuildTests(unittest.TestCase):
         self.assertTrue(event["passed"])
         self.assertIn("Policy extraction failed after bounded repairs", event["original_failure"])
 
+    def test_a_relaxed_policy_demotion_cannot_compile_reports_both_failures(self):
+        policy, sources, api = declared()
+        policy["rules"] = [r for r in policy["rules"] if r["kind"] != "identity_fields"]
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs: .*; relaxed demotion "
+                                                    "could not compile the policy: .*identity_fields"):
+                _extract_policy(Generator([copy.deepcopy(policy) for _ in range(3)]), sources, api, run_dir,
+                                Trace(run_dir / "trace.jsonl"), Deadline(1800), (), workflow_pending=False,
+                                declarations="relaxed")
+            events = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
+        self.assertFalse(next(e for e in events if e.get("event") == "policy_demotion")["passed"])
+
     def test_strict_extraction_is_unchanged(self):
         with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs: " + CHOICE_ERROR + "$"):
             self.extract("strict")

@@ -303,6 +303,8 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         except PolicyDemotionError as failure:
             trace.emit("policy_demotion", passed=False, attempt=last["attempt"], steps=failure.demotions,
                        errors=list(failure.errors))
+            if not isinstance(exc, ValueError):
+                raise exc from failure  # a deadline or generation failure keeps its own type
             raise ValueError(f"{exc}; relaxed demotion could not compile the policy: "
                              + "; ".join(failure.errors)) from exc
     compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)

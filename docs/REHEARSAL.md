@@ -72,6 +72,12 @@ fresh brief/OpenAPI bytes into the worktree's ignored `artifacts/rehearsal-input
 and record their original hashes and brief order. Runtime credentials and the
 existing slot registry remain controller-only private configuration, provisioned
 as described in [the final-window runbook](T18-FINAL-WINDOW.md).
+For the output directory below, place the reviewed registry specifically at
+`artifacts/rehearsal-live/.freya-slots.json`, or append
+`--adopt-workflow <verified-existing-workflow-id>` on first use. The registry is
+relative to the selected output directory; a slot name alone does not reuse a
+workflow when the registry is absent. Verify the actual workspace binding and
+retain the registry across retries.
 
 After T16 acceptance and operator reconciliation, this is the command shape;
 replace the illustrative paths and slot with the actual approved inputs and

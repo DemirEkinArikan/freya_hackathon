@@ -115,7 +115,7 @@ class GenerationFormatTests(unittest.TestCase):
         generator.generate.side_effect = [GenerationFormatError("outer_json"), fixture()]
         generator.generate_plan.side_effect = GenerationFormatError("inner_json")
         with self.assertRaises(GenerationFormatError):
-            execute(self.args("--generate-only"), generator=generator)
+            execute(self.args("--generate-only", "--no-plan-fallback"), generator=generator)
         self.assertEqual((generator.generate.call_count, generator.generate_plan.call_count), (2, 2))
         run = next((self.directory / "out").iterdir())
         self.assertEqual(json.loads((run / "manifest.json").read_text())["status"], "failed")
@@ -131,7 +131,7 @@ class GenerationFormatTests(unittest.TestCase):
                 else:
                     generator.generate_plan.side_effect = GenerationError("frozen hash mismatch")
                 with self.assertRaises(GenerationError) as caught:
-                    execute(self.args("--generate-only"), generator=generator)
+                    execute(self.args("--generate-only", "--no-plan-fallback"), generator=generator)
                 self.assertNotIsInstance(caught.exception, GenerationFormatError)
                 self.assertEqual(generator.generate.call_count, 1)
                 self.assertEqual(generator.generate_plan.call_count, int(stage == "workflow"))

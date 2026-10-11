@@ -105,6 +105,11 @@ speak those explanations or impose a shared deadline when the source does not.
 Keep the plan compact with shared per-product dialogue and input-derived branches.
 The reference defines transport format only, never bank-specific requirements.
 Repairs may change the plan using sanitized diagnostics, never the frozen contract.
+Every step receives the whole system_prompt, so keep it short: identity, language,
+tone and the honesty rules that hold in every step. Put each step's procedure,
+counts, offers and choices in that step's task_message, which covers that step's
+job only. Speak any source-required recording notice as its own sentence about
+the call, never beside a statement that an action was recorded.
 
 Preserve the frozen execution_requirements descriptor. The plan must contain each
 selected execution_actions capability and may not add a capability. Include the

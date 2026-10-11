@@ -151,6 +151,37 @@ class RepairProductionWiringTests(unittest.TestCase):
         self.assertFalse(evidence["deployment_pin"]["per_call_version_verified"])
         self.assertFalse((run / "attempts" / "plan-002").exists())
 
+    def test_consistent_hosted_pin_for_another_deployment_cannot_select_export(self):
+        for field, wrong in (("version_number", 2), ("graph_sha256", "a" * 64),
+                             ("agent_id", "another-agent")):
+            with self.subTest(field=field):
+                cases, rows = self.hosted_inputs()
+                backend = self.backend(rows)
+                generator, client = self.configured_generator(), test_builder.FakeClient()
+                def runner(*args):
+                    result = run_builder_tests(*args)
+                    for side in ("before", "after"):
+                        result["deployment_pin"][side][field] = wrong
+                    if field == "version_number":
+                        for row in result["rows"]:
+                            attribution = row["version_attribution"]
+                            attribution["expected"] = wrong
+                            attribution["observed"] = {key: wrong for key in attribution["observed"]}
+                    return result
+                with patch("benchmarks.hosted.HostedBackend", return_value=backend), \
+                        self.assertRaises(build.HostedTestInfrastructureError):
+                    build.execute(self.args("--test-cases", str(cases)), generator=generator,
+                                  client_factory=lambda **kwargs: client, test_runner=runner)
+                self.assertEqual((client.saves, client.exports, generator.generate_plan.call_count), (1, 0, 1))
+                # Each independent run retains the inconsistent evidence and
+                # candidate; the model never receives another version's verdict.
+                runs = sorted((self.directory / "out").iterdir())
+                run = runs[-1]
+                self.assertEqual(read(run / "manifest.json")["failure_kind"], "test_infrastructure")
+                self.assertEqual(read(run / "attempts" / "plan-001" / "tests.json")
+                                 ["deployment_pin"]["before"][field], wrong)
+                self.assertFalse((run / "attempts" / "plan-002").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -389,7 +389,10 @@ def main(argv=None):
         path = output_path(args.out)
         _require(path.suffix == ".json", "comparison_output_invalid")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        # Preserve original bundles and earlier comparison attempts.
+        with path.open("x", encoding="utf-8") as stream:
+            json.dump(result, stream, indent=2, allow_nan=False)
+            stream.write("\n")
     print(json.dumps(result, indent=2))
     return 0 if result["comparable"] else 1
 

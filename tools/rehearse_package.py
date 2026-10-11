@@ -148,8 +148,11 @@ def run_check(argv: list[str], root: Path, home: Path, log: Path,
               end: float) -> dict:
     seconds = remaining(end)
     started = time.monotonic()
+    # All direct checks use the standard library. Disable interpreter-wide
+    # .pth/sitecustomize hooks as well as the user site disabled by the env.
+    command = [argv[0], "-S", *argv[1:]]
     with log.open("wb") as output:
-        process = subprocess.Popen(argv, cwd=root, env=clean_environment(home),
+        process = subprocess.Popen(command, cwd=root, env=clean_environment(home),
                                    stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
         try:
             code, timed_out = process.wait(timeout=seconds), False
@@ -157,9 +160,47 @@ def run_check(argv: list[str], root: Path, home: Path, log: Path,
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
             code, timed_out = None, True
-    return {"argv": ["python3.11", *argv[1:]], "returncode": code,
+    return {"argv": ["python3.11", *command[1:]], "returncode": code,
             "timed_out": timed_out, "elapsed_seconds": round(time.monotonic() - started, 3),
             "log": log.name, "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest()}
+
+
+def verify_development_inputs(root: Path) -> dict:
+    """Require complete, plain input exports before recording their fingerprints."""
+    inputs = root / "artifacts/development-inputs"
+    profiles = {"raw", "changed-schema"}
+    for directory in (root / "artifacts", inputs):
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError("Development inputs require plain export directories")
+    if {path.name for path in inputs.iterdir()} != profiles:
+        raise ValueError("Development input profile inventory is incomplete or unexpected")
+    hashes = {}
+    for profile in sorted(profiles):
+        directory = inputs / profile
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError("Development inputs require plain export directories")
+        files = sorted(directory.iterdir())
+        if (not any(path.name == "bank.openapi.json" for path in files)
+                or not any(path.suffix == ".md" for path in files)):
+            raise ValueError("Development inputs require OpenAPI and policy documents")
+        for path in files:
+            if (path.is_symlink() or not path.is_file()
+                    or path.name != "bank.openapi.json" and path.suffix != ".md"):
+                raise ValueError("Development input export contains unexpected content")
+            raw = path.read_bytes()
+            if not raw.strip():
+                raise ValueError("Development input export contains an empty file")
+            if path.name == "bank.openapi.json":
+                try:
+                    api = package.strict_json(raw.decode("utf-8"))
+                except (ValueError, UnicodeError):
+                    raise ValueError("Development input OpenAPI is not valid JSON") from None
+                if (not isinstance(api, dict) or not isinstance(api.get("openapi"), str)
+                        or not api["openapi"].strip() or not isinstance(api.get("info"), dict)
+                        or not isinstance(api.get("paths"), dict)):
+                    raise ValueError("Development input OpenAPI has an invalid object shape")
+            hashes[path.relative_to(root).as_posix()] = hashlib.sha256(raw).hexdigest()
+    return hashes
 
 
 def rehearse(output: Path) -> dict:
@@ -187,6 +228,7 @@ def rehearse(output: Path) -> dict:
         report["source_inventory_sha256"] = digest(hashes)
         config = {"mode": report["mode"], "python_version": report["python_version"],
                   "deadline_seconds": 1800, "environment": "empty HOME; fixed minimal process environment",
+                  "direct_python_flags": ["-S"],
                   "model": None, "network_execution": False}
         report["resolved_config"] = config
         report["configuration_sha256"] = digest(config)
@@ -220,9 +262,7 @@ def rehearse(output: Path) -> dict:
             if check["returncode"] != 0 or time.monotonic() >= started + 1800:
                 raise ValueError("Clean source check failed or exceeded the deadline; see retained log")
         verify_inventory(clean, hashes)
-        report["development_inputs"] = {
-            path.relative_to(clean).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted((clean / "artifacts/development-inputs").rglob("*")) if path.is_file()}
+        report["development_inputs"] = verify_development_inputs(clean)
         rebuilt = extract_source(clean / "artifacts/rebuilt.zip", output / "rebuilt-source")
         if rebuilt != hashes:
             raise ValueError("Clean source rebuild changed the archive inventory")

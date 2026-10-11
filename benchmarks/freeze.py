@@ -231,6 +231,13 @@ def _manifest_inventory(manifest, name):
     counts = {key: 0 for key in ("train", "validation", "holdout")}
     reserved = materialized = 0
     identities = set()
+    reserved_profiles = set()
+    reservation_fields = {
+        "offline": {"archetype_id", "number", "bucket", "split", "description", "fixture_id",
+                    "profile_id", "status", "official_policy"},
+        "hosted": {"fixture_id", "bank_case_id", "split", "brief", "style", "status",
+                   "reservation", "claim", "oracle_audit"},
+    }
     for row in rows:
         if (not isinstance(row, dict) or not isinstance(row.get("split"), str) or row["split"] not in counts
                 or not isinstance(row.get("fixture_id"), str) or not row["fixture_id"].strip()
@@ -240,19 +247,53 @@ def _manifest_inventory(manifest, name):
         counts[row["split"]] += 1
         status = row.get("status")
         if status == "reserved_until_candidate_freeze":
-            if row["split"] != "holdout" or any(key in row for key in ("case", "expected", "script", "customer_turns")):
+            # A reservation contains metadata only, even under an independently
+            # chosen profile name. Payloads cannot hide behind a reserved status.
+            if row["split"] != "holdout" or set(row) - reservation_fields[name]:
                 raise ValueError(f"{name} holdout reservation contains materialized content")
+            for key, content in row.items():
+                if key == "reservation":
+                    if (not isinstance(content, dict) or set(content) != {"seed", "style", "compound_index"}
+                            or any(not isinstance(content[field], str) or not content[field].strip()
+                                   for field in ("seed", "style"))
+                            or (content["compound_index"] is not None
+                                and (type(content["compound_index"]) is not int or content["compound_index"] < 0))):
+                        raise ValueError("hosted holdout reservation metadata is invalid")
+                elif key == "number":
+                    if type(content) is not int:
+                        raise ValueError("offline holdout reservation metadata is invalid")
+                elif key == "official_policy":
+                    if type(content) is not bool:
+                        raise ValueError("offline holdout reservation metadata is invalid")
+                elif not isinstance(content, str) or not content.strip():
+                    raise ValueError(f"{name} holdout reservation metadata is invalid")
+            if name == "offline":
+                profile_id = row.get("profile_id")
+                if not isinstance(profile_id, str) or not profile_id.strip():
+                    raise ValueError("offline holdout reservation profile is invalid")
+                reserved_profiles.add(profile_id)
             reserved += 1
         elif status in ("materialized", "materialized_after_freeze"):
             if name == "offline":
-                complete = isinstance(row.get("script"), str) and isinstance(row.get("expected"), dict)
+                script = row.get("script")
+                complete = isinstance(row.get("expected"), dict)
             else:
-                complete = isinstance(row.get("case"), dict) and isinstance(row["case"].get("script"), str)
-            if not complete:
+                case = row.get("case")
+                script = case.get("script") if isinstance(case, dict) else None
+                complete = isinstance(case, dict)
+            if not complete or not isinstance(script, str) or not script.strip():
                 raise ValueError(f"{name} materialized fixture content is missing")
             if row["split"] == "holdout": materialized += 1
         else:
             raise ValueError(f"{name} fixture status is invalid")
+    if name == "offline" and reserved_profiles:
+        profiles = manifest.get("profiles", [])
+        if (not isinstance(profiles, list)
+                or any(not isinstance(profile, dict) or not isinstance(profile.get("profile_id"), str)
+                       or not profile["profile_id"].strip() for profile in profiles)):
+            raise ValueError("offline fixture profiles are invalid")
+        if any(profile.get("profile_id") in reserved_profiles for profile in profiles):
+            raise ValueError("offline reserved holdout profile is already materialized")
     declared = manifest.get("split_counts")
     if (not isinstance(declared, dict) or set(declared) != set(counts)
             or any(type(value) is not int or value < 0 for value in declared.values()) or declared != counts):

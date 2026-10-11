@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "lane": "S06",
+  "observed_at_utc": "2026-10-11T05:58:37.340430+00:00",
+  "starting_source_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+  "shared_cutoff_utc": "2026-10-11T06:15:00+00:00",
+  "shared_cutoff_istanbul": "2026-10-11T09:15:00+03:00",
+  "live_execution_count": 0,
+  "actual_t15_calls": 0,
+  "winning_result_claimed": false,
+  "canonical_lease": {
+    "lock": "/Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock",
+    "state": "creation_pending_without_simulation_id",
+    "sha256": "351527e69b908be703933e7ca488572f606ccddbd19028dc48998247a096b6a6",
+    "replaced": false
+  },
+  "server_observation": {
+    "checked_at_utc": "2026-10-11T05:57:09.060505+00:00",
+    "finished_at_utc": "2026-10-11T05:57:15.056470+00:00",
+    "inventory_complete": true,
+    "simulation_count": 4,
+    "active_count": 0,
+    "pending_match_count": 0,
+    "lease_changed": false,
+    "recheck_before_launch": true,
+    "evidence": "artifacts/thread-coordination/s06-server-reconciliation.json"
+  },
+  "candidate_request": null,
+  "published_candidate": null,
+  "reserved_generation": {
+    "input": "independent_callback_booking",
+    "source_commit": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+    "observed_status": "prepared_no_model_launch",
+    "generation_pid": null,
+    "generation_session": null,
+    "source_test_session": 68621,
+    "latest_handoff": "artifacts/thread-coordination/t07-callback-generation-from-worker.json",
+    "fresh_manifest_present": false,
+    "duplicate_generation_allowed": false
+  },
+  "smoke_selection": {
+    "path": "artifacts/t15-preparation/smoke-host001.json",
+    "brief": "A",
+    "split": "train",
+    "cases": 1,
+    "fixture_id": "HOST-001",
+    "bank_case_id": "PUB-01",
+    "manifest_sha256": "f08f8b2512524482125c08a513dd50e98aecab839fac13b9bab009ba35e81867",
+    "row_sha256": "43e0836baa245c65cbf87d608d31ea974fdf27421327c498be58334e85f0a9ab",
+    "reps": 1,
+    "concurrency": 1
+  },
+  "development_declaration": {
+    "path": "benchmarks/fixtures/hosted.json",
+    "selections": [
+      {
+        "brief": "A",
+        "split": "train",
+        "cases": 26,
+        "reps": 3,
+        "calls_per_method": 78,
+        "manifest_sha256": "0853a79c79f57562f4749d1e0d006bb91f8ab6ee8640e4f184cbe4f38b63be04",
+        "selection_sha256": "4c58e9ae7f6a9065bb52e011b4cd4d8b920f23a13b3a768d3849e726025a37c4"
+      },
+      {
+        "brief": "A",
+        "split": "validation",
+        "cases": 14,
+        "reps": 3,
+        "calls_per_method": 42,
+        "manifest_sha256": "0853a79c79f57562f4749d1e0d006bb91f8ab6ee8640e4f184cbe4f38b63be04",
+        "selection_sha256": "cc0f8fc33f4ec76215b363d3136d8ce9ba9419285a8b549dea3591d919a67f24"
+      },
+      {
+        "brief": "B",
+        "split": "train",
+        "cases": 10,
+        "reps": 3,
+        "calls_per_method": 30,
+        "manifest_sha256": "0853a79c79f57562f4749d1e0d006bb91f8ab6ee8640e4f184cbe4f38b63be04",
+        "selection_sha256": "87d673ae1c383f5c3ed77b3383f2d336528df666f05bd551fc31171b46964906"
+      },
+      {
+        "brief": "B",
+        "split": "validation",
+        "cases": 10,
+        "reps": 3,
+        "calls_per_method": 30,
+        "manifest_sha256": "0853a79c79f57562f4749d1e0d006bb91f8ab6ee8640e4f184cbe4f38b63be04",
+        "selection_sha256": "b1b10bca31557496586397d9e64d2d510dc81d4458128a9d49da9b2b56956906"
+      }
+    ],
+    "calls_per_method": 180,
+    "calls_both_methods": 360,
+    "reconstructed_evidence_allowed": false
+  },
+  "queue": [
+    {
+      "order": 1,
+      "stage": "accepted_candidate_training_smoke",
+      "status": "blocked",
+      "request": null,
+      "manifest": null,
+      "published_version": null,
+      "blockers": [
+        "accepted_artifact_version_request_absent",
+        "fresh_audit_source_trace_export_binding_absent",
+        "pending_creation_requires_current_reconciliation"
+      ],
+      "reps": 1,
+      "concurrency": 1,
+      "budget_seconds": null,
+      "max_call_seconds": null,
+      "must_fit_remaining_window": true
+    },
+    {
+      "order": 2,
+      "stage": "baseline_and_structured_development_training",
+      "status": "blocked",
+      "after": [
+        "accepted_candidate_training_smoke"
+      ],
+      "blockers": [
+        "accepted_comparison_pair_absent",
+        "original_T14_acceptance_pending"
+      ],
+      "reps": 3,
+      "concurrency_max": 5,
+      "budget_seconds": null,
+      "max_call_seconds": null
+    },
+    {
+      "order": 3,
+      "stage": "baseline_and_structured_development_validation",
+      "status": "blocked",
+      "after": [
+        "both_methods_training_complete"
+      ],
+      "blockers": [
+        "complete_original_training_records_absent"
+      ],
+      "reps": 3,
+      "concurrency_max": 5
+    },
+    {
+      "order": 4,
+      "stage": "critical_repetitions",
+      "status": "pending_accepted_candidate_request",
+      "after": [
+        "candidate_acceptance_and_recorded_critical_plan"
+      ],
+      "reps": 3
+    },
+    {
+      "order": 5,
+      "stage": "post_freeze_fresh_holdouts",
+      "status": "reserved_unconsumed",
+      "after": [
+        "T15_acceptance",
+        "accepted_freeze",
+        "fresh_holdout_authoring"
+      ],
+      "local_target": 60,
+      "hosted_target": 60
+    },
+    {
+      "order": 6,
+      "stage": "T17_rehearsal_evidence",
+      "status": "blocked",
+      "after": [
+        "T16_acceptance",
+        "original_rehearsal_build_request"
+      ],
+      "original_build_deadline_seconds_max": 1800
+    }
+  ],
+  "whole_tasks_closed": []
+}

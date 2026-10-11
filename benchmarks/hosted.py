@@ -379,12 +379,8 @@ def run_builder_tests(client, deployment, cases_path, output_dir, deadline):
     destination = output_path(output / "benchmark-results.json")
     manifest, rows = load_cases(cases_path, brief=deployment.get("brief"))
     if any(r["split"] == "holdout" for r in rows):
-        from .freeze import verify_freeze
-        if not manifest.get("freeze"): raise ValueError("holdout requires a verified candidate freeze")
-        verified = verify_freeze(manifest["freeze"]["record"])
-        if verified["candidate_sha256"] != manifest["freeze"]["candidate_sha256"]:
-            raise ValueError("manifest and candidate freeze do not match")
-        check_holdout_config(verified, deployment)
+        from .freeze import verify_holdout_manifest
+        check_holdout_config(verify_holdout_manifest(manifest), deployment)
     deadline.require(reserve=300)
     backend = HostedBackend(client, deadline, reserve=300)
     pinned = deployment if all(k in deployment for k in ("workflow_id", "workflow", "version_id", "version_number")) else None
@@ -432,11 +428,9 @@ def main(argv=None):
     evidence_directory = output_path(args.evidence_dir)
     deployment = load_deployment(args.deployment_manifest) if args.deployment_manifest else None
     if any(r["split"] == "holdout" for r in rows):
-        from .freeze import verify_freeze
-        if not manifest.get("freeze"): raise ValueError("holdout requires a verified candidate freeze")
-        frozen = verify_freeze(manifest["freeze"]["record"])
+        from .freeze import verify_holdout_manifest
+        frozen = verify_holdout_manifest(manifest)
         if not deployment: raise ValueError("held-out execution requires --deployment-manifest")
-        if frozen["candidate_sha256"] != manifest["freeze"]["candidate_sha256"]: raise ValueError("manifest freeze hash mismatch")
         check_holdout_config(frozen, deployment, {"concurrency": args.concurrency, "reps": args.reps, "budget_seconds": args.budget_seconds, "max_call_seconds": args.max_call_seconds})
     from builder.platform import FreyaClient
     from builder.runtime import Deadline

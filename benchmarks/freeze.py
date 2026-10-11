@@ -207,7 +207,37 @@ def verify_holdout_manifest(manifest):
         raise ValueError("holdout manifest freeze verification failed") from exc
     if value["candidate_sha256"] != evidence["candidate_sha256"]:
         raise ValueError("holdout manifest candidate hash differs from verified freeze")
+    _verify_lineage(manifest, value)
     return value
+
+
+_LINEAGE = {"authored_at", "author", "candidate_sha256", "oracle_sha256", "isolation"}
+_ISOLATION = {"outside_generator_inputs": True, "candidate_outputs_consulted": False}
+
+
+def _verify_lineage(manifest, frozen):
+    """Every authored holdout row must postdate this freeze and bind its author, isolation and oracle."""
+    from builder.safety import digest
+    if not isinstance(manifest.get("cases"), list):
+        raise ValueError("holdout manifest cases are invalid")
+    frozen_at, now = datetime.fromisoformat(frozen["created_at"]), datetime.now(timezone.utc)
+    for row in manifest["cases"]:
+        if not isinstance(row, dict) or row.get("split") != "holdout" or str(row.get("status")).startswith("reserved"):
+            continue
+        label = row["fixture_id"] if isinstance(row.get("fixture_id"), str) else "<invalid id>"
+        lineage = row.get("lineage")
+        if (not isinstance(lineage, dict) or set(lineage) != _LINEAGE or not _timestamp(lineage["authored_at"])
+                or not isinstance(lineage["author"], str) or not lineage["author"].strip()
+                or json.dumps(lineage["isolation"], sort_keys=True) != json.dumps(_ISOLATION, sort_keys=True)):
+            raise ValueError(f"authored holdout {label} lacks author/isolation lineage")
+        if not frozen_at < datetime.fromisoformat(lineage["authored_at"]) <= now:
+            raise ValueError(f"authored holdout {label} was not authored after the recorded freeze")
+        if lineage["candidate_sha256"] != frozen["candidate_sha256"]:
+            raise ValueError(f"authored holdout {label} is bound to a different freeze")
+        source = row.get("case") if manifest.get("kind") == "hosted" else row
+        expected = source.get("expected") if isinstance(source, dict) else None
+        if not isinstance(expected, dict) or lineage["oracle_sha256"] != digest(expected):
+            raise ValueError(f"authored holdout {label} oracle hash does not match its expected ledger")
 
 
 def consume(record, reason):

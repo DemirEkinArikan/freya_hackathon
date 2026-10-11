@@ -104,7 +104,25 @@ that command as fresh-held-out acceptance.
 
 For each actual case record ID, authoring timestamp after freeze, source/API
 hashes, independent oracle hash, policy/wording coverage, critical status and
-freshness lineage against every previously exposed pack. Local cases need
+freshness lineage against every previously exposed pack.
+
+Every authored (non-reserved) holdout row must carry a `lineage` object with
+exactly these keys:
+
+- `authored_at`: a timezone-aware ISO time later than the freeze record's
+  `created_at` and not in the future;
+- `author`: a nonblank independent authoring session identifier;
+- `candidate_sha256`: the frozen candidate hash;
+- `oracle_sha256`: `builder.safety.digest` of the row's expected ledger
+  (local `expected`, hosted `case.expected`), computed when authoring;
+- `isolation`: exactly
+  `{"outside_generator_inputs": true, "candidate_outputs_consulted": false}`.
+
+`verify_holdout_manifest` enforces this for the offline, export and hosted
+holdout gates, so `generate-holdout` variants without lineage cannot be used
+as holdouts. These checks bind the declared lineage. They do not prove that the
+author was independent, that cases are fresh against earlier packs, or which
+source/API hashes were used. Keep reviewed evidence for those. Local cases need
 independently specified effective policy values, identity/order/retry/closing
 rules and expected ledgers, not expectations extracted from candidate output.
 Vary policy and schema meaning; random numbers or renamed wording alone do not

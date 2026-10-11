@@ -62,12 +62,20 @@ No build, model call, platform call, simulation, lease change or holdout use hap
 A final ZIP adds about 40 evidence files, and the bundle verifier adds two guarded
 recompilations. Expect a few seconds more, not minutes.
 
-GitHub calls, measured on this document's PR: `git push` 1.8 s and `gh pr create` 2.6 s. The merge call is the same kind of request; its time is on issue 19.
+GitHub calls, measured on this document's PR: `git push` 1.8 s and `gh pr create`
+2.6 s. The merge call is the same kind of request; its time is on issue 19.
 
-The launcher, inspect, pins and manifest scripts in the sequence below were also run
-here with the labels changed to `dry-run-N`. The pins match the driver's pins. The
-builder's own argument parser accepts every launcher flag; this was a parse only, and
-no build ran. The manifest writer refuses to continue while no exported run exists.
+The scripts in the sequence below were also run here, with the labels changed to
+`dry-run-N`:
+- The pins match the driver's pins.
+- The builder's own argument parser accepts every launcher flag. This was a parse
+  only; no build ran.
+- The manifest writer refuses to continue while no exported run exists.
+- The pre-check reaches `check_manifest` through `withenv`.
+- `git --literal-pathspecs add -f --pathspec-from-file` added a file whose name has a
+  space and glob characters.
+- `git diff --check` failed on an organizer-style file with trailing spaces and CRLF,
+  and passed once that directory was excluded (friction 7).
 
 ### Binding probe on the stand-ins
 

@@ -7,6 +7,19 @@ required declarations, bounded iteration hazards, unsafe callable aliases,
 fallbacks, graph targets, unconditional routing, call-ending placement and
 final bank-close paths. Node names and proof flags grant no trust.
 
+Current compiler integration checks require passthrough defaults and final
+unconditional targets to agree; that fallback cannot wait for a model tool call.
+Python declarations cannot use dunder names or replace the reserved workflow
+`vars` mapping, including in exception fallbacks. `type` may only inspect one
+value inside a comparison, the only form the compiler emits, so `type(...)`
+cannot build a class with iterator methods. A loop may not grow the list it is
+reading (append, extend, insert, augmented or slice assignment), whether
+directly, in a comprehension, through `enumerate`/`zip`/`map`/`filter` or
+through a plain name alias, and growth methods must be called directly. Dedicated
+`tests/test_validation_current_mutations.py` uses invented source-declared
+clock formats, immediate routing and administrative budgets to check these
+diagnostics and the trusted compiler boundary without executing candidates.
+
 Engine-run required body templates need declared variables. Model-filled
 conversation tool parameters remain allowed as documented by kit v3. A
 binding declaration does not establish that every runtime path populates it.
@@ -33,10 +46,14 @@ recursive callable references and broken exception defaults. Original
 synthetic fixtures remain unchanged. No model, bank or simulation is called.
 
 Passing static checks does **not** prove every Python program terminates or
-fits sandbox resources. Arbitrary data-dependent loops, expensive arithmetic,
-regular expressions and caller/model conversational paths still need platform
-limits and hosted evidence. The portable fixed kernel is sealed by exact
-recompilation; no arbitrary model-authored Python enters that boundary.
+fits sandbox resources. Unbounded loops remain possible: the growth check
+follows only direct receivers and plain name aliases, so growth through helper
+functions, parameters or container stores is not detected, and computed or
+nested `range` bounds can run for a very long time. Arbitrary data-dependent
+loops, expensive arithmetic, regular expressions and caller/model
+conversational paths still need platform limits (code nodes declare at most a
+30-second timeout) and hosted evidence. The portable fixed kernel is sealed by
+exact recompilation; no arbitrary model-authored Python enters that boundary.
 
 `assess_workflow` always reports `behavioral_compliance_proven: false` and lists
 hosted evidence requirements: actual factor ordering/identity challenges,

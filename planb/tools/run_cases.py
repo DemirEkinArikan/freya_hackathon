@@ -84,7 +84,7 @@ def main():
 
 def run_once(agent_id, cases, ids):
     """One simulation: every case once. Returns the scored rows."""
-    sessions = {c["id"]: http("/v1/practice/sessions", {"case": c["id"]})["variables"] for c in cases}
+    sessions = {c["id"]: http("/v1/practice/sessions", {"case": c["id"], **({"now": c["variables"]["now"]} if os.environ.get("MOCK_URL") and (c.get("variables") or {}).get("now") else {})})["variables"] for c in cases}   # with a mock, a case's own call time
     t0 = time.time()
     sim_id, it_id, status = freya.run_simulation(agent_id, f"cases {time.strftime('%H:%M:%S')}", {ids[c["id"]]: sessions[c["id"]] for c in cases})
     took = time.time() - t0

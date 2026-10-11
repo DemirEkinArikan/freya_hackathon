@@ -9,7 +9,7 @@
 2. Claude (Claude Agent SDK, skill .claude/skills/build-phone-agent) reads it, writes the phone agent with every tool
    URL on the mock, saves it to the slot `final` (the same workflow on every run), self-tests it on the mock's test
    customers through Freya simulations of our one workspace under the shared lease, and fixes what fails. The run
-   stops at 49 minutes.
+   stops at 34 minutes.
 3. The saved workflow is exported to submission/final.workflow.json.
 
 Everything it prints is the official trace (start and end time, every model call with its model and a one-line purpose,
@@ -27,7 +27,7 @@ sys.path += [str(KIT), str(REPO)]   # appended, so nothing here shadows a module
 from builder.config import read_local_environment
 from tools import case_folder
 
-SLOT, LIMIT = 'final', 2940   # 50 minutes per build, tests included, minus a minute for the export
+SLOT, LIMIT = 'final', 2040   # 35 minutes per build, tests included, minus a minute for the export
 WORKFLOW, TRACE = REPO / 'submission' / 'final.workflow.json', REPO / 'traces' / 'final.log'
 WORK, KEYFILE = Path(tempfile.gettempdir()) / 'planb-final', Path.home() / '.freya-anthropic-key'
 RUN_STATE = shutil.ignore_patterns('traces', 'out', 'results', 'builders', 'briefs', '__pycache__', '.freya-agents.json', '.personas.json')

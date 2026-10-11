@@ -31,7 +31,7 @@ python3 planb/build.py <case folder or .zip> <mock url>
   `MOCK_URL`, the base of every tool URL. `FREYA_BANK_HOST` points `tools/run_cases.py` at the mock.
 - **Build.** Claude Opus 5.5 (effort `max`) runs the skill on the bundle with the slot `final`, so the same workflow
   is updated on every run. It self-tests on the mock's test customers through the one workspace and its lease. The
-  run stops at 2940 s.
+  run stops at 2040 s.
 - **Output.** The saved workflow is exported to `submission/final.workflow.json`. Everything printed is the official
   trace: start and end, every model call with its model and purpose, tests, workflow id, agent id, steps, tools and
   tool URLs. Keys are removed. The trace is also written to `traces/final.log`, and both files get a timestamped copy.
@@ -96,14 +96,14 @@ Settings:
 | Variable | Default | Purpose |
 |---|---|---|
 | `BUILDER_MODEL` | `claude-opus-5-5` | Builder model |
-| `BUILDER_EFFORT` | `max` | Use `xhigh` if a run cannot finish inside 50 minutes at `max` (rules section 18) |
+| `BUILDER_EFFORT` | `max` | Use `xhigh` if a run cannot finish inside 35 minutes at `max` (rules section 18) |
 | `BUILDER_FALLBACK_MODEL` | `claude-sonnet-5-5` | Model the SDK falls back to |
 | `SELF_TEST_ONLY` | unset | `1`: self-written cases on the practice seeds, even for Brief A or B |
 | `FREYA_LEASE` | unset | Lock file shared by everyone who simulates in this workspace |
 | `FREYA_SIM_CONCURRENCY` | 5 | Calls per simulation, capped at 10 by `freya.py` |
 | `FREYA_BANK_HOST` | the kit's practice bank | Bank mock that `tools/run_cases.py` reads sessions and ledgers from. Set it in the process environment; `planb_attempts` passes the `FREYA_*` variables through, except the second workspace key |
 
-The builder stops itself after 2940 s.
+The builder stops itself after 2040 s.
 
 ## Files
 
@@ -125,7 +125,7 @@ Four files differ from the kit:
   - effort `max` and the fallback model;
   - model, effort, fallback model and provider in the trace header;
   - an `end` line even when the run fails;
-  - the 2940 s self-limit;
+  - the 2040 s self-limit;
   - this folder as its kit.
 - **`freya.py`** is the kit client with these changes:
   - `run_simulation` holds the workspace lease named by `FREYA_LEASE`: a `flock` plus its `.json` record. Before it

@@ -42,6 +42,8 @@ class CloseTableBindingTests(unittest.TestCase):
         self.verify(session)
         session.action("close_call", outcome="booked", reason="")
         self.assert_refused(session)  # no recorded callback: the booking code is never sent
+        _, _, session = self.session((policy, sources, api))
+        self.verify(session)
         session.action("close_call", outcome="declined", reason="refused_callback")
         self.assertEqual((session.body["outcome"], session.body["reason"]), ("declined", "refused_callback"))
         _, _, session = self.session((policy, sources, api))

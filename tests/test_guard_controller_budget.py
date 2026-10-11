@@ -4,8 +4,8 @@ import json
 import unittest
 
 import test_guard_aliases as aliases
-from builder.guards import (CONTROLLED_ENTRY_LIMIT, compile_guarded_workflow,
-                            validate_guarded_workflow)
+from builder.guards import (BUDGET_CLOSE, CONTROLLED_ENTRY_LIMIT, DEFAULT_CONVERSATION_TURNS,
+                            compile_guarded_workflow, validate_guarded_workflow)
 from builder.validation import validate_workflow
 from tools.replay_guarded import replay
 
@@ -27,35 +27,65 @@ class ControllerBudgetTests(unittest.TestCase):
         self.h.code("bg_commit_accept")
         self.assertTrue(self.state["inflight"])
 
-    def test_repeated_unmatched_turns_end_without_an_invented_bank_close(self):
+    def capped(self, turns, cap=None):
         context = deepcopy(self.h.context)
         talk = context["plan"]["nodes"]["talk"]
-        del talk["max_node_turns"]
-        del talk["max_turn_transition"]
+        del talk["max_node_turns"], talk["max_turn_transition"]
+        if cap:
+            talk["max_node_turns"] = cap
         workflow = compile_guarded_workflow(**context)["workflow"]
         self.assertEqual(validate_guarded_workflow(workflow, **context), [])
         self.assertEqual(validate_workflow(workflow, context["openapi"]), [])
+        self.assertEqual((workflow["nodes"]["talk"]["max_node_turns"], workflow["nodes"]["talk"]["max_turn_transition"]),
+                         (cap or DEFAULT_CONVERSATION_TURNS, BUDGET_CLOSE))
         script = {"version": 1,
                   "initial_inputs": {"customer_id": "synthetic-session", "now": "2031-05-02"},
-                  "frames": [{"node": "talk", "values": {}} for _ in range(10)], "responses": []}
-        report = replay(workflow, {k: v for k, v in context.items() if k != "openapi"}, context["openapi"], script)
-        self.assertEqual(report["status"], "terminated")
-        self.assertTrue(report["final_state"]["quarantined"])
-        self.assertFalse(report["final_state"]["close_attempted"])
-        self.assertFalse(report["calls"])
+                  "frames": [{"node": "talk", "values": {}} for _ in range(turns)],
+                  "responses": [{"operation": self.h.aliases["close_call"],
+                                 "envelope": {"status_code": 200, "data": {"evidence_ok": True}}}]}
+        return replay(workflow, {k: v for k, v in context.items() if k != "openapi"}, context["openapi"], script)
+
+    def test_repeated_unmatched_turns_close_from_recorded_facts_only(self):
+        report = self.capped(DEFAULT_CONVERSATION_TURNS)
+        self.assertEqual((report["status"], report["terminal_node"]), ("terminated", "bg_terminal"))
+        # Unreached identity: the policy's fixed no-contact row, with no proposal and no reason.
+        self.assertEqual([sorted(call["arguments"].values()) for call in report["calls"]], [["C_F", "synthetic-session"]])
+        self.assertEqual(report["final_state"]["close"], {"outcome": "not_reached"})
+        self.assertEqual([report["final_state"][key] for key in ("closed", "close_attempted", "quarantined")], [True, True, False])
+        self.assertEqual(self.capped(DEFAULT_CONVERSATION_TURNS - 1)["status"], "missing_conversation_frame")
 
     def test_authored_turn_cap_is_kept_when_no_fallback_was_supplied(self):
-        context = deepcopy(self.h.context)
-        context["plan"]["nodes"]["talk"]["max_node_turns"] = 3
-        del context["plan"]["nodes"]["talk"]["max_turn_transition"]
-        workflow = compile_guarded_workflow(**context)["workflow"]
-        self.assertEqual(workflow["nodes"]["talk"]["max_node_turns"], 3)
-        script = {"version": 1,
-                  "initial_inputs": {"customer_id": "synthetic-session", "now": "2031-05-02"},
-                  "frames": [{"node": "talk", "values": {}} for _ in range(3)], "responses": []}
-        report = replay(workflow, {k: v for k, v in context.items() if k != "openapi"}, context["openapi"], script)
-        self.assertEqual(report["status"], "terminated")
-        self.assertFalse(report["calls"])
+        report = self.capped(3, cap=3)
+        self.assertEqual((report["status"], report["terminal_node"]), ("terminated", "bg_terminal"))
+        self.assertEqual(len(report["calls"]), 1)
+
+    def test_budget_close_without_an_eligible_close_is_flagged(self):
+        # Unresolved products leave no eligible close: refused, flagged, nothing sent.
+        self.h.account()
+        self.h.code(BUDGET_CLOSE)
+        self.assertEqual((self.h.variables["bg_route"], self.h.variables["bg_body"], self.h.variables["bg_quarantined"]),
+                         ("blocked", "", "yes"))
+        self.assertEqual([self.state[key] for key in ("quarantined", "close_attempted", "attempts")], [True, False, {}])
+        self.assertEqual(self.h.workflow["nodes"][BUDGET_CLOSE]["transitions"][0]["target_node"], "bg_quarantine")
+
+    def test_exhausted_gate_closes_from_recorded_facts_and_malformed_counts_are_flagged(self):
+        gate = self.h.workflow["nodes"]["talk"]["max_turn_transition"]
+        self.assertEqual(self.h.workflow["nodes"][gate]["transitions"][-1]["target_node"], BUDGET_CLOSE)
+        before = deepcopy(self.h.variables)
+        for value in (str(CONTROLLED_ENTRY_LIMIT), None, "garbage"):
+            with self.subTest(counter=value):
+                self.h.variables = deepcopy(before)
+                self.h.variables["bg_control_entries"] = value
+                self.h.code(gate)
+                self.assertEqual(self.h.variables["bg_budget_route"], "stop")
+                self.h.code(BUDGET_CLOSE)
+                if value is None or value == "garbage":
+                    self.assertEqual((self.h.variables["bg_body"], self.h.variables["bg_quarantined"]), ("", "yes"))
+                    self.assertFalse(self.state["close_attempted"])
+                    continue
+                self.assertEqual((self.h.variables["bg_route"], self.h.variables["bg_quarantined"]), ("allow", ""))
+                self.h.api_result(BUDGET_CLOSE, {"evidence_ok": True})
+                self.assertEqual((self.state["close"], self.state["closed"]), ({"outcome": "not_reached"}, True))
 
     def test_existing_turn_cap_and_selected_fallback_remain_operative(self):
         talk = self.h.workflow["nodes"]["talk"]
@@ -146,6 +176,9 @@ class ControllerBudgetTests(unittest.TestCase):
         self.h.variables["bg_control_entries"] = str(CONTROLLED_ENTRY_LIMIT)
         self.h.code(gate)
         self.assertEqual(self.h.variables["bg_budget_route"], "stop")
+        self.h.code(BUDGET_CLOSE)  # an in-flight write refuses the budget close
+        self.assertEqual(self.h.variables["bg_quarantined"], "yes")
+        self.assertFalse(self.state["close_attempted"])
         self.assertEqual(self.state["recorded_promises"], original["recorded_promises"])
         self.assertEqual(self.state["inflight"], original["inflight"])
         self.assertTrue(self.state["quarantined"])

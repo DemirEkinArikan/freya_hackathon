@@ -43,6 +43,7 @@ from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 from .policy_patch import apply_policy_patch, repair_excerpt
 from .policy_demotion import demote_policy
+from .platform_lint import lint_workflow
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -567,6 +568,21 @@ def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict],
     return contract["sha256"]
 
 
+def _platform_lint(run_dir: Path, trace: Trace, candidate: dict, attempt: int, secrets: tuple[str, ...]) -> dict:
+    """Record findings against verified platform behaviour; never a rejection or a change to the candidate.
+
+    Exact recompilation validates the guarded workflow, so fixes belong in the compiler, not here.
+    """
+    try:
+        report = lint_workflow(candidate["workflow"], candidate.get("policy"))
+        _write_json(run_dir / "platform-lint.json", sanitize(report, secrets=secrets))
+        summary = report["summary"]
+    except Exception as exc:  # a lint fault must never cost a build
+        summary = {"error": f"{type(exc).__name__}: {exc}"}
+    trace.emit("platform_lint", attempt=attempt, **summary)
+    return summary
+
+
 def _known_secrets() -> tuple[str, ...]:
     return tuple(v for k, v in os.environ.items() if v and
                  (k.endswith(("API_KEY", "ACCESS_TOKEN", "SECRET", "PASSWORD")) or
@@ -869,6 +885,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             _write_json(run_dir / "workflow.json", candidate["workflow"])
             trace.emit("action_guard_compilation", verified=True,
                        plan_sha256=digest(plan), guard_manifest_sha256=digest(guard_bundle["guard_manifest"]))
+            platform_lint = _platform_lint(run_dir, trace, candidate, attempt_number, secret_values)
             if mode == "generate-only":
                 deadline.require()
                 _attempt_status(attempt_dir, attempt_record, secret_values, status="generated_validated", phase="complete")
@@ -882,7 +899,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "execution_requirements_sha256": requirements["sha256"],
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
-                            "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
+                            "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None, "platform_lint": platform_lint,
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                             "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
@@ -985,7 +1002,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "execution_requirements_sha256": requirements["sha256"],
                     "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                     "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
-                    "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None,
+                    "plan_origin": plan_origin, "plan_fallback_reason": str(fallback) if fallback else None, "platform_lint": platform_lint,
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "evaluator_input": evaluator_input,

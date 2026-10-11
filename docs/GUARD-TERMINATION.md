@@ -50,8 +50,23 @@ routes and quarantine semantics are byte-identical with or without the rule.
 Without it, the end stays silent. The one line serves every stop that reaches
 `bg_quarantine`: an unknown or contradictory write result, an initialization
 (input) failure, a controller fault and a refused close. So it can be said
-before any booking was discussed, or after an earlier write was recorded. Entry-budget and
-turn-budget stops, and close results, end at the silent `bg_terminal`.
+before any booking was discussed, or after an earlier write was recorded. Close results end
+at the silent `bg_terminal`.
+
+A turn-budget stop (a conversation node without an authored `max_turn_transition`
+reaching its cap) and an exhausted controller entry gate go to `bg_budget_close`, one
+kernel-owned close with no proposal inputs. Its sealed preparation chooses the close
+from recorded facts only: a recorded protected fact first, otherwise the policy's
+identity or goal close row for the recorded phase, under the same eligibility and
+recorded-fact checks as any close. It never sends a protected outcome without its
+recorded fact. When no close is eligible (unresolved products, an in-flight write, a
+close already attempted, an unreadable entry count), the close is refused and the call
+ends flagged at `bg_quarantine`, like any refused close. It skips only the entry-budget
+check, because every route out of it ends the call. The default cap is 20 caller turns
+per stay in a node: the platform counts turns per entry (the kit's `current_turns`
+resets on every transition), the kit sizes its negotiating example step at 20 and says
+to size caps from real conversations, and its caller styles split numbers over two
+turns and ask back. `tests/test_guard_controller_budget.py` covers these paths.
 `tests/test_uncertain_stop_line.py` covers this; it includes an env-gated
 (`FREYA_CALLBACK_R3_ARTIFACTS`) replay of the retained callback round-3
 uncertain cases.

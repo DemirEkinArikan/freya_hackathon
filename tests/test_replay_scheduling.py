@@ -377,11 +377,12 @@ class ReplaySchedulingTests(unittest.TestCase):
         # This changes the compiled controller allocation, never its validation.
         with patch("builder.guards.CONTROLLED_ENTRY_LIMIT", 8):
             workflow, context, api = compiled(nodes)
-            report = replay(workflow, context, api, script(responses=[]), max_steps=100)
+            report = replay(workflow, context, api, script(), max_steps=100)
+        # The exhausted gate ends through the one facts-only budget close.
         self.assertEqual(report["status"], "terminated")
         self.assertEqual(report["terminal_node"], "bg_terminal")
-        self.assertTrue(report["final_state"]["quarantined"])
-        self.assertFalse(report["calls"])
+        self.assertEqual([(call["tool"], call["node"]) for call in report["calls"]], [("close_call", "bg_bg_budget_close_api")])
+        self.assertEqual([report["final_state"][key] for key in ("closed", "quarantined")], [True, False])
         self.assertEqual(report["frames_consumed"], 0)
         self.assertLess(len(report["steps"]), 30)
 

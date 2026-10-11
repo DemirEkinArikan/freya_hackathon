@@ -128,9 +128,9 @@ class GoalScopedResolutionTests(unittest.TestCase):
                 call.code("close")
                 self.assertEqual(call.variables["bg_route"], "blocked" if required else "allow")
                 self.assertEqual(call.state["call_inputs"], {})
-                self.assertFalse(call.state["quarantined"])
+                self.assertEqual(call.state["quarantined"], required)  # a refused close is flagged
                 if required:
-                    self.assertEqual(call.target("close"), "bg_terminal")
+                    self.assertEqual(call.target("close"), "bg_quarantine")
                     self.assertFalse(call.state["close_attempted"])
                 else:
                     self.assertEqual(json.loads(call.variables["bg_body"])["outcome"], "promise")
@@ -139,10 +139,12 @@ class GoalScopedResolutionTests(unittest.TestCase):
         call = CompiledCall(authored(scoped()), {SELECTOR: ALL})
         call.account()
         call.promise()
+        before = call.variables["bg_state"]
         call.code("close")
         self.assertEqual(call.variables["bg_route"], "blocked")
         self.assertFalse(call.variables["bg_body"])
         self.assertFalse(call.state["close_attempted"])
+        call.variables["bg_state"] = before  # a refused close ends its call; resume the state before it
         call.promise("asset-two", "82.10")
         call.code("close")
         self.assertEqual(call.variables["bg_route"], "allow")

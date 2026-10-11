@@ -35,9 +35,9 @@ class IdentityCloseApplicabilityTests(unittest.TestCase):
         requirements, context, workflow = compiled(*values)
         return requirements, context, SealedSession(context, workflow)
 
-    def assert_silent_end(self, session, node):
-        self.assertEqual(session.target(node), "bg_terminal")
-        terminal = session.workflow["nodes"]["bg_terminal"]
+    def assert_silent_end(self, session, node, expected="bg_terminal"):
+        self.assertEqual(session.target(node), expected)
+        terminal = session.workflow["nodes"][expected]
         self.assertEqual(terminal["node_type"], "end_call")
         self.assertEqual(terminal["on_enter"], {"type": "silent"})
         self.assertEqual(terminal["transitions"], [])
@@ -47,8 +47,9 @@ class IdentityCloseApplicabilityTests(unittest.TestCase):
         self.assertFalse(session.variables["bg_body"])
         self.assertFalse(session.state["close_attempted"])
         self.assertFalse(session.state["closed"])
-        self.assertEqual(session.state, before)
-        self.assert_silent_end(session, session.entries["close_call"])
+        # A refused close keeps every record and ends at the silent quarantine stop with the flag.
+        self.assertEqual(session.state, dict(before, quarantined=True))
+        self.assert_silent_end(session, session.entries["close_call"], "bg_quarantine")
 
     def test_absent_table_is_not_invented_in_frozen_profile_or_requirements(self):
         for actions in (["close_call"], ["verify_identity", "close_call"],
@@ -119,7 +120,7 @@ class IdentityCloseApplicabilityTests(unittest.TestCase):
                 before = session.state
                 session.action("close_call", outcome=outcome, reason=reason)
                 self.assert_no_bank_close(session, before)
-                self.assertFalse(session.state["quarantined"])
+                self.assertTrue(session.state["quarantined"])  # no eligible close: the honest flag
                 self.assertFalse(session.state["attempts"])
 
     def test_actual_identity_exhaustion_blocks_without_fabricating_bank_disposition(self):

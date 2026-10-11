@@ -6,7 +6,9 @@ verifier reads an existing ZIP and checks it against an independently chosen
 repository commit. It never repairs evidence, invokes generation, calls Freya,
 publishes a workflow or submits attachments. Package production remains in
 [SUBMISSION-PACKAGE.md](SUBMISSION-PACKAGE.md); clean source reproduction remains
-in [REHEARSAL.md](REHEARSAL.md).
+in [REHEARSAL.md](REHEARSAL.md). The verifier was written by the Codex S07 lane
+(draft #118, `eb449f6`) and brought to main by Claude S07 through a handoff
+recorded on issue 19.
 
 ## Read-only command
 
@@ -37,6 +39,26 @@ byte membership in the trusted commit; hosted authenticity, hidden-build
 execution and submission receipt remain unverified. Retain the exact
 command, trusted commit and report. A report belongs to that archive's raw
 SHA-256; later rebuilt or changed bytes require a new check.
+
+`final-consistency` accepts any two distinct, self-consistent runs labelled
+`hidden-1`/`hidden-2`, including practice runs. For a final ZIP, run the
+hidden-release check from
+[#131](https://github.com/DemirEkinArikan/freya_hackathon/pull/131) after the
+bundle check passes. It does not replace the bundle check:
+
+```sh
+python3.11 tools/verify_hidden_release.py \
+  --archive artifacts/submission/final.zip \
+  --official-pins /path/to/official-pins.json
+```
+
+The operator records the pins from the organizer's files at the 17:00 UTC
+release, never from the ZIP. They are the sha256 of each official brief, in
+brief order, and of the API. The check requires each label's archived inputs to
+equal its pins, and each selected trace to fall between 17:00 and 20:00 UTC on
+11 October. It relies on the bundle check for archive safety. Trace times are
+self-reported. The check ties the labels to the official inputs, but it cannot
+prove when or where a build actually ran.
 
 The verifier does not execute archived Python or write to the archive or source
 checkout. Its private temporary reconstruction is removed after trusted local
@@ -118,7 +140,8 @@ As of this preparation, official hidden input release is **11 October 2026,
 17:00 UTC / 20:00 Istanbul**. No actual hidden build or final submission is
 claimed here. The reviewed kit does not specify a submission destination;
 obtain the real organizer instructions and receipt mechanism. Follow
-[T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md) and preserve **19:45–20:00 UTC /
+[T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md) and
+[T18-SUBMISSION-CHECKLIST.md](T18-SUBMISSION-CHECKLIST.md), and preserve **19:45–20:00 UTC /
 22:45–23:00 Istanbul** for verified attachments, authorized delivery and receipt
 inspection. A source merge, prepared ZIP or local verifier report cannot close
 T17/T18 or issue 19.

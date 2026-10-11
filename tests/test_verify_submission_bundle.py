@@ -393,6 +393,18 @@ class SyntheticFinalConsistencyTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), checkout)
         self.assertFalse(self.marker.exists())
 
+    def test_consistent_final_is_not_bound_to_the_official_release(self):
+        # Overlap with #131: this producer-format ZIP passes here, matches pins
+        # taken from its own inputs, and is still rejected for its 10 Oct traces.
+        from tools.verify_hidden_release import verify_hidden_release
+        self.assertEqual(self.verify()['status'], 'consistency_verified')
+        payload = dict((info.filename, raw) for info, raw in self.entries)
+        pins = {label: {'briefs': [hashlib.sha256(payload[path]).hexdigest() for path in inputs['briefs']],
+                        'tool_api': hashlib.sha256(payload[inputs['tool_api']]).hexdigest()}
+                for label, inputs in self.index()['submission']['inputs'].items()}
+        with self.assertRaisesRegex(ValueError, 'hidden-1: selected build ran outside the official release window'):
+            verify_hidden_release(self.archive, pins)
+
     def test_self_consistent_reindexed_evidence_requires_committed_original_bytes(self):
         name = 'runs/hidden-1/manifest.json'
         run = self.evidence_json(name)

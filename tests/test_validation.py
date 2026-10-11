@@ -164,5 +164,68 @@ class ValidationTests(unittest.TestCase):
             self.assertTrue(validate_workflow(workflow, OPENAPI))
 
 
+def referenced_openapi():
+    """The kit API with every request, response and item schema behind local references."""
+    api = copy.deepcopy(OPENAPI)
+    schemas = api.setdefault("components", {}).setdefault("schemas", {})
+    responses = api["components"].setdefault("responses", {})
+    for path, methods in api["paths"].items():
+        operation, name = methods["post"], path.strip("/")
+        media = operation["requestBody"]["content"]["application/json"]
+        schemas[name], media["schema"] = media["schema"], {"$ref": "#/components/schemas/" + name}
+        for status, response in operation["responses"].items():
+            key = f"{name}_{status}"
+            for content in response.get("content", {}).values():
+                schemas[key], content["schema"] = content["schema"], {"$ref": "#/components/schemas/" + key}
+            responses[key], operation["responses"][status] = response, {"$ref": "#/components/responses/" + key}
+    products = schemas["get_account_200"]["properties"]["products"]
+    schemas["product"], products["items"] = products["items"], {"$ref": "#/components/schemas/product"}
+    return api
+
+
+class LocalReferenceValidationTests(unittest.TestCase):
+    def test_local_references_validate_like_the_inline_contract(self):
+        api = referenced_openapi()
+        workflow = valid_workflow()
+        workflow["nodes"]["account"]["response_mapping"].append({"path": "data.products.0.product_id", "variable": "first"})
+        self.assertEqual(validate_workflow(workflow, OPENAPI), [])
+        self.assertEqual(validate_workflow(workflow, api), [])
+        body = workflow["nodes"]["identity"]["tools"][0]["function"]["parameters"]["properties"]["body"]
+        body["properties"]["field"]["enum"].append("mother_maiden_name")
+        body["properties"]["unknown"] = {"type": "string", "default": "x"}
+        workflow["nodes"]["account"]["response_mapping"].append({"path": "data.products.0.balance", "variable": "balance"})
+        errors = validate_workflow(workflow, api)
+        self.assertEqual(errors, validate_workflow(workflow, OPENAPI))
+        for expected in ("model-filled enum fields must use OpenAPI values", "body contains an unknown or malformed field",
+                         "result mapping path is absent from OpenAPI response schemas/hooks"):
+            self.assertTrue(any(expected in error for error in errors), expected)
+
+    def test_compatible_allof_of_references_validates_and_conflicts_fail_closed(self):
+        api = referenced_openapi()
+        request = api["components"]["schemas"]["verify_identity"]
+        api["components"]["schemas"]["subject"] = {"type": "object", "required": ["customer_id"], "properties": {
+            "customer_id": request["properties"].pop("customer_id")}}
+        api["components"]["schemas"]["verify_identity"] = {"allOf": [{"$ref": "#/components/schemas/subject"}, request]}
+        self.assertEqual(validate_workflow(valid_workflow(), api), [])
+        request["properties"]["customer_id"] = {"type": "integer"}
+        self.assertEqual(validate_workflow(valid_workflow(), api),
+                         ["openapi: conflicting overlapping API allOf properties are unsupported"])
+        request["properties"].pop("customer_id")
+        request["required"] = "customer_id"
+        self.assertEqual(validate_workflow(valid_workflow(), api),
+                         ["openapi: unsupported schema reference or allOf composition"])
+
+    def test_external_recursive_and_unresolved_references_fail_closed(self):
+        nonlocal_ref = "openapi: API references must be nonrecursive local JSON pointers"
+        for target, expected in (("https://schemas.invalid/product.json", nonlocal_ref),
+                                 ("shared.json#/components/schemas/product", nonlocal_ref),
+                                 ("#/components/schemas/product", nonlocal_ref),
+                                 ("#/components/schemas/missing", "openapi: API contains an unresolved local reference")):
+            api = referenced_openapi()
+            api["components"]["schemas"]["product"]["properties"]["owner"] = {"$ref": target}
+            with self.subTest(target=target):
+                self.assertEqual(validate_workflow(valid_workflow(), api), [expected])
+
+
 if __name__ == "__main__":
     unittest.main()

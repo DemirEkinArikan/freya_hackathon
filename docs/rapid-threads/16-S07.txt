@@ -1,0 +1,34 @@
+S07: Independent package and clean-rebuild verifier
+Issue: https://github.com/DemirEkinArikan/freya_hackathon/issues/19
+Lane: s07 (use a unique branch suffix if one already exists)
+
+Work on private repo DemirEkinArikan/freya_hackathon, starting from /Users/demirekinarikan/VsCode/freya_hackathon. Read AGENTS.md, the linked issue and its newest checkpoints, docs/tasks.json, docs/ISSUE-CLOSURE-AUDIT.md and current artifacts/thread-coordination/*.json. Fetch origin/main. Create your own separate worktree under /Users/demirekinarikan/VsCode/freya_hackathon-worktrees and a unique rapid/<lane>-20261011 branch. Never edit another worker's active checkout, reset its branch, force-push, or stop an unverified process.
+
+Prioritize first-place readiness: unseen-policy correctness, repeatability, eligibility and reproducibility before amount or build speed. Avoid fitting the builder to specific cases.
+
+Drive the whole stated remaining deliverable to acceptance. Anyone can do any issue; names, assignments and timers are not gates. Technical dependencies govern completion, not permission to start useful work. Before edits, post exact file/function scope and starting commit in the issue; check branch activity and coordinate overlap. Checkpoint and push regularly with exact commits, actual tests, remaining work, job PID/session and deployment/simulation identifiers. Existing preparatory code is already substantial: inspect it before rewriting.
+
+Current active technical scopes to preserve until their checked PRs merge:
+- Primary: task/t08-bounded-workflow-20261011 owns guards._code administrative counter, _entry_budget_code, _bound_entries, final graph remapping and narrow fixture compatibility. Final source checkpoint 7e6a715; its own exact full is running. Earlier 4ad75fb passed 1291 tests, but do not relabel that result as a later-head pass.
+- Callback/formats worker: task/t07-source-input-formats-20261011 / PR110 owns policy call_input_formats, guards._profile format binding and guard_call_inputs validation. It also owns the approved callback development build; do not launch a duplicate on that input.
+- Passthrough worker: task/t07-authored-passthrough-declaration-20261011 owns guards._plan_errors conversation passthrough/default/final fallback checks.
+- Routing-prompt worker: task/t07-kit-routing-guidance owns builder/prompts/workflow.txt and workflow-reference.txt entry/caller/tool-transition guidance.
+These are file scopes, not person permissions. Coordinate a recorded technical handoff if you need one of them. Read current checkpoints: heads and PRs above are snapshots, not instructions to use obsolete source.
+
+Python 3.11 is /opt/homebrew/bin/python3.11. For code changes run meaningful regressions, python3.11 -m unittest discover -s tests -v, python3.11 tools/verify_kit.py, python3.11 tools/package_submission.py --check --source-only, and git diff --check. Keep immutable tested heads and original failure logs. For documentation-only changes, kit/source/diff checks suffice. Push checked work, open a focused PR to main and merge directly; review permission is already given. Confirm the actual matching PR head and merge result. Only run tools/cowork.py complete Txx --commit <checked-pushed-head> --pr <matching-merged-PR> --checks <actual-evidence> when that whole issue's deliverable AND dependencies are complete. Otherwise record exactly what remains and keep progressing. Source checks, generated builds, platform compatibility and banking passes are separate claims.
+
+Staging and simulations are authorized. All worktrees share /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock and .simulation.json; verify actual server status under the lease before live use. Keep one workspace simulation at a time and never replace a running version used by another run. Coordinate with the operator lane for publication/simulation scheduling; anyone may use the resource through the same protocol.
+
+Keep experimental-5 as the phone model. Generation uses existing authenticated Codex, a fresh mandatory tool-free audit and approved brief/OpenAPI/kit inputs only. The controller holds credentials. No purchases, sibling Launchway/private material, raw secrets/logs in GitHub, manual generated-policy/workflow edits, evaluator scripts/expected-record payloads sent to generation, or premature holdout use. Hidden rules are input data, not source/static-prompt patches. Every builder has its own 1800-second global deadline and export reserve; evaluation budgets never extend it. New development inputs must be reviewed, fingerprinted and separate from the reserved holdouts.
+
+Sunday 11 October hidden release is 17:00 UTC / 20:00 Istanbul; deadline 20:00 UTC / 23:00 Istanbul. Preserve 22:45-23:00 Istanbul for submission. Do not invent a submission destination. If input/channel/dependency is genuinely absent, finish independent preparation and report the precise pending item; never mark an unexecuted final deliverable complete.
+
+YOUR SCOPE AND FINISH CONDITION
+
+Supporting verifier for T17/T18. Own a separate readonly bundle verifier, dedicated adversarial validation tests/docs and audit reports; tools/package_submission.py and final packaging helpers remain T18's scope unless handed off.
+
+Verify exact source commit/archive, approved ordered inputs/API, selectedattempt1/2, frozen contracts, traces/audits, workflow/agent/version, publication/export agreement and sanitized provenance. Reject stale or cross-run bindings, missing second build, swapped artifacts, incomplete traces, forged completion, wrong phone model/tools, credentials/private logs and manual generated changes. Keep original artifact bytes; no repair-by-editing evidence.
+
+Use clean extraction/checkouts and exact builder commands with permitted model sign-in; source-only archive reproduction is preparation, not a live banking rehearsal. Coordinate actual rehearsal with T17 and final two hidden runs with T18. Run meaningful credential/cross-binding/deadline/package checks now.
+
+Deliver a concrete verified package report and unresolved discrepancies. Once actual hidden artifacts exist, independently inspect them before authorized submission, preserving the final15minutes. Do not invent a submission channel or submit an unverified package. Notify T18/parent with exact receipt/proof limits when the final deliverable actually occurs.

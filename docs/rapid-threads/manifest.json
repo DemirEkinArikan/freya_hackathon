@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "task_prompts": 9,
+  "supporting_prompts": 7,
+  "prompts": [
+    {
+      "number": 1,
+      "lane": "T07",
+      "title": "Adaptive generation and acceptance",
+      "issue": 8,
+      "file": "01-T07.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 2,
+      "lane": "T08",
+      "title": "Integrate irreversible action guards",
+      "issue": 9,
+      "file": "02-T08.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 3,
+      "lane": "T09",
+      "title": "Validator acceptance and dependency closure",
+      "issue": 10,
+      "file": "03-T09.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 4,
+      "lane": "T13",
+      "title": "Scoring evidence acceptance and closure",
+      "issue": 14,
+      "file": "04-T13.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 5,
+      "lane": "T14",
+      "title": "Execute bounded autonomous repair",
+      "issue": 15,
+      "file": "05-T14.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 6,
+      "lane": "T15",
+      "title": "Run actual development comparison",
+      "issue": 16,
+      "file": "06-T15.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 7,
+      "lane": "T16",
+      "title": "Fresh holdout evaluation",
+      "issue": 17,
+      "file": "07-T16.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 8,
+      "lane": "T17",
+      "title": "Clean-source rehearsal and freeze",
+      "issue": 18,
+      "file": "08-T17.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 9,
+      "lane": "T18",
+      "title": "Hidden builds and final submission",
+      "issue": 19,
+      "file": "09-T18.txt",
+      "issue_owner": true
+    },
+    {
+      "number": 10,
+      "lane": "S01",
+      "title": "Source-policy semantic review",
+      "issue": 8,
+      "file": "10-S01.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 11,
+      "lane": "S02",
+      "title": "Replay engine waiting and tool-entry semantics",
+      "issue": 10,
+      "file": "11-S02.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 12,
+      "lane": "S03",
+      "title": "Fresh identity-only banking goal",
+      "issue": 8,
+      "file": "12-S03.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 13,
+      "lane": "S04",
+      "title": "Fresh account-information and raw amendment goal",
+      "issue": 8,
+      "file": "13-S04.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 14,
+      "lane": "S05",
+      "title": "Independent irreversible-action fault matrix",
+      "issue": 9,
+      "file": "14-S05.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 15,
+      "lane": "S06",
+      "title": "Shared staging and hosted evaluation operator",
+      "issue": 16,
+      "file": "15-S06.txt",
+      "issue_owner": false
+    },
+    {
+      "number": 16,
+      "lane": "S07",
+      "title": "Independent package and clean-rebuild verifier",
+      "issue": 19,
+      "file": "16-S07.txt",
+      "issue_owner": false
+    }
+  ]
+}

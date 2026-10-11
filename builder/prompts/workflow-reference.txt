@@ -97,9 +97,10 @@ status and recorded-action counts. Every guard step refreshes this protected JSO
 no authored extraction may write it. Raw bg_state/bg_body/result variables,
 customer_id and automatic operation-result variables cannot be templated. now
 may be read. Never place bg_facts in authored on_enter speech/TTS.
-Raw protected values also cannot appear in condition.variable reads. The string
-routing_prompt may read {{bg_facts}} explicitly; task_message is not visible to
-the routing model, so put needed routing context in routing_prompt/transitions.
+Raw protected values also cannot appear in condition.variable reads.
+task_message is not visible to the routing model. A node with matches_intent
+routes never sets routing_prompt (the compiler removes it): put the context each
+intent needs in that route's own condition description.
 
 internal_action_references.products contains product_ref IDs needed for proposed
 action inputs; these are internal and must never be spoken. position is policy

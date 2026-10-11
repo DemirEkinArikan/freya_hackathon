@@ -59,6 +59,9 @@ def compiled(policy, sources, api):
     authored = plan(requirements["actions"])
     close = next(node for node in authored["nodes"].values() if node.get("action") == "close_call")
     close["inputs"] = {"outcome": "proposal_outcome", "reason": "proposal_reason"}
+    for node in authored["nodes"].values():
+        if node.get("action") == "verify_identity":
+            node["inputs"]["field"] = "proposal_field"
     errors = validate_plan_execution(authored, requirements, policy, sources, api)
     if errors:
         raise AssertionError(errors)

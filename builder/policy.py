@@ -67,7 +67,7 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
 _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_bounds"})
-_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
+_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "confirmation_readback", "confirmation_language", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
                          "promise_readback", "account_disclosure_fields", "identity_close_choices", "goal_close", "call_variables", "call_input_formats",
@@ -105,6 +105,8 @@ _SHAPE_GUIDANCE = {
     "confirmation_scope": 'the string "each" or "batch"',
     "confirmation_question": "optional nonempty literal text containing the exact question prescribed by the source, present verbatim in its cited source quotation; preserve spelling/language/punctuation; no variable templates, control characters or private engine/credential prefixes (the compiler prepends its protected readback). Requires source-backed confirmation_question_actions to state exactly where the wording applies, never infer a global scope. Omit both when no wording is prescribed. This changes text only, not confirmation requirements or guarded consent semantics; different questions for different actions are not representable by this scalar interface",
     "confirmation_question_actions": "paired with confirmation_question: a nonempty unique array containing only commit_promises, commit_transfer, schedule_callback, with literal source provenance establishing the question's action scope. No default/inferred scope. A common source question can explicitly include multiple roles. This grants neither actions nor confirmation requirements; other confirmation nodes retain their generic fallback",
+    "confirmation_readback": "optional exactly {actions: nonempty unique array of commit_promises/commit_transfer/schedule_callback, clauses: nonempty unique array of facts the source requires the confirmation read-back to state}. Each clause is copied verbatim, as whole words, from this rule's own source quotation and contains no digits or other numerals, braces, control or format characters or private engine/credential prefixes. The compiler checks only these literal properties, not meaning: a clause states a fixed fact, never a date, time, amount or other value (the protected terms carry those) and never words the source forbids saying. Requests keep only their sealed fields. Clauses are spoken verbatim after the protected terms. A selected named action must require confirmation. Use confirmation_question for a prescribed literal question and confirmation_language for the conversation language; omit this rule when the source prescribes no read-back fact",
+    "confirmation_language": "optional exactly {actions: nonempty unique array of commit_promises/commit_transfer/schedule_callback, language: the source's complete conversation-language statement, copied verbatim as whole words from this rule's own source quotation, including any switch condition (where the call begins and when it changes), never a bare language name}. Same text limits as confirmation_readback clauses; its quotation may be a different source statement from the read-back facts. Use it only when the fixed English confirmation line does not satisfy that statement. The sealed confirmation then has the dialogue model read back the same protected terms, clauses and question in the language the statement requires at that point in the call; this speech is not proven word-for-word. A selected named action must require confirmation",
     "note_failure_limit": "a positive integer; booleans are not integers",
     "callback_failure_limit": "a positive integer; booleans are not integers",
     "transfer_failure_limit": "a positive integer; booleans are not integers",
@@ -297,6 +299,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = strings(value, empty=True) and len(set(value)) == len(value)
     elif kind == "confirmation_scope":
         valid = isinstance(value, str) and value in {"each", "batch"}
+    elif kind in {"confirmation_readback", "confirmation_language"}:
+        return _execution_errors(kind, value)
     elif kind in {"action_fields", "result_fields", "product_fields"}:
         valid = isinstance(value, dict) and all(isinstance(k, str) and k and
                     ((isinstance(v, str) and bool(v)) or (isinstance(v, dict) and bool(v) and
@@ -352,6 +356,19 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, list) and bool(value) and all(text(item) for item in value)
                  and len(set(value)) == len(value)
                  and not set(value) - {"commit_promises", "commit_transfer", "schedule_callback"})
+    elif kind in {"confirmation_readback", "confirmation_language"}:
+        # Literal sourced words only: no numerals, templates, hidden characters
+        # or engine names. Meaning is not checked; requests stay sealed.
+        key = "clauses" if kind == "confirmation_readback" else "language"
+        texts = value.get(key) if isinstance(value, dict) else None
+        texts = texts if key == "clauses" else [texts]
+        valid = (isinstance(value, dict) and set(value) == {"actions", key}
+                 and not _execution_errors("confirmation_question_actions", value["actions"])
+                 and isinstance(texts, list) and bool(texts)
+                 and all(text(item) and bool(item.strip())
+                         and all(char.isprintable() and char not in "{}" and not char.isnumeric() for char in item)
+                         and not any(prefix in item.casefold() for prefix in ("bg_", "auth_", "bank_token")) for item in texts)
+                 and len(set(texts)) == len(texts))
     elif kind == "account_disclosure_fields":
         def fields(items):
             return (isinstance(items, list) and all(text(item) for item in items)
@@ -570,6 +587,10 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                 question = rule.get("value")
                 if rule.get("kind") == "confirmation_question" and isinstance(question, str) and question not in quote:
                     errors.append(prefix + " confirmation_question must appear literally in its cited source quote")
+                if rule.get("kind") in {"confirmation_readback", "confirmation_language"} and isinstance(question, dict):
+                    texts = [question.get("language")] + (question["clauses"] if isinstance(question.get("clauses"), list) else [])
+                    if any(isinstance(item, str) and not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", quote) for item in texts):
+                        errors.append(prefix + " " + rule["kind"] + " wording must appear literally as whole words in its cited source quote")
                 if rule.get("kind") == "resolve_all_products" and isinstance(question, dict):
                     selector = question.get("selector")
                     if isinstance(selector, str) and not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", quote):

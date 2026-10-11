@@ -10,15 +10,17 @@ including per-fixture verdicts and artifact hashes, is
 
 | Split | Declared | Builds | Replays executed | Pass | Fail | Uncovered |
 |---|---:|---:|---:|---:|---:|---:|
-| train (train-1, train-2) | 36 | 2 of 2, both failed | 0 | 0 | 36 | 0 |
+| train (train-1, train-2) | 36 | 2 of 2, both failed | 0 | 0 | 0 | 36 |
 | validation (validation-1, validation-2) | 24 | 0 of 2 | 0 | 0 | 0 | 24 |
 
 How the counts are made:
 
-- Neither training build exported a workflow, so no replay can run. The 36
-  training fixtures are counted as failures of the baseline method
-  (`no_candidate_build_failed`). They stay in the denominator and are not
-  reported as replay results.
+- Neither training build exported a workflow, so no binding or replay exists.
+  Under the counting rule, an unrun or unbound fixture stays uncovered and
+  never counts as a pass or a weaker result. The 36 training fixtures are
+  therefore uncovered (`unbound_no_candidate_build_failed`). Both failed builds
+  are kept as baseline method failures. The first version of this record
+  (PR #146) counted these fixtures as failures; this version corrects that.
 - The 24 validation fixtures are uncovered. The declared ordering ("Validation
   starts only after both methods finish training in both lanes") is not met,
   because no structured training result exists in either lane. The comparator
@@ -98,9 +100,9 @@ changes `builder/validation.py` and `builder/execution_requirements.py`.
    give both methods the same bytes, and launch once per profile.
 2. If a later validation build exports a candidate, author its 12 bindings
    without reading oracles and run `local_generated_eval --split validation`
-   under the matching compiler. Otherwise record its fixtures as failures, as
+   under the matching compiler. Otherwise its fixtures stay uncovered, as
    above.
 
-The baseline source is frozen, so its training failures are final for this
+The baseline source is frozen, so its training build failures are final for this
 comparison. Do not rebuild these inputs on this source. No hosted call,
 simulation, holdout, candidate freeze or issue closure is claimed.

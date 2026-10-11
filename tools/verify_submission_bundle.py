@@ -409,11 +409,13 @@ def check_recompilation(run_dir: Path, run: dict, export: dict, briefs: list, ap
     policy = _strict_json((run_dir / "policy.json").read_bytes())
     sources = [{"id": f"brief-{number}", "file": file, "sha256": digest(text), "text": text}
                for number, (file, text) in enumerate(briefs, 1)]
-    contract = compile_policy_contract(policy, sources, api)
-    requirements = compile_execution_requirements(policy, sources, api)
-    if validate_plan_execution(context["plan"], requirements, policy, sources, api):
+    # A relaxed (last-resort) build recorded its declaration mode; recompile in that mode.
+    mode = run.get("declaration_mode", "strict")
+    contract = compile_policy_contract(policy, sources, api, declarations=mode)
+    requirements = compile_execution_requirements(policy, sources, api, declarations=mode)
+    if validate_plan_execution(context["plan"], requirements, policy, sources, api, declarations=mode):
         raise ValueError("guard_compilation")
-    bindings = compile_action_bindings(policy, api)
+    bindings = compile_action_bindings(policy, api, declarations=mode)
     execution = compile_execution_policy(policy, bindings, required_kinds=required_execution_kinds(context["plan"]))
     if (digest(contract) != digest(context["contract"])
             or digest(bindings) != digest(context["bindings"])

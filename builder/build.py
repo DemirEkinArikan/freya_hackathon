@@ -723,6 +723,9 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                  "execution_policy": execution_policy, "bindings": bindings}
                 _attempt_snapshot(attempt_dir, "guard-context.json", guard_context, secret_values)
                 guard_bundle = compile_guarded_workflow(plan, compiled, openapi, execution_policy, bindings)
+                if guard_bundle["guard_manifest"]["routing_normalisation"]:
+                    trace.emit("routing_normalisation", attempt=attempt_number,
+                               changes=guard_bundle["guard_manifest"]["routing_normalisation"])
                 _attempt_snapshot(attempt_dir, "guard-manifest.json", guard_bundle["guard_manifest"], secret_values)
                 _attempt_snapshot(attempt_dir, "workflow.json", guard_bundle["workflow"], secret_values)
                 candidate = {"policy": copy.deepcopy(frozen_policy), "workflow": guard_bundle["workflow"]}

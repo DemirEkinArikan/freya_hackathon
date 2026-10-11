@@ -70,8 +70,10 @@ A state-only decision judged from the bg_facts view is instead an LLM-entry step
 whose task_message reads that view and directs the dialogue model, without waiting
 for the caller, to take the one engine-offered completion transition
 (is_tool_call:true, described below) whose description matches the current state.
-Put approved runtime context for caller-answer intent routes in routing_prompt;
-task_message alone cannot direct the routing model.
+Never set routing_prompt on a node with matches_intent routes: it replaces the
+routing model's default intent instruction, and the compiler removes it there.
+Give each intent route a condition description that alone identifies the caller
+answers it takes; the routing model reads the conversation, not task_message.
 Capture needed public action proposals in the preceding caller-answer step; an
 immediate state router cannot obtain a new answer by declaring extraction fields.
 Do not make a caller-answer node passthrough or skip the fresh answer it requires.

@@ -41,6 +41,7 @@ class GenerationFormatError(GenerationError):
 class Deadline:
     def __init__(self, seconds: float = 1800, clock: Callable[[], float] = time.monotonic):
         self.clock = clock
+        self.duration_seconds = seconds
         self.start = clock()
         self.limit = self.start + seconds
 

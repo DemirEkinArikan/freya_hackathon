@@ -724,7 +724,7 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
                                for action in ("commit_promises", "commit_transfer", "schedule_callback")]
                               if guard_context is not None and isinstance(name, str)
                               and name.startswith("bg_") and name.endswith("_confirm") else [])
-                    readback = (any(node[field] == entry.get(field) for entry in speech) or field == "on_enter" and node[field] == {
+                    readback = field == "on_enter" and (any(node[field] == entry["on_enter"] for entry in speech) or node[field] == {
                         "type": "tts", "text": "Please confirm these exact terms: {{bg_readback}}. Do you agree?"})
                     text_bindings(node[field], "node." + str(name) + "." + field, readback=readback)
     initial = workflow.get("initial_node")

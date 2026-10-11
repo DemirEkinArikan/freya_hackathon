@@ -234,12 +234,16 @@ class DialogueFactTests(unittest.TestCase):
         self.assertEqual(facts["latest_action"]["status"], "unknown_or_malformed_evidence")
 
     def test_projection_failure_after_positive_write_preserves_reconciled_evidence(self):
-        state, _, _ = self.account()
+        state, _, _ = self.account(["past_due"])
         state, _, _ = self.stage(state, PRODUCTS[1]["product_id"], "50.00")
         state, _, _ = self.step("prepare", state, "commit_promises")
         state, _, _ = self.step("confirm", state, "commit_promises", {"consent": "yes"})
+        # Corrupt only the approved display after dispatch, leaving the valid
+        # success receipt intact. A malformed error is contradictory evidence,
+        # not a successful write followed by a projection-only failure.
+        state["products"][1]["past_due"] = {"malformed_display": True}
         state, facts, variables = self.step("result", state, "commit_promises", data={
-            "ok": True, "promise_id": "PRIVATE_PROMISE", "error": {"malformed_optional": True}})
+            "ok": True, "promise_id": "PRIVATE_PROMISE"})
         self.assertIn(PRODUCTS[1]["product_id"], state["recorded_promises"])
         self.assertTrue(state["quarantined"])
         self.assertEqual(facts["recorded_counts"]["promises"], 1)

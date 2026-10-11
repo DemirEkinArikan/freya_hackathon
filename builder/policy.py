@@ -700,20 +700,25 @@ def _source_span(quote: str, document: str, canonical: tuple[str, list[tuple[int
     ends = {len(quote) - tail} | {len(quote) - k for k in range(min(tail, 8)) if not quote[-k - 1].isspace()}
     for start, end in sorted(((s, e) for s in starts for e in ends), key=lambda c: (c[0] + len(quote) - c[1], c[0])):
         needle = _canonical(quote[start:end])[0]
-        at = text.find(needle)
-        if at >= 0:
-            return start, end, document[spans[at][0]:spans[at + len(needle) - 1][1]]
+        # A trimmed edge never cuts a source word: "rest." does not match inside "restrictions".
+        found = re.search(("(?<!\\w)" if start and re.match(r"\w", needle) else "") + re.escape(needle)
+                          + ("(?!\\w)" if end < len(quote) and re.match(r"\w", needle[-1]) else ""), text)
+        if found:
+            return start, end, document[spans[found.start()][0]:spans[found.start() + len(needle) - 1][1]]
     return None
 
 
-def _descriptive_annotation(value: Any, rule_ids: set) -> bool:
-    """Only nonempty text: no flag, number, null, ISO date or other rule's id anywhere in the value."""
+def _descriptive_annotation(value: Any, rule_ids: set, whole: bool = True) -> bool:
+    """Only nonempty text: no flag, number or null (typed or written as text), no single bare word as the
+    whole field value (a state such as "withdrawn"), and no ISO date or rule id anywhere in the value."""
     if isinstance(value, str):
-        return bool(value.strip()) and value not in rule_ids and not re.search(r"\d{4}-\d{2}-\d{2}", value)
+        return (bool(value.strip()) and not re.fullmatch(r"(?i)\s*(true|false|null|none|yes|no|on|off|[-+]?\d+(\.\d+)?)\s*", value)
+                and not (whole and len(re.findall(r"[^\W_]+", value)) < 2) and not re.search(r"\d{4}-\d{2}-\d{2}", value)
+                and not any(re.search(r"(?<!\w)" + re.escape(ident) + r"(?!\w)", value) for ident in rule_ids))
     if isinstance(value, dict):
-        return bool(value) and all(_descriptive_annotation(key, rule_ids) and _descriptive_annotation(item, rule_ids)
+        return bool(value) and all(_descriptive_annotation(key, rule_ids, False) and _descriptive_annotation(item, rule_ids, False)
                                    for key, item in value.items())
-    return isinstance(value, list) and bool(value) and all(_descriptive_annotation(item, rule_ids) for item in value)
+    return isinstance(value, list) and bool(value) and all(_descriptive_annotation(item, rule_ids, False) for item in value)
 
 
 def normalise_policy(policy: Any, source_documents: Mapping[str, str]) -> tuple[Any, list[dict[str, Any]]]:
@@ -722,18 +727,23 @@ def normalise_policy(policy: Any, source_documents: Mapping[str, str]) -> tuple[
     A rule quote absent from its cited source becomes the exact source text it equals once edge
     punctuation and whitespace are trimmed (least trimming first), curly quotation marks are
     straightened and whitespace runs collapse. Words must still match exactly; nothing fuzzy.
-    A rule field that no builder code reads is dropped only when it holds descriptive text alone;
-    a flag, number, date or rule reference keeps the strict rejection. One record per change.
+    A rule field that no builder code reads is dropped only when it holds descriptive text alone
+    and the rule is on neither side of an override; a flag, number, ISO date or rule id keeps the
+    strict rejection. One record per change.
     """
     if not isinstance(policy, dict) or not isinstance(policy.get("rules"), list):
         return policy, []
     policy, records, canonical = copy.deepcopy(policy), [], {}
-    rule_ids = {rule.get("id") for rule in policy["rules"] if isinstance(rule, dict) and isinstance(rule.get("id"), str)}
+    rules = [rule for rule in policy["rules"] if isinstance(rule, dict)]
+    rule_ids = {rule["id"] for rule in rules if isinstance(rule.get("id"), str)}
+    # Either side of an override may carry the qualifier (a date in words, say) deciding when each value applies.
+    overridden = {ident for rule in rules if isinstance(rule.get("overrides"), list) for ident in rule["overrides"] if isinstance(ident, str)}
     for index, rule in enumerate(policy["rules"]):
         if not isinstance(rule, dict):
             continue
+        related = bool(rule.get("overrides")) or (isinstance(rule.get("id"), str) and rule["id"] in overridden)
         dropped = {field: rule[field] for field in sorted(set(rule) - _READ_RULE_FIELDS)
-                   if _descriptive_annotation(rule[field], rule_ids)}
+                   if not related and _descriptive_annotation(rule[field], rule_ids)}
         if dropped:
             for field in dropped:
                 del rule[field]

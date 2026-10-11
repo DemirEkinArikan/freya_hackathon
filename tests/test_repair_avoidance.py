@@ -63,7 +63,9 @@ class QuoteNormalisationTests(unittest.TestCase):
     def test_real_content_mismatches_are_unchanged_and_still_rejected(self):
         for quote in ("Close the call exactly exactly once.", "Close the call only once.", "close the call exactly once.",
                       "Close the call, exactly once.", "Close the callexactly once.", "Offer a follow–up call.",
-                      "The agent asks “Is this the account owner?”", "...", ""):
+                      "The agent asks “Is this the account owner?”", "...", "",
+                      # A trimmed edge never cuts a source word.
+                      "Offer a follow-up cal.", "Close the call exactly onc.", "“lose the call exactly once.”"):
             with self.subTest(quote=quote):
                 policy, sources, api = sourced(quote)
                 fixed, records = normalised(policy, sources)
@@ -97,12 +99,28 @@ class UnreadRuleFieldTests(unittest.TestCase):
         for field, value in (("superseded_by", policy["rules"][0]["id"]), ("replaces", [policy["rules"][0]["id"]]),
                              ("effective_from", "2026-12-22"), ("scope", {"window": "from 2026-12-22"}),
                              ("active", False), ("priority", 2), ("scope", {"products": "overdue", "limit": 2}),
-                             ("scope", None), ("scope", ""), ("scope", []), ("text", "Legacy rule text.")):
+                             ("scope", None), ("scope", ""), ("scope", []), ("text", "Legacy rule text."),
+                             ("active", "false"), ("status", "withdrawn"), ("limit", "2"), ("scope", {"limit": " 2 "}),
+                             ("note", "replaced by " + policy["rules"][0]["id"] + " later")):
             with self.subTest(field=field, value=value):
                 policy, sources, api = sourced(**{field: value})
                 fixed, records = normalised(policy, sources)
                 self.assertEqual((fixed, records), (policy, []))
                 self.assertIn("policy.rules[1] contains unsupported rule fields", errors_of(fixed, sources, api))
+
+    def test_fields_on_either_side_of_an_override_keep_the_strict_rejection(self):
+        # Dropping a date in words would make the amended cap apply on every call date.
+        for side, fields in (("amendment", {"effective_from": "22 December 2026"}), ("amendment", {"scope": "each returned product"}),
+                             ("base", {"valid_until": "the end of the current quarter"})):
+            with self.subTest(side=side, fields=fields):
+                policy, sources, api = sourced()
+                base = policy["rules"][1]
+                amendment = dict(copy.deepcopy(base), id="amended_limit", value=6, overrides=[base["id"]])
+                (amendment if side == "amendment" else base).update(fields)
+                policy["rules"].append(amendment)
+                fixed, records = normalised(policy, sources)
+                self.assertEqual((fixed, records), (policy, []))
+                self.assertTrue(any("contains unsupported rule fields" in error for error in errors_of(fixed, sources, api)))
 
 
 class ExtractionWiringTests(unittest.TestCase):

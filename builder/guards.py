@@ -11,7 +11,7 @@ import re
 from typing import Any, Mapping
 
 from .action_bindings import COLLECTION_ROLES
-from .policy import _execution_errors, _profile_errors, _scoped_value_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
+from .policy import _execution_errors, _profile_errors, _scoped_value_errors, _sourced_stop_words, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -2104,13 +2104,12 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     explanation = profile.pop("uncertain_stop_explanation", None)
     if explanation is not None:
         quotes = [source.get("quote") for source in contract["active_rules"]["uncertain_stop_explanation"]["provenance"]]
-        if explanation is not True and any(not isinstance(quote, str) or explanation not in quote for quote in quotes):
-            raise GuardCompileError(["uncertain_stop_explanation wording must occur literally in its own sourced quotation"])
-        words = "the result of this request could not be confirmed" if explanation is True else explanation
+        if explanation is not True and any(not isinstance(quote, str) or not _sourced_stop_words(explanation, quote) for quote in quotes):
+            raise GuardCompileError(["uncertain_stop_explanation wording must occur literally as whole words in its own sourced quotation, not as words it forbids saying"])
+        # The kit's verbatim farewell: no model writes, extends or follows the line.
         nodes["bg_quarantine"]["terminal"]["function"]["parameters"]["properties"] = {
-            "message_mode": {"type": "string", "default": "llm"},
-            "llm_prompt": {"type": "string", "default": 'Say only this, once, in the language the conversation is using: "'
-                           + words + '". Ask nothing, and add no claim that anything succeeded, failed, was cancelled or will be retried.'}}
+            "message_mode": {"type": "string", "default": "custom"},
+            "spoken_message": {"type": "string", "default": "the result of this request could not be confirmed" if explanation is True else explanation}}
     nodes["bg_init"] = _code_node("bg_init", _code("init", "", {}, profile, catalog, maps, {}),
         [_transition(plan["initial_node"], "done"), _transition("bg_quarantine")])
     quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",

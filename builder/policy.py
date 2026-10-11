@@ -133,7 +133,7 @@ _SHAPE_GUIDANCE = {
     "transfer_prerequisites": 'a nonempty object mapping permitted transfer queue names to "none", "identity", "account" or "unstated". Use "unstated" when the source authorizes dispatching that queue but states no identity/account prerequisite: no evidence gate is added and nothing else is granted; never add identity or account from omission. Omit a queue the source names only in closing vocabulary without authorizing its dispatch; the controller refuses staging an omitted queue',
     "promise_readback": 'an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps; an absent or empty selected field is left out of that product\'s label. Use exactly "product_type" when the source requires confirming the product but prescribes no product fields: each product is named only by its protected product type, the type already used for floors; labels shared by two loaded products block the confirmation and no other field is read back. Use exactly "none" only when the source requires no confirmation for commit_promises (require_confirmation false and commit_promises not in confirmation_actions)',
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
-    "uncertain_stop_explanation": "optional: what the source requires the caller to be told when the call stops without a close because a write's persistence is unknown or its evidence is missing, malformed or contradictory. Either the exact words copied verbatim from this rule's own source quotation (no digits, braces, control characters or private engine/credential prefixes), or true when the source requires an explanation there but prescribes no words (a fixed neutral line is then used). The controller's single sealed quarantine end speaks it once in the conversation's language at every stop without a close (unknown persistence, input failure, controller fault), adding no write, close, retry or claim of success, failure or cancellation. Omit when the source requires no speech at that stop; different words for different stops are not representable",
+    "uncertain_stop_explanation": "optional: what the source requires the caller to be told when the call stops without a close because a write's persistence is unknown or its evidence is missing, malformed or contradictory. Either the exact words to say to the caller, copied verbatim as whole words from this rule's own source quotation (never words the source forbids saying; no digits, braces, control characters or private engine/credential prefixes), or true when the source requires an explanation there but prescribes no words (a fixed neutral line is then used). The controller's single sealed quarantine end speaks exactly these words, verbatim and once, at every quarantine stop (unknown persistence, input failure, controller fault) and adds no write, close, retry or other words; turn-budget and entry-budget stops stay silent. Omit when the source requires no speech at that stop; different words for different stops are not representable",
 }
 
 
@@ -498,6 +498,17 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
     return [] if valid else [_structured_error(kind, value, "execution")]
 
 
+# A stop line is sourced only as whole words of its quotation, and not where the
+# quotation forbids saying them ("never tell the caller that ...").
+_NEGATED_SPEECH = re.compile(r"(?:\bnot|\bnever|\bcannot|n['\u2019]t)\s+(?:say|tell|claim|state|mention|imply|suggest|promise|report|inform|announce|confirm)"
+                             r"(?:\s+(?:to\s+)?(?:the\s+)?(?:caller|customer|user|them|him|her))?(?:\s+that)?[\s:\"'\u201c\u2018]*$", re.I)
+
+
+def _sourced_stop_words(words: str, quote: str) -> bool:
+    return bool(words.strip()) and any(not _NEGATED_SPEECH.search(quote, 0, found.start())
+        for found in re.finditer(r"(?<!\w)" + re.escape(words.strip()) + r"(?!\w)", quote))
+
+
 def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None,
                     *, strict: bool = False) -> list[str]:
     """Check IR/provenance, never semantic correctness of quoted rules.
@@ -607,8 +618,8 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                     for name in question:
                         if isinstance(name, str) and not re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", quote):
                             errors.append(prefix + " formatted call-input name must appear literally in its cited source quote")
-                if rule.get("kind") == "uncertain_stop_explanation" and isinstance(question, str) and question not in quote:
-                    errors.append(prefix + " uncertain_stop_explanation must appear literally in its cited source quote")
+                if rule.get("kind") == "uncertain_stop_explanation" and isinstance(question, str) and not _sourced_stop_words(question, quote):
+                    errors.append(prefix + " uncertain_stop_explanation must appear literally as whole words in its cited source quote, not as words it forbids saying")
                 if source_documents is not None:
                     document = source_documents.get(sid) if isinstance(sid, str) else None
                     if document is None or quote not in document:

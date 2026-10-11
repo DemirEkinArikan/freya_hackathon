@@ -218,6 +218,25 @@ class PackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'Invocation resolved configuration'):
                 package.check_manifest(data)
 
+    def test_the_claude_generators_own_audit_catalog_and_call_events_are_accepted(self):
+        # The production emitter with a fake client: no network, key or bank material.
+        from builder.runtime import ClaudeGenerator, Deadline, Trace
+        from test_claude_generator import POLICY_WIRE, FakeClient, FakeStream, message
+        self.evidence(claude=True)
+        run_path = self.root / 'hidden-1'
+        source, run = (json.loads((run_path / name).read_text()) for name in ('builder-source.json', 'manifest.json'))
+        events = [json.loads(line) for line in (self.root / 'hidden-1.jsonl').read_text().splitlines()]
+        trace = Trace(self.root / 'emitted.jsonl')
+        ClaudeGenerator(self.root / 'generation', trace, Deadline(1800), reasoning_effort='max',
+                        client=FakeClient(FakeStream(message(json.dumps(POLICY_WIRE)))),
+                        sleep=lambda _: None).generate('Synthetic source interface only')
+        emitted = [json.loads(line) for line in trace.path.read_text().splitlines()]
+        for event in emitted:
+            event.update(time=events[3]['time'], **({'purpose': events[5]['purpose']} if event['event'] == 'model_call' else {}))
+        events[3:6] = emitted  # In place of the fixture's audit, catalog and policy call.
+        (run_path / 'build-provenance.json').write_text(json.dumps(bind_run_provenance(source, run, events)))
+        self.assertEqual(len(package.validate_provenance(run_path / 'manifest.json', run, events)), 2)
+
     def test_real_credential_like_value_is_rejected_without_echo(self):
         p = self.root / "README.md"
         p.write_text("Authorization: Bearer REAL_TEST_ONLY_CREDENTIAL_123456")

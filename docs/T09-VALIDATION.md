@@ -7,6 +7,14 @@ required declarations, bounded iteration hazards, unsafe callable aliases,
 fallbacks, graph targets, unconditional routing, call-ending placement and
 final bank-close paths. Node names and proof flags grant no trust.
 
+Current compiler integration checks require passthrough defaults and final
+unconditional targets to agree; that fallback cannot wait for a model tool call.
+Python declarations cannot hide dunder iterator methods or replace the reserved
+workflow `vars` mapping, including in exception fallbacks. Dedicated
+`tests/test_validation_current_mutations.py` uses invented source-declared
+clock formats, immediate routing and administrative budgets to check these
+diagnostics and the trusted compiler boundary without executing candidates.
+
 Engine-run required body templates need declared variables. Model-filled
 conversation tool parameters remain allowed as documented by kit v3. A
 binding declaration does not establish that every runtime path populates it.

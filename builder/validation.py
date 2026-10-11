@@ -198,6 +198,25 @@ def validate_code(code: Any, path: str = "code", *, require_fallback: bool = Tru
                     errors.append(path + ": unsafe imported functions are forbidden, including aliases")
         if isinstance(node, ast.Name) and node.id.startswith("__"):
             errors.append(path + ": dunder names are forbidden")
+        binding_name = None
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            binding_name = node.name
+        elif isinstance(node, ast.arg):
+            binding_name = node.arg
+        elif isinstance(node, ast.alias):
+            binding_name = node.asname or node.name
+        elif isinstance(node, ast.ExceptHandler):
+            binding_name = node.name
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)):
+            binding_name = node.name
+        elif isinstance(node, ast.MatchMapping):
+            binding_name = node.rest
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+            binding_name = node.id
+        if binding_name == "vars":
+            errors.append(path + ": workflow vars mapping must not be rebound or deleted")
+        if isinstance(binding_name, str) and binding_name.startswith("__"):
+            errors.append(path + ": dunder declaration/binding names are forbidden")
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in {"Exception", "BaseException"}:
             errors.append(path + ": exception fallback classes must not be rebound")
         if ((isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in {"Exception", "BaseException"})
@@ -711,8 +730,12 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         if node.get("passthrough"):
             if not node.get("passthrough_default_transition"):
                 errors.append(path + ": passthrough requires default transition")
-            if not transitions or _obj(transitions[-1]).get("condition") != {"operator": "always"}:
+            fallback = _obj(transitions[-1]) if transitions else {}
+            if not transitions or fallback.get("condition") != {"operator": "always"}:
                 errors.append(path + ": passthrough requires a final unconditional fallback")
+            elif (fallback.get("target_node") != node.get("passthrough_default_transition")
+                  or fallback.get("is_tool_call", False) is not False):
+                errors.append(path + ": passthrough requires a matching ordinary final unconditional fallback")
             if len(transitions) == 1 and _obj(transitions[0]).get("condition") == {"operator": "always"}:
                 target = _obj(transitions[0]).get("target_node")
                 if isinstance(target, str) and target in all_nodes:

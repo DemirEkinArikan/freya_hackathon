@@ -112,7 +112,7 @@ class ConfirmationWordingTests(unittest.TestCase):
         variables["bg_consent"] = "yes"  # An older answer must never authorize this read-back.
         code(workflow, variables, "commit")
         self.assertEqual(variables["bg_route"], "confirm")
-        self.assertEqual((variables["bg_consent"], variables["bg_body"]), ("", ""))
+        self.assertEqual((variables["bg_consent"], variables["bg_body"]), ("unclear", ""))
         variables["bg_consent"] = "unclear"
         code(workflow, variables, "bg_commit_accept")
         self.assertEqual((variables["bg_route"], variables["bg_body"]), ("blocked", ""))

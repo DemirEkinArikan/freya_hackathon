@@ -244,7 +244,7 @@ class S05ControlMatrixTests(unittest.TestCase):
                     s.accept(consent)
                     self.check("confirmation-rejected", s, account_calls(opaque), ledger(
                         pending_promises={P1: {"amount_cents": 5000, "date": DAY}}),
-                        bg_route="blocked", bg_body="", bg_consent="")
+                        bg_route="blocked", bg_body="", bg_consent="unclear")
 
     def test_recorded_promise_survives_correction_and_transfer_in_full_replay(self):
         for opaque in (False, True):

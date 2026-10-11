@@ -86,9 +86,10 @@ class PackageTests(unittest.TestCase):
                        'purpose': 'Audit generation tools/context with synthetic isolation canaries', 'time': '2026-10-10T12:00:00Z'},
                       self.audit_event(),
                       {'event': 'generation_model_catalog', **self.catalog(), 'time': '2026-10-10T12:00:01Z'},
-                      {"event": "model_call", "model": "synthetic-test-model", "purpose": "Synthetic offline trace fixture",
+                      {"event": "model_call", "model": "synthetic-test-model", "purpose": "Extract banking policy and source/API bindings",
                        "prompt_characters": 100, 'reasoning_effort': 'high',
                        "time": "2026-10-10T12:00:01Z"},
+                      {'event': 'stage_completed', 'stage': 'policy', 'origin': 'extracted', 'time': '2026-10-10T12:00:01Z'},
                       {'event': 'action_guard_compilation', 'verified': True, 'plan_sha256': digest(plan),
                        'guard_manifest_sha256': digest(guards), 'time': '2026-10-10T12:00:01Z'},
                       {'event': 'deployment', **deployment, 'attempt': 1, "time": "2026-10-10T12:00:02Z"},
@@ -97,7 +98,7 @@ class PackageTests(unittest.TestCase):
             run = {'mode': mode, 'status': status, 'sources': sources, 'tool_api_sha256': digest({}),
                    'policy_contract_sha256': contract['sha256'], 'selected_attempt': 1, 'selected_attempt_directory': 'attempts/plan-001',
                    'deployment': deployment, 'export_sha256': digest(wf), 'elapsed_seconds': 3, 'tests': None,
-                   'hosted_behavior_verified': False}
+                   'hosted_behavior_verified': False, 'policy_origin': 'extracted'}
             run.update(model=config['model'], reasoning_effort='high', builder_source_sha256=source['builder_source_sha256'],
                        builder_source_record_sha256=digest(source))
             run.update(action_guard_compilation_verified=True, plan_sha256=digest(plan),
@@ -264,8 +265,7 @@ class PackageTests(unittest.TestCase):
                 original = [json.loads(line) for line in (self.root / 'hidden-1.jsonl').read_text().splitlines()]
                 rows[2:2] = original[2:5]
                 call_time = rows[5]['time']
-                rows[5:5] = [{**original[5], 'time': call_time}]
-                rows[7:7] = [{**original[7], 'time': call_time}]
+                rows[5:6] = [{**event, 'time': call_time} for event in original[5:9]]
                 rows[0]['model'] = run['model']
                 for row in rows:
                     if row.get('event') == 'model_call':
@@ -300,6 +300,26 @@ class PackageTests(unittest.TestCase):
                         package.check_manifest(data)
                     else:
                         with self.assertRaises(ValueError): package.check_manifest(data)
+
+    def test_selected_run_must_extract_its_own_policy(self):
+        # A supplied --policy-file would leave extraction outside the selected trace and its budget.
+        with patch.object(subprocess, 'run', return_value=SimpleNamespace(stdout='a' * 40)):
+            for mutation in ('resumed', 'manifest_origin', 'trace_origin', 'no_stage', 'stage_first', 'no_extraction_call'):
+                data = self.evidence()
+                run_path, trace_path = self.root / 'hidden-1/manifest.json', self.root / 'hidden-1.jsonl'
+                run = json.loads(run_path.read_text())
+                events = [json.loads(line) for line in trace_path.read_text().splitlines()]
+                if mutation in ('resumed', 'manifest_origin'): run['policy_origin'] = 'provided_and_revalidated'
+                if mutation in ('resumed', 'trace_origin'): events[7]['origin'] = 'provided_and_revalidated'
+                if mutation == 'no_stage': events.pop(7)
+                if mutation == 'stage_first': events.insert(6, events.pop(7))
+                if mutation == 'no_extraction_call':
+                    events[6]['purpose'] = 'Generate restricted action plan from frozen banking policy contract'
+                run_path.write_text(json.dumps(run))
+                trace_path.write_text('\n'.join(json.dumps(event) for event in events))
+                self.rebind_provenance()
+                with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'extract its own policy'):
+                    package.check_manifest(data)
 
     def test_final_check_uses_real_git_bytes_for_source_runs_and_inputs(self):
         data = self.evidence()

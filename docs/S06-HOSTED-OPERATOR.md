@@ -123,3 +123,25 @@ matching merged PR are recorded in the issue checkpoint and canonical S06
 handoff after checks. Source checks establish runner behavior only; actual
 accepted-candidate smoke, controlled comparison, T14 and downstream task
 deliverables remain pending.
+
+## Configured budget correction
+
+The first full-suite attempt was interrupted and its original log preserved.
+The retry exposed a second exact-equality assertion on a default deadline.
+Deterministic clocks demonstrate that `limit - start` can produce
+`1799.9999999999998` or `1800.0000000000002` for a configured 1,800 seconds.
+The controller recorded this subtraction as configuration; package validation
+requires exactly 1,800, and comparison rejects a declared budget above 1,800.
+This could reject valid provenance independently of the hosted pin correction.
+
+After recording the exact nonoverlapping scope in T14 and T15, Deadline retains
+`duration_seconds` directly and the original controller source/config snapshot
+records it. The two budget assertions now inspect that declared configuration.
+Actual monotonic limit, remaining/elapsed time, admission, timeout and export
+reserve enforcement are unchanged. Deterministic controller-double regressions
+cover both rounding directions, original source/trace configuration and actual
+reserve exhaustion. No past run's configuration or evidence was rewritten.
+The known-failed old retry was stopped by its verified S06 PID before source
+integration; its log remains `/private/tmp/rapid-s06-85b6b92-full-retry.log`.
+Fresh combined checks use the new immutable head, without attributing earlier
+results to changed source.

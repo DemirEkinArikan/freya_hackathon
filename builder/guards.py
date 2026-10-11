@@ -27,16 +27,23 @@ CONTROLLED_ENTRY_LIMIT = 2048
 DEFAULT_CONVERSATION_TURNS = 20
 # Kernel-owned close with no proposal inputs: budget stops close from recorded facts.
 BUDGET_CLOSE = PREFIX + "budget_close"
+# Kit extraction confidence comes from token probabilities and a value below
+# min_confidence is discarded without trace. A clear spoken date scored 0.889
+# on the platform; 0.7 is the kit's lowest documented threshold. Free-value
+# proposals are validated by the sealed kernel and the bank before any effect.
+PROPOSAL_MIN_CONFIDENCE = 0.7
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _INPUTS = {
-    "verify_identity": {"field", "answer"}, "get_account": set(),
+    "verify_identity": {"answer"}, "get_account": set(),
     "stage_promise": {"product_id", "amount", "date"},
     "commit_promises": set(), "stage_note": {"product_id", "reason"},
     "finalize_notes": set(), "stage_transfer": {"queue"},
     "commit_transfer": set(), "schedule_callback": {"date", "time"},
     "close_call": set(),
 }
-_OPTIONAL_INPUTS = {"commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
+# The controller supplies the identity factor itself; a proposed field is used
+# only for an identity_factor_state latest_check correction of a passed factor.
+_OPTIONAL_INPUTS = {"verify_identity": {"field"}, "commit_promises": {"product_id"}, "close_call": {"outcome", "reason"}}
 _OPERATIONS = {"verify_identity": "verify_identity", "get_account": "get_account",
                "commit_promises": "create_promise", "finalize_notes": "add_note",
                "commit_transfer": "transfer_to_agent", "schedule_callback": "schedule_callback",
@@ -1455,12 +1462,16 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         fields = profile['identity_fields']
         if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit'):
             raise ValueError('identity is complete or exhausted')
-        field = inputs['field']
         expected = next(f for f in fields if f not in state['verified_fields'])
-        # The latest completed check controls a factor: a correction of a
-        # passed factor is checked again after its pass is withdrawn.
-        recheck = profile.get('identity_factor_state') == 'latest_check' and field in state['verified_fields']
-        if field != expected and not recheck or not str(inputs['answer']).strip():
+        # The controller checks the next factor in policy order itself.
+        # Extracted values persist for the call, so a proposal only selects a
+        # latest_check correction of a passed factor (its pass is withdrawn
+        # first); an absent or passed proposal cannot block the next check,
+        # and a proposed later factor is refused.
+        proposed = str(inputs.get('field') or '')
+        recheck = profile.get('identity_factor_state') == 'latest_check' and proposed in state['verified_fields']
+        field = proposed if recheck else expected
+        if proposed in fields and proposed not in state['verified_fields'] and proposed != expected or not str(inputs['answer']).strip():
             raise ValueError('identity factors must follow policy order')
         if recheck:
             state['verified_fields'].remove(field)
@@ -2125,6 +2136,44 @@ def _bound_entries(nodes: dict, public_names: list[str]) -> None:
         nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition(BUDGET_CLOSE)])
 
 
+_TOOL_RULES = ("No tool call is allowed in this turn.",
+               "The only tool call allowed in this turn is one offered completion. Call at most one tool per message and "
+               "speak after every tool result; never end a turn with neither words nor a tool call.")
+_SPEECH_RULE = " Say only words meant for the caller, never a tool call, a variable name or your reasoning."
+_COMPLETION_ONLY_RULE = (" Nothing in this step can capture a caller answer, so never ask a question and wait here: when the "
+                         "caller must be asked something, invoke in this same message the completion to the step that asks it. "
+                         "State only account facts and action results that the runtime view shows.")
+
+
+def _node_discipline(nodes: dict) -> None:
+    """Append the kit's per-node tool rules to every authored speaking node.
+
+    A completion-only step (LLM entry, no extraction, only completions) captures
+    no answer; when exactly one completion target is a speaking caller-answer
+    step, a silent relay sends a caller reply that arrives here to that step.
+    """
+    for name, node in list(nodes.items()):
+        if node.get("passthrough"):
+            continue
+        routes = node.setdefault("transitions", [])
+        completions = [route["target_node"] for route in routes if route.get("is_tool_call") is True]
+        text = _TOOL_RULES[bool(completions)] + _SPEECH_RULE
+        if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
+                and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
+            text += _COMPLETION_ONLY_RULE
+            answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
+                       and not nodes[target].get("passthrough")
+                       and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
+            if len(answers) == 1:
+                target, relay = answers.pop(), PREFIX + name + "_reply"
+                nodes[relay] = {"name": relay, "node_type": "conversation", "on_enter": {"type": "silent"},
+                                "task_message": "Say nothing.", "passthrough": True,
+                                "passthrough_default_transition": target, "transitions": [_transition(target)]}
+                routes.append({"target_node": relay, "description": "caller replied in a step that captures no answer",
+                               "condition": {"operator": "always"}})
+        node["task_message"] = (node.get("task_message", "") + "\n\n" + text).lstrip()
+
+
 def _prompt_enforced(contract: dict, plan: dict, catalog: dict, nodes: dict) -> str:
     """Compile a relaxed contract's prompt-enforced limitations into dialogue text.
 
@@ -2198,6 +2247,13 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             raise GuardCompileError(["promise_readback value labels must belong to selected display fields"])
     maps = copy.deepcopy((bindings or {}).get("categories", {}))
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
+    bound = {value for node in plan["nodes"].values() if node["node_type"] == "guard_action"
+             for value in node.get("inputs", {}).values()}
+    for node in nodes.values():
+        for entry in node.get("extraction_schema", []):
+            if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
+                entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
+    _node_discipline(nodes)
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
@@ -2298,6 +2354,23 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             ([_transition("bg_terminal")] if action == "close_call" else
              [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
+    # A lone intent row into an LLM-entry decision that can send the caller
+    # back costs a routing-model call per answer that the decision judges
+    # anyway. The kit evaluates always without a model call, after the
+    # caller's turn. An earlier row to the decision would merge with it.
+    for name, node in nodes.items():
+        rows = node.get("transitions", [])
+        target = nodes.get(rows[-1].get("target_node"), {}) if rows and not node.get("passthrough") else {}
+        # The node-discipline reply relay row runs only after a caller turn in the decision itself.
+        exits = [row for row in target.get("transitions", []) if row["target_node"] != PREFIX + rows[-1]["target_node"] + "_reply"]
+        if (rows[-1:] and rows[-1]["condition"].get("operator") == "matches_intent" and exits
+                and not any(row.get("is_tool_call") or row.get("target_node") == rows[-1]["target_node"]
+                            or "matches_intent" in canonical_json(row["condition"]) for row in rows[:-1])
+                and not rows[-1].get("is_tool_call") and (target.get("on_enter") or {}).get("type") == "llm"
+                and not target.get("extraction_schema") and not target.get("passthrough")
+                and all(row.get("is_tool_call") is True for row in exits) and any(row.get("target_node") == name for row in exits)):
+            rows[-1]["condition"] = {"operator": "always"}
+            node.pop("routing_prompt", None)
     _bound_entries(nodes, list(plan["nodes"]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:

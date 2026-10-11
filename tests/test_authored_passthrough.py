@@ -2,7 +2,7 @@
 from copy import deepcopy
 import unittest
 
-from builder.guards import (GuardCompileError, compile_guarded_workflow,
+from builder.guards import (GuardCompileError, PROPOSAL_MIN_CONFIDENCE, compile_guarded_workflow,
                             required_execution_kinds, validate_guarded_workflow)
 from builder.runtime import plan_generation_schema
 from builder.validation import validate_workflow
@@ -63,7 +63,10 @@ class AuthoredPassthroughTests(unittest.TestCase):
                 node = workflow["nodes"]["talk"]
                 self.assertEqual(node.get("passthrough", False), False)
                 self.assertNotIn("passthrough_default_transition", node)
-                self.assertEqual(node["extraction_schema"], context["plan"]["nodes"]["talk"]["extraction_schema"])
+                # Only the bound answer threshold is capped (PROPOSAL_MIN_CONFIDENCE).
+                expected = deepcopy(context["plan"]["nodes"]["talk"]["extraction_schema"])
+                expected[0]["min_confidence"] = PROPOSAL_MIN_CONFIDENCE
+                self.assertEqual(node["extraction_schema"], expected)
                 self.assertEqual(validate_guarded_workflow(workflow, **context), [])
 
     def test_passthrough_boolean_is_strict_before_execution_kind_selection(self):

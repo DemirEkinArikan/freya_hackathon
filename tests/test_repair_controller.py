@@ -153,8 +153,9 @@ class RepairControllerTests(unittest.TestCase):
             deployment = read(attempt / "deployment.json")
             self.assertEqual((deployment["published"], deployment["version_number"]), (True, index))
             self.assertEqual(deployment["workflow"]["agent_config"]["llmConfig"]["model"], "experimental-5")
-            self.assertEqual(deployment["workflow"]["nodes"]["start"]["task_message"],
-                             proposed["nodes"]["start"]["task_message"])
+            # The compiler appends the kit's per-node tool rule after the authored text.
+            self.assertTrue(deployment["workflow"]["nodes"]["start"]["task_message"].startswith(
+                proposed["nodes"]["start"]["task_message"] + "\n\n"))
             self.assertEqual((attempt / "original-evaluator.txt").read_text(), f"attempt={index}; {private}")
         self.assertEqual(read(attempts[0] / "tests.json"), first_result)
         self.assertEqual(read(attempts[1] / "tests.json"), PASS)

@@ -6,6 +6,8 @@ named workflows, traces, runs and inputs, each keyed by hidden-1 and hidden-2.
 runs points to each controller manifest.json; inputs contains brief paths under
 briefs and the matching OpenAPI path under tool_api. Selected attempt snapshots
 are resolved next to the controller manifest, never guessed from an older run.
+An optional selections mapping names each label's builder-attempt record from
+tools/final_attempts.py select; it is checked and packaged with the selected run.
 """
 from __future__ import annotations
 
@@ -499,6 +501,45 @@ def validate_generated_artifacts(path, run, events):
     return retained
 
 
+# T18 order, declared before release, across one brief's parallel builder attempts:
+# exported first, local validator checks first, package checks first, fewest
+# diagnostics, earliest finish, then the lower attempt number.
+ATTEMPT_ORDER = ('exported', 'local_validation', 'package_validation', 'diagnostics', 'finished_at')
+
+
+def attempt_rank(entry):
+    finished = dt.datetime.fromisoformat(entry['finished_at']).timestamp() if entry['finished_at'] else math.inf
+    return (not entry['exported'], not entry['local_validation'], not entry['package_validation'],
+            entry['diagnostics'], finished, entry['attempt'])
+
+
+def validate_selection(record, label, selected_files):
+    """Check one brief's attempt record: the declared order picks `selected`, bound to its run's raw bytes."""
+    attempts = record.get('attempts') if isinstance(record, dict) else None
+    if (not isinstance(attempts, list) or not attempts or record.get('version') != 1 or record.get('label') != label
+            or record.get('order') != list(ATTEMPT_ORDER) or record.get('attempt_count') != len(attempts)
+            or type(record.get('selected')) is not int):
+        raise ValueError('Attempt selection record is malformed or selects no attempt')
+    for number, entry in enumerate(attempts, 1):
+        if (not isinstance(entry, dict) or type(entry.get('attempt')) is not int or entry['attempt'] != number
+                or any(type(entry.get(key)) is not bool for key in ATTEMPT_ORDER[:3])
+                or type(entry.get('diagnostics')) is not int or entry['diagnostics'] < 0
+                or not (entry.get('run') is None or _nonempty(entry['run']))
+                or not (entry.get('finished_at') is None or _nonempty(entry['finished_at']))
+                or any(entry.get(key) is not None and (not isinstance(entry[key], str) or not re.fullmatch(r'[0-9a-f]{64}', entry[key]))
+                       for key in ('manifest_sha256', 'trace_sha256', 'export_sha256'))):
+            raise ValueError('Attempt selection record is malformed or selects no attempt')
+    try:
+        best = min(attempts, key=attempt_rank)
+    except (TypeError, ValueError):
+        raise ValueError('Attempt selection record is malformed or selects no attempt') from None
+    if record['selected'] != best['attempt'] or not all(best[key] for key in ATTEMPT_ORDER[:3]):
+        raise ValueError('Selected attempt is not the eligible best attempt under the declared order')
+    if any(best[key + '_sha256'] != hashlib.sha256(raw).hexdigest() for key, raw in selected_files.items()):
+        raise ValueError('Attempt selection differs from the selected run files')
+    return record
+
+
 def repository_url():
     """Resolve the declared repository from this checkout's origin without network access."""
     origin = subprocess.run(['git', 'config', '--get', 'remote.origin.url'], cwd=ROOT,
@@ -567,6 +608,20 @@ def check_manifest(value):
             else:
                 arcname = retained_path.relative_to(ROOT).as_posix()
             result.append((retained_path, arcname))
+    if 'selections' in value:
+        if not isinstance(value['selections'], dict) or set(value['selections']) != {'hidden-1', 'hidden-2'}:
+            raise ValueError('Attempt selections must cover exactly hidden-1 and hidden-2')
+        for name, entry in value['selections'].items():
+            path, record = read_evidence(entry)
+            validate_selection(record, name, {key: safe_path(value[kind][name]).read_bytes() for key, kind in
+                                              (('manifest', 'runs'), ('trace', 'traces'), ('export', 'workflows'))})
+            # Every listed attempt stays on disk unchanged; only the selected one is packaged.
+            for attempt in record['attempts']:
+                for key, filename in (('manifest_sha256', 'manifest.json'), ('trace_sha256', 'trace.jsonl')):
+                    if attempt[key] is not None and (attempt['run'] is None or hashlib.sha256(
+                            safe_path(Path(attempt['run']) / filename).read_bytes()).hexdigest() != attempt[key]):
+                        raise ValueError(f'{name}: listed attempt {attempt["attempt"]} was not preserved unchanged')
+            result.append((path, f'selections/{name}.json'))
     if len(sources) != 1:
         raise ValueError('Both hidden builds must use the same builder source and resolved configuration')
     return result
@@ -649,6 +704,8 @@ def main(argv=None):
             packaged_manifest[kind] = {name: f"{kind}/{name}{''.join(safe_path(entry).suffixes)}"
                                        for name, entry in manifest[kind].items()}
         packaged_manifest['runs'] = {name: f'runs/{name}/manifest.json' for name in manifest['runs']}
+        if 'selections' in manifest:
+            packaged_manifest['selections'] = {name: f'selections/{name}.json' for name in manifest['selections']}
         archive_paths = {path: arcname for path, arcname in evidence}
         packaged_manifest['inputs'] = {
             name: {'briefs': [archive_paths[safe_path(entry)] for entry in inputs['briefs']],

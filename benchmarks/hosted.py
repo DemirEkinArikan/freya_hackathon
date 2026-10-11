@@ -21,10 +21,11 @@ from .scoring import score_ledger
 
 BANK = "https://freya-bank-mock.freyavoice.workers.dev"
 GATEWAY_RETRIES = 5
+RETRY_STATUSES = (500, 502, 503, 504)
 
 
 def retry_gateway_gets(client, log):
-    """Retry idempotent platform GETs on transient gateway HTTP 502/503/504, recording every retry in log."""
+    """Retry idempotent platform GETs on transient HTTP 500/502/503/504, recording every retry in log."""
     from builder.platform import PlatformError
     request = client.request
     def retrying(method, path, body=None, params=None):
@@ -32,7 +33,7 @@ def retry_gateway_gets(client, log):
             try:
                 return request(method, path, body, params)
             except PlatformError as exc:
-                status = re.match(re.escape(f"{method} {path}: HTTP ") + r"(50[234]): ", str(exc))
+                status = re.match(re.escape(f"{method} {path}: HTTP ") + r"(50[0234]): ", str(exc))
                 if method != "GET" or body is not None or not status or attempt > GATEWAY_RETRIES:
                     raise
                 log.append({"method": method, "path": path, "status": int(status[1]), "attempt": attempt,
@@ -468,7 +469,7 @@ def main(argv=None):
     conditions = {"builder_model": deployment.get("model") if deployment else None,
                   "reasoning_effort": deployment.get("reasoning_effort") if deployment else None,
                   "reps": args.reps, "concurrency": args.concurrency, "budget_seconds": args.budget_seconds,
-                  "max_call_seconds": args.max_call_seconds, "platform_gateway_retries": GATEWAY_RETRIES,
+                  "max_call_seconds": args.max_call_seconds, "platform_get_retry": {"max_retries": GATEWAY_RETRIES, "statuses": list(RETRY_STATUSES)},
                   "agent_llm": AGENT_LLM, "persona_llm": SIM_LLM, "analysis_llm": SIM_LLM,
                   "platform_base_url": client.base_url, "bank_base_url": BANK,
                   "bank_transport": deepcopy(getattr(backend, "bank_transport_configuration", {"mode": "unrecorded"}))}

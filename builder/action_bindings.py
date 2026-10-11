@@ -53,9 +53,10 @@ def _vocab(policy: Mapping[str, Any]) -> dict[str, set[str]]:
 
 
 def _unbound_permitted(policy: Mapping[str, Any]) -> bool:
-    """Only goals without promise, note or transfer roles may leave close codes unbound."""
+    """Only goals limited to identity, account reads and the close may leave close codes unbound."""
     actions = rule_value(policy, "execution_actions")
-    return isinstance(actions, list) and all(isinstance(a, str) for a in actions) and not COLLECTION_ROLES & set(actions)
+    return (isinstance(actions, list) and all(isinstance(a, str) for a in actions)
+            and set(actions) <= {"verify_identity", "get_account", "close_call"})
 
 
 def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
@@ -85,12 +86,12 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool) -> tuple[dict[str,
         # above makes that resolution unambiguous. Anything else is unbound.
         loose = {mapping.get(value, value) for value in values} - set(mapping.values())
         if loose and (canonical_only or category not in ("outcomes", "reasons")
-                      or loose & CANONICAL[category] or not _unbound_permitted(policy)):
+                      or loose & set().union(*CANONICAL.values()) or not _unbound_permitted(policy)):
             raise ActionBindingError(
                 "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
                 + " API value nor one of its declared meanings; only a close_call outcome or reason code whose source"
-                " meaning is not a builder meaning may stay unbound, and only in a goal that selects no promise,"
-                " note or transfer role")
+                " meaning is not a builder meaning, and which is not itself a builder meaning name, may stay unbound,"
+                " and only in a goal whose roles are limited to verify_identity, get_account and close_call")
         if canonical_only and any(meaning != wire for meaning, wire in mapping.items()):
             raise ActionBindingError("opaque values require API-validated bindings")
         maps[category] = deepcopy(mapping)

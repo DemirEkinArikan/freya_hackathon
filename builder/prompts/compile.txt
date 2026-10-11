@@ -55,8 +55,9 @@ defines that concept. They are interface names, not predetermined banking rules:
 - close_reasons: map from permitted exact API outcome codes to permitted exact API
   reason arrays; an empty array means that outcome has no reason. A semantic key
   declared in wire_codes may stand for its code. An API close code the source
-  gives no supported meaning stays out of wire_codes (unbound); only goals without
-  promise, note or transfer roles may use unbound codes.
+  gives no supported meaning stays out of wire_codes (unbound); only goals whose
+  roles are limited to verify_identity, get_account and close_call may use unbound
+  codes, and an unbound code is never itself a builder meaning name.
 - require_confirmation: boolean indicating whether explicit write confirmation is required.
 - promise_failure_limit: positive integer limit on contract-confirmed failed promise attempts.
 - tool_aliases: map from a semantic action name to the supplied API operation name.
@@ -94,8 +95,10 @@ defines that concept. They are interface names, not predetermined banking rules:
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"} for
   goals without promise, note or transfer roles: sourced close pairs after identity
   succeeds without an account read, or after positive account evidence. Never use
-  promise, paid, transferred or no_promise meanings. One row is fixed; several
-  rows need a matching closing proposal.
+  promise, paid, transferred or no_promise meanings. Each pair appears once per
+  phase. With schedule_callback every close code is a bound wire_codes meaning,
+  and after a recorded callback only recorded_callback rows apply. One row is
+  fixed; several rows need a matching closing proposal.
 
 - identity_close_choices: optional unreached/incomplete arrays of
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.

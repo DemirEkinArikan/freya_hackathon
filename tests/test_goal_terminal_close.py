@@ -167,6 +167,37 @@ class GoalTerminalCloseTests(unittest.TestCase):
         with self.assertRaisesRegex(ExecutionRequirementsError, "wire_codes.outcomes keys must be builder meanings"):
             compile_execution_requirements(policy, sources, api)
 
+    def test_callback_goal_cannot_leave_close_codes_unbound(self):
+        # The same codes compile in an identity-only goal. With schedule_callback every
+        # close code needs a builder meaning, so callback evidence checks always apply.
+        for category, close in (("outcomes", {"GOAL_DONE": []}),
+                                ("reasons", {"not_verified": ["identity_failed", "GOAL_MATCH"]})):
+            with self.subTest(category=category):
+                compile_execution_requirements(*goal(["verify_identity", "close_call"], close))
+                with self.assertRaisesRegex(ExecutionRequirementsError, "policy " + category + " vocabulary has a code"):
+                    compile_execution_requirements(*goal(["verify_identity", "schedule_callback", "close_call"], close))
+        with self.assertRaisesRegex(ExecutionRequirementsError, "policy reasons vocabulary has a code"):
+            compile_execution_requirements(*goal(["verify_identity", "close_call"], {"GOAL_DONE": ["paid"]}))
+
+    def test_recorded_callback_closes_only_through_a_recorded_callback_row(self):
+        policy, sources, api = goal(["verify_identity", "schedule_callback", "close_call"], {"not_reached": ["refused"]})
+        rule(policy, "identity_close")["value"]["unreached"]["reason"] = "refused"
+        add_rule(policy, "goal_close", {"verified": [{"outcome": "not_reached", "reason": "refused", "requires": "none"}]})
+        witness(policy, sources)
+        for booked in (False, True):
+            with self.subTest(booked=booked):
+                _, _, session = self.session((policy, sources, api))
+                self.verify(session)
+                if booked:
+                    session.action("schedule_callback", date="2031-05-06", time="12:00")
+                    session.result("schedule_callback", {"ok": True})
+                    self.assertEqual(len(session.state["callbacks"]), 1)
+                session.action("close_call", outcome="not_reached", reason="refused")
+                if booked:
+                    self.assert_refused(session)  # a 'none' row cannot hide the recorded callback
+                else:
+                    self.assertEqual((session.body["outcome"], session.body["reason"]), ("not_reached", "refused"))
+
     def test_payment_goal_cannot_leave_close_codes_unbound(self):
         policy, sources, api = packet(local=True)
         rule(policy, "close_reasons")["value"]["GOAL_DONE"] = []
@@ -186,6 +217,11 @@ class GoalTerminalCloseTests(unittest.TestCase):
                               close_reasons={"promise": [], "paid": [], "not_verified": ["identity_failed"], "not_reached": []})
                 with self.assertRaisesRegex(ExecutionRequirementsError, "non-collection outcomes"):
                     compile_execution_requirements(*values)
+        values = goal(["verify_identity", "close_call"], {"GOAL_DONE": []},
+                      {"verified": [{"outcome": "GOAL_DONE", "requires": "none"},
+                                    {"outcome": "GOAL_DONE", "requires": "no_recorded_callback"}]})
+        with self.assertRaisesRegex(ExecutionRequirementsError, "goal closing rows are duplicated"):
+            compile_execution_requirements(*values)
 
     def test_payment_close_still_requires_the_confirmed_recorded_promise(self):
         values = synthetic(["verify_identity", "get_account", "stage_promise", "commit_promises", "close_call"])

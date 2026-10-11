@@ -506,9 +506,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             if (reason == "callback" and row["requires"] != "recorded_callback"
                     or reason == "no_callback" and row["requires"] != "no_recorded_callback"):
                 raise GuardCompileError(["goal closing callback reasons require matching callback evidence"])
-            if (row["outcome"], reason, row["requires"]) in seen:
+            if (row["outcome"], reason) in seen:
                 raise GuardCompileError(["goal closing rows are duplicated"])
-            seen.add((row["outcome"], reason, row["requires"]))
+            seen.add((row["outcome"], reason))
     return result
 
 
@@ -977,13 +977,11 @@ def guard_close(state, proposed, profile, maps):
             # Identity is verified (and possibly the account loaded) without a
             # protected collections fact: only a sourced goal row may close.
             phase = 'account_loaded' if state['account_loaded'] else 'verified'
+            # A recorded callback closes only through a recorded_callback row.
             rows = [row for row in profile.get('goal_close', dict()).get(phase, list())
-                    if row['requires'] == 'none' or (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
+                    if (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
             if not rows:
                 raise ValueError('closing lacks protected evidence')
-            evidence = [row for row in rows if row['requires'] == 'recorded_callback']
-            if evidence:
-                rows = evidence
             if len(rows) > 1:
                 if not isinstance(proposed.get('outcome', ''), str) or not isinstance(proposed.get('reason', ''), str):
                     raise ValueError('goal closing proposal must be text')

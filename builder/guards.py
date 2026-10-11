@@ -69,7 +69,7 @@ _REQUIRED = {
 _CONTROLLER_STATE_EFFECTS = {
     "verify_identity": {
         "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
-        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, identity_wrong_limit - returned wrong_answers_left); ok=true alone does not verify a factor.",
+        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, budget - returned wrong_answers_left), capped at the call-date-selected identity_wrong_limit, where budget is the API's declared wrong_answers_left maximum when declared, otherwise that limit; reaching the limit, or zero remaining, exhausts identity; ok=true alone does not verify a factor.",
                                "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
     "get_account": {
         "accepted_staging": ["Sending the account request does not establish loaded products."],
@@ -264,6 +264,26 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
     return errors
 
 
+def _dated_variants(contract: dict, profile: dict, kind: str) -> dict:
+    """Bind a frozen date selector to its two retained sourced values.
+
+    No clock is read here; the kernel compares the sealed call date at runtime.
+    """
+    selection = profile[kind]["effective_date"]
+    refs = (selection["before_rule"], selection["on_or_after"]["rule"])
+    retained = contract["active_rules"][kind].get("referenced_rule_values")
+    if not isinstance(retained, dict) or set(retained) != set(refs) or refs[0] == refs[1]:
+        raise GuardCompileError(["effective_date selector lacks its retained sourced variants"])
+    bands = {band["name"] for band in profile.get("band_ranges", [])}
+    for ref in refs:
+        if (_scoped_value_errors(kind, retained[ref]) is not None or _profile_errors(kind, retained[ref])
+                or kind == "deadline_days" and "band_ranges" in profile and set(retained[ref]) != bands):
+            raise GuardCompileError(["effective_date variants must be primitive values of their kind covering the declared bands"])
+    return {"effective_date": {"date": selection["on_or_after"]["date"],
+                               "before": copy.deepcopy(retained[refs[0]]),
+                               "on_or_after": copy.deepcopy(retained[refs[1]])}}
+
+
 def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict | None) -> dict:
     _hash_checked(contract, "contract")
     _hash_checked(execution_policy, "execution policy")
@@ -299,7 +319,6 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
             errors.append("execution profile does not match active frozen rule: " + kind)
         errors.extend(_profile_errors(kind, value))
         if _scoped_value_errors(kind, value) is not None:
-            errors.append("scoped execution rules lack protected runtime selection")
             continue
         if kind == "record_notes" and type(value) is not bool:
             errors.append(kind + " must be boolean")
@@ -375,6 +394,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
+    for kind in ("identity_wrong_limit", "deadline_days"):
+        if _scoped_value_errors(kind, result.get(kind)) == []:
+            result[kind] = _dated_variants(contract, result, kind)
     # Keep unused disclosure metadata frozen and shape-checked above, but do
     # not approve account narration or bind its schema/type codes for a goal
     # that never loads an account. This detached runtime selection grants no
@@ -610,6 +632,10 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
         catalog[name] = {"name": actual_name, "path": op["path"], "method": op["method"],
                          "request_schema": copy.deepcopy(request), "fields": fields,
                          "results": results, "tool": copy.deepcopy(tools[actual_name])}
+        if name == "verify_identity":
+            budget = response["properties"][results["wrong_answers_left"]].get("maximum")
+            if type(budget) is int and budget >= 1:
+                catalog[name]["wrong_answers_budget"] = budget
         if name == "get_account":
             product_schema = response["properties"][results["products"]].get("items", {})
             keys = product_schema.get("properties", {})
@@ -755,6 +781,16 @@ def guard_date(value):
     if day.isoformat() != text:
         raise ValueError('expected an ISO date')
     return day
+
+def guard_dated(state, profile, kind):
+    # A sourced dated rule is chosen by the sealed call date, never a host clock.
+    value = profile[kind]
+    dated = value.get('effective_date') if type(value) is dict else None
+    if type(dated) is not dict:
+        return value
+    if set(dated) != set(('date', 'before', 'on_or_after')):
+        raise ValueError('dated policy variants are malformed')
+    return dated['on_or_after'] if guard_date(state['now']) >= guard_date(dated['date']) else dated['before']
 
 def guard_business(day, profile):
     return day.weekday() in profile['business_weekdays'] and day.isoformat() not in profile['holidays']
@@ -1081,7 +1117,7 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
     fields = profile.get('identity_fields', list())
     verified = state.get('verified_fields', list())
     wrong = state.get('wrong_answers', 0)
-    limit = profile.get('identity_wrong_limit')
+    limit = guard_dated(state, profile, 'identity_wrong_limit') if 'identity_wrong_limit' in profile else None
     if (not isinstance(verified, list) or any(field not in fields for field in verified)
             or len(set(verified)) != len(verified) or type(wrong) is not int or wrong < 0
             or type(limit) is int and wrong > limit):
@@ -1089,7 +1125,7 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
     identity = dict(status=state.get('identity_status', 'pending'), verified_factor_count=len(verified),
                     wrong_answers=wrong, next_factor='')
     if type(limit) is int:
-        identity['wrong_answers_left'] = max(0, limit - wrong)
+        identity['wrong_answers_left'] = max(0, min(limit, catalog.get('verify_identity', dict()).get('wrong_answers_budget', limit)) - wrong)
     if identity['status'] == 'pending':
         identity['next_factor'] = next((field for field in fields if field not in verified), '')
     facts['identity'] = identity
@@ -1143,7 +1179,7 @@ def guard_facts(state, phase, action, route, data, profile, catalog, previous=No
                 raise ValueError('proposal band is unavailable')
             floor = guard_cents(product[profile['floor_fields'][product_type]])
             cap = guard_cents(product['past_due'])
-            deadline = guard_deadline(guard_date(state['now']), profile['deadline_days'][bands[0]], profile).isoformat()
+            deadline = guard_deadline(guard_date(state['now']), guard_dated(state, profile, 'deadline_days')[bands[0]], profile).isoformat()
             if floor < 0 or cap <= 0 or floor > cap or type(limit) is not int or type(failures) is not int or not 0 <= failures <= limit:
                 raise ValueError('proposal amount or failure budget is unavailable')
             reference['proposal_constraints'] = dict(product_type=product_type, band=bands[0],
@@ -1206,7 +1242,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         raise ValueError('a staged or recorded transfer permits only handoff and final close')
     if action == 'verify_identity':
         fields = profile['identity_fields']
-        if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= profile['identity_wrong_limit']:
+        if state['identity_status'] in ('verified', 'failed') or state['wrong_answers'] >= guard_dated(state, profile, 'identity_wrong_limit'):
             raise ValueError('identity is complete or exhausted')
         field = inputs['field']
         expected = next(f for f in fields if f not in state['verified_fields'])
@@ -1243,7 +1279,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
                 raise ValueError('product has no unique policy band')
             today = guard_date(state['now'])
             day = guard_date(inputs['date'])
-            deadline = guard_deadline(today, profile['deadline_days'][bands[0]], profile)
+            deadline = guard_deadline(today, guard_dated(state, profile, 'deadline_days')[bands[0]], profile)
             if day < today or day > deadline or not guard_business(day, profile):
                 raise ValueError('promise date outside policy calendar')
             state['pending_notes'].pop(pid, None)
@@ -1602,8 +1638,11 @@ def guard_result(state, data, profile, catalog, expected_action):
             remaining = data.get('wrong_answers_left')
             if isinstance(remaining, str) and remaining.isdigit():
                 remaining = int(remaining)
-            limit = profile['identity_wrong_limit']
-            if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or not 0 <= remaining <= limit:
+            limit = guard_dated(state, profile, 'identity_wrong_limit')
+            # A declared API maximum is the counter's own budget, above or below
+            # the policy limit; zero remaining also exhausts identity.
+            budget = catalog['verify_identity'].get('wrong_answers_budget', limit)
+            if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or not 0 <= remaining <= budget:
                 state['quarantined'] = True
                 return state, 'failure', dict(), ''
             if guard_true(verified):
@@ -1611,8 +1650,8 @@ def guard_result(state, data, profile, catalog, expected_action):
             # Use the engine counter, not guessed answer/hint interpretation.
             # It includes errors on all factors and excludes API-qualified
             # noncounting retries such as unreadable answers or hints.
-            state['wrong_answers'] = max(state['wrong_answers'], limit - remaining)
-            state['identity_status'] = 'failed' if state['wrong_answers'] >= limit else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'
+            state['wrong_answers'] = min(limit, max(state['wrong_answers'], budget - remaining))
+            state['identity_status'] = 'failed' if state['wrong_answers'] >= limit or remaining == 0 else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):

@@ -85,11 +85,11 @@ _SHAPE_GUIDANCE = {
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
-    "identity_wrong_limit": "a positive integer (booleans are not integers), or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. The wrapper retains both sourced values and explicitly overrides its referenced leaves; no assumed clock or unconditional after-date replacement. Selector typing is inspection only until protected reference retention and runtime selection are implemented; guarded compilation rejects it meanwhile",
+    "identity_wrong_limit": "a positive integer (booleans are not integers), or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. Use it when a source makes a value effective from a date. The wrapper explicitly overrides both distinct referenced rules, which keep their own sourced values; no assumed clock or unconditional after-date replacement. The contract retains both values and the sealed runtime applies the on_or_after rule when the supplied call date is on or after date, otherwise before_rule",
     "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
     "business_weekdays": "a nonempty array of integers from 0 through 6",
     "band_ranges": "a nonempty array of objects with nonempty name and integer min/max; min <= max, names unique, intervals nonoverlapping",
-    "deadline_days": "a nonempty object mapping band names to nonnegative integers, or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. Preserve both dated source values and their provenance, not just the current value. Selector typing is inspection only until protected reference retention and runtime selection are implemented; guarded compilation rejects it meanwhile",
+    "deadline_days": "a nonempty object mapping band names to nonnegative integers, or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. Preserve both dated source values and their provenance, not just the current value: the wrapper explicitly overrides both distinct referenced rules, each covering exactly the declared bands. The contract retains both values and the sealed runtime applies the on_or_after rule when the supplied call date is on or after date, otherwise before_rule",
     "floor_fields": "an object mapping nonempty product-type names to nonempty field names",
     "callback_window": "an object with start/end local HH:MM strings, start <= end; optional allow_today is boolean and next_business_days is a nonnegative integer",
     "note_reasons": "a nonempty array of unique nonempty strings",
@@ -113,7 +113,7 @@ _SHAPE_GUIDANCE = {
     "wire_codes": "an object mapping category names to nonempty string-to-string maps; wire values within each category must be unique. In outcomes/reasons/notes/queues the keys are builder meanings only, each mapped to its exact API code: outcomes promise/paid/transferred/no_promise/not_verified/not_reached; reasons support/human/restructuring/refused/hardship/dispute/service_error/failed/declined/callback/no_callback/wrong_number/deceased/unclear; notes refused/hardship/dispute/paid/service_error; queues support/general/restructuring. Bind only meanings the source supplies; never rebind a code to a collections meaning it does not have. Other categories, such as product_types or a declared selector, keep their source names",
     "nonpersistent_failures": "an object mapping actual operation names to arrays of unique objects containing http_status (integer 100..599), optional error (nonempty string), and optional api_source containing exactly pointer and quote (nonempty strings); controller execution requires a literal OpenAPI witness scoped to that operation's exact response status",
     "confirmation_actions": 'a unique string array containing only "commit_promises", "commit_transfer", "schedule_callback"; an empty array is allowed',
-    "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent',
+    "attempt_scopes": 'an optional nonempty object mapping sealed write-action roles commit_promises/finalize_notes/schedule_callback/commit_transfer/close_call to call/product/exact_request; product is allowed only for commit_promises/finalize_notes. Selected scoped actions require their explicitly supplied positive promise_failure_limit/note_failure_limit/callback_failure_limit/transfer_failure_limit; close_call is always at most once. The limit counts actual dispatches, not proposals, and no scope or limit is inferred when absent. A per-product attempt rule scopes only commit_promises/finalize_notes, whose requests name a product; it gives schedule_callback/commit_transfer no scope, so they are never replayed unless a source rule scopes them by call or exact_request with their own limit and definite_failure_resume. No retry permission authorizes a second close_call: a negative or uncertain close stays terminal and is never reported as recorded',
     "definite_failure_resume": 'an optional unique string array containing only finalize_notes/schedule_callback/commit_transfer; an empty array is allowed. For selected roles an explicit attempt_scopes entry and matching positive limit are required. Only source-authorized continuation after an exact API-qualified nonpersistent negative receipt is enabled: retry the same frozen request below its cap, or resume without claiming success at the cap. This supplies no bank disposition, never resumes uncertainty, and never replays close_call or changes promise exhaustion handling',
     "product_order": 'exactly {mode: "account_order"}, or exactly {field: nonempty string, direction: "ascending"/"descending", tie_breaker: "account_order"}',
     "close_precedence": "a nonempty array of unique protected execution outcome meanings (transferred, promise, paid, no_promise) or their explicitly bound wire values, ordered only as supplied by policy. Identity closing outcomes belong in identity_close/identity_close_choices, not this array; preserve their sourced outcomes and reasons there. Do not invent a priority, outcome or account prerequisite for a permitted transfer",
@@ -188,8 +188,8 @@ def _scoped_value_errors(kind: str, value: Any) -> list[str] | None:
     """Inspect closed selector syntax; never resolve references or a clock.
 
     None identifies the unchanged primitive form. Valid selector syntax grants
-    no execution support: source/reference validation and protected consumers
-    are separate, and the current guarded compiler explicitly refuses it.
+    no execution support by itself: the contract compiler validates and retains
+    the referenced values, and the guarded runtime selects by the call date.
     """
     def text(item: Any) -> bool:
         return isinstance(item, str) and bool(item.strip())
@@ -846,8 +846,8 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
         bands = {band["name"] for band in profile["band_ranges"]}
         for kind in ("deadline_days", "persuasion_limits"):
             if kind == "deadline_days" and kind in profile and _scoped_value_errors(kind, profile[kind]) == []:
-                # A selector carries references, not band keys. Each retained
-                # leaf needs consumer validation before executable approval.
+                # A selector carries references, not band keys. The guarded
+                # profile checks each retained leaf's band coverage.
                 continue
             if kind in profile and set(profile[kind]) != bands:
                 raise PolicyError(kind + " must cover exactly the declared bands")
@@ -860,13 +860,17 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
 
 
 def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, Any],
-                    policy: Mapping[str, Any]) -> dict[str, Any]:
+                    policy: Mapping[str, Any], *, wrong_answer_budget: int | None = None) -> dict[str, Any]:
     """Only successful API evidence advances identity; unreadable/errors don't count."""
     assert_action_allowed(state, "verify_identity")
     fields = rule_value(policy, "identity_fields", [])
     limit = rule_value(policy, "identity_wrong_limit")
     if _profile_errors("identity_fields", fields) or type(limit) is not int or limit < 1 or field not in fields:
         raise PolicyError("identity policy is missing or invalid")
+    if wrong_answer_budget is not None and (type(wrong_answer_budget) is not int or wrong_answer_budget < 1):
+        raise PolicyError("API wrong-answer budget must be a positive integer")
+    # A declared API maximum is the counter's own budget, above or below the limit.
+    budget = limit if wrong_answer_budget is None else wrong_answer_budget
     verified = state.get("verified_fields", [])
     wrong = state.get("wrong_answers", 0)
     if (not isinstance(verified, list) or verified != fields[:len(verified)]
@@ -881,7 +885,7 @@ def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, A
     ok = _boolean(data.get("ok"))
     passed = _boolean(data.get("verified")) if ok else False
     remaining = data.get("wrong_answers_left")
-    if "wrong_answers_left" in data and (type(remaining) is not int or not 0 <= remaining <= limit):
+    if "wrong_answers_left" in data and (type(remaining) is not int or not 0 <= remaining <= budget):
         raise PolicyError("service identity counter is malformed")
     exemptions = rule_value(policy, "identity_hint_exemptions", ["day_month_swapped"])
     if _profile_errors("identity_hint_exemptions", exemptions):
@@ -897,10 +901,10 @@ def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, A
             wrong += 1
     # The service's counter is authoritative and may reflect earlier attempts.
     if ok and remaining is not None:
-        wrong = max(wrong, limit - remaining)
+        wrong = max(wrong, budget - remaining)
     out = copy.deepcopy(dict(state))
     out.update(verified_fields=verified, wrong_answers=wrong,
-               identity_status="failed" if wrong >= limit else "verified" if all(f in verified for f in fields) else "pending")
+               identity_status="failed" if wrong >= limit or ok and remaining == 0 else "verified" if all(f in verified for f in fields) else "pending")
     return out
 
 

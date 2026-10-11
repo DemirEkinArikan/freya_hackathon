@@ -54,21 +54,24 @@ success claim. This fallback does not satisfy an explicit source requirement
 to record a bank close. Supplied tables remain exact and fully typed; explicit
 empty or partial tables and choices without matching fixed scopes still reject.
 
-Source date selectors have a closed inspection format inside the
+Source date selectors have a closed format inside the
 existing rule value. `identity_wrong_limit` and `deadline_days` may reference
 primitive same-kind rules through
 `{effective_date: {before_rule: ID, on_or_after: {date: ISO_DATE, rule: ID}}}`.
 Existing primitive forms remain unchanged, including a deadline band literally named
 `effective_date` with an integer value.
 
-These forms validate syntax only. The guarded compiler and prefreeze requirements
-explicitly reject them until reference retention and protected runtime selection
-are implemented. Typed metadata is not executable support. The future consumer
-must retain referenced primitive values, IDs, provenance and hashes before
-ancestor pruning; reject unknown, cross-kind, recursive or unsourced references;
-and validate every finite variant against its actual frozen API/schema. It must
-select from supplied local `now`, with safe refusal for unknown or malformed
-context. No existing generated policy is rewritten or retroactively given date
+The policy contract accepts an active selector only when it explicitly overrides
+two distinct same-kind rules holding primitive values, and retains both sourced
+values (`referenced_rule_values`) before ancestor pruning; unknown, cross-kind,
+indirect or nested references are rejected. The guarded profile re-checks both
+variants (deadline variants must cover exactly the declared bands) and refuses
+missing or tampered ones. The sealed kernel selects from the supplied call date
+`now` only, never a host clock or dialogue: the `on_or_after` rule on or after
+its date, otherwise `before_rule`. A declared API `wrong_answers_left` maximum is
+the identity counter's own budget for every variant: wrong answers count as that
+maximum minus the returned remaining value, and reaching the selected limit, or
+zero remaining, exhausts identity. No existing generated policy is rewritten or retroactively given date
 enforcement. Goal-scoped product resolution uses the separately implemented
 protected initial-input selector rather than this date-reference format.
 

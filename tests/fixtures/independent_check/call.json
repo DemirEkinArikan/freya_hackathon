@@ -1,0 +1,16 @@
+{"id": "call-1", "endedReason": "assistant-ended-call", "messages": [
+ {"role": "system", "message": "{\"event\":\"node_enter\",\"node\":\"node_secret_setup\"}", "secondsFromStart": 0.0},
+ {"role": "system", "message": "{\"event\":\"function_call_start\",\"function\":\"code_exec\",\"args\":{\"code\":\"SECRET_WORKFLOW_CODE = 1\"}}", "secondsFromStart": 0.1},
+ {"role": "system", "message": "{\"event\":\"function_call_complete\",\"function\":\"code_exec\",\"result\":{\"status\":\"success\",\"data\":null}}", "secondsFromStart": 0.2},
+ {"role": "assistant", "message": "Hello, this call is recorded. Am I speaking with Ada Demir?", "secondsFromStart": 0.3},
+ {"role": "user", "message": "Yes. My date of birth is 17 May 1990 and my postcode is 34000.", "secondsFromStart": 2.0},
+ {"role": "system", "message": "{\"event\":\"route_evaluated\",\"matched\":false,\"from_node\":\"node_secret_identity\",\"variable_table\":{\"secret_var\":1}}", "secondsFromStart": 2.1},
+ {"role": "system", "message": "{\"event\":\"function_call_start\",\"function\":\"verify_identity\",\"args\":{\"url\":\"https://mock.example/v1/verify_identity\",\"method\":\"POST\",\"body\":{\"customer_id\":\"cust-1\",\"field\":\"date_of_birth\",\"answer\":\"1990-05-17\"}}}", "secondsFromStart": 2.2},
+ {"role": "system", "message": "{\"event\":\"function_call_complete\",\"function\":\"verify_identity\",\"result\":{\"status\":\"success\",\"status_code\":200,\"data\":{\"verified\":true,\"all_verified\":true}}}", "secondsFromStart": 2.4},
+ {"role": "assistant", "message": "Thank you. You owe 500 on your card. Can you pay 450 on 20 October?", "secondsFromStart": 3.0},
+ {"role": "user", "message": "Yes.", "secondsFromStart": 4.0},
+ {"role": "system", "message": "{\"event\":\"function_call_start\",\"function\":\"api_call\",\"args\":{\"url\":\"https://mock.example/v1/create_promise\",\"method\":\"POST\",\"body\":{\"customer_id\":\"cust-1\",\"product_id\":\"p1\",\"amount\":450,\"date\":\"2026-10-20\"}}}", "secondsFromStart": 4.1},
+ {"role": "system", "message": "{\"event\":\"function_call_complete\",\"function\":\"api_call\",\"result\":{\"status\":\"success\",\"status_code\":200,\"data\":{\"ok\":true}}}", "secondsFromStart": 4.3},
+ {"role": "assistant", "message": "Your promise of 450 on 20 October is recorded. Goodbye.", "secondsFromStart": 4.5},
+ {"role": "system", "message": "{\"event\":\"function_call_start\",\"function\":\"end_call\",\"args\":{\"reason\":\"done\"}}", "secondsFromStart": 4.6}
+]}

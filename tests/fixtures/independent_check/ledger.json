@@ -1,0 +1,3 @@
+{"customer_id": "cust-1", "outcome": "promise", "reason": null,
+ "promises": [{"product_id": "p1", "amount": 450.0, "date": "2026-10-20"}], "notes": [], "callbacks": [], "transfers": [],
+ "calls": [{"tool": "verify_identity", "result": {"ok": true}}, {"tool": "create_promise", "result": {"ok": true}}, {"tool": "close_call", "result": {"ok": true}}]}

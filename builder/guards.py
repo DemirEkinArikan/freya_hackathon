@@ -16,7 +16,7 @@ from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
 from .call_variables import declared_call_variables
-from .validation import extraction_entry_errors
+from .validation import extraction_entry_errors, _router_judged
 
 PREFIX = "bg_"
 # Controller resource bounds, independent of every bank's business counters.
@@ -2188,6 +2188,47 @@ def _node_discipline(nodes: dict) -> None:
         node["task_message"] = (node.get("task_message", "") + "\n\n" + text).lstrip()
 
 
+def _exclusive(first: dict, second: dict) -> bool:
+    """Whether two rows are single equals tests on one variable with different operands."""
+    tests = []
+    for row in (first, second):
+        terms = row["condition"].get("conditions")
+        term = terms[0] if isinstance(terms, list) and len(terms) == 1 and isinstance(terms[0], dict) else {}
+        tests.append((term.get("variable"), str(term.get("operand")).casefold()) if term.get("operator") == "equals" else None)
+    return bool(tests[0] and tests[1] and tests[0][0] == tests[1][0] and tests[0][1] != tests[1][1])
+
+
+def _one_route_per_target(nodes: dict) -> list[dict]:
+    """Keep one row per target before a node's final always row.
+
+    The kit merges same-target rows at load time into one row, unconditional
+    if any is, which can shadow the rows between them. An earlier row to the
+    fallback's target is dropped when every intervening row to another target
+    excludes it (equals on the same variable, another operand), so it never
+    decides differently from the fallback. Any other such row moves to a fresh
+    copy of its target, the same entry gate code, so list-order routing and
+    the existing route-order checks are unchanged.
+    """
+    changes = []
+    for name, node in sorted(nodes.items()):
+        rows = node.get("transitions", [])
+        if not rows or rows[-1]["condition"] != {"operator": "always"} or rows[-1].get("is_tool_call"):
+            continue
+        target, kept = rows[-1]["target_node"], []
+        for index, row in enumerate(rows[:-1]):
+            if row["target_node"] != target or row.get("is_tool_call"):
+                kept.append(row)
+            elif all(_exclusive(row, other) for other in rows[index + 1:-1] if other["target_node"] != target):
+                changes.append({"node": name, "row": index, "target": target, "change": "dropped"})
+            else:
+                relay = PREFIX + "relay_" + str(sum(change["change"] == "relayed" for change in changes))
+                nodes[relay] = {**copy.deepcopy(nodes[target]), "name": relay}
+                kept.append({**row, "target_node": relay})
+                changes.append({"node": name, "row": index, "target": target, "change": "relayed", "relay": relay})
+        node["transitions"] = kept + rows[-1:]
+    return changes
+
+
 def _prompt_enforced(contract: dict, plan: dict, catalog: dict, nodes: dict) -> str:
     """Compile a relaxed contract's prompt-enforced limitations into dialogue text.
 
@@ -2268,6 +2309,13 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
                 entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
     _node_discipline(nodes)
+    # On the host a routing_prompt replaces the router's intent instruction and
+    # every intent row then matched, so the first row won; without it the
+    # default router chose correctly. Intent nodes never keep one.
+    routing_changes = [{"node": name, "change": "routing_prompt_removed"} for name, node in sorted(nodes.items())
+                       if "routing_prompt" in node and any(_router_judged(row["condition"]) for row in node.get("transitions", []))]
+    for change in routing_changes:
+        del nodes[change["node"]]["routing_prompt"]
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
@@ -2391,6 +2439,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                         " resolve today, tomorrow, weekdays and every other relative date or time"
                                         " from it, never from any other current date.").strip()
     _bound_entries(nodes, list(plan["nodes"]))
+    routing_changes += _one_route_per_target(nodes)
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:
         workflow["system_prompt"] = copy.deepcopy(plan["system_prompt"])
@@ -2406,6 +2455,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "protected_fact_variable": "bg_facts", "fact_schema_version": 1,
                 "controller_entry_limit": CONTROLLED_ENTRY_LIMIT,
                 "default_conversation_turn_limit": DEFAULT_CONVERSATION_TURNS,
+                "routing_normalisation": routing_changes,
                 "host_behavior_verified": False, "conversation_compliance_proven": False}
     manifest["sha256"] = digest(manifest)
     return {"workflow": workflow, "guard_manifest": manifest}

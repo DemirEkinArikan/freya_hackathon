@@ -113,7 +113,6 @@ def deterministic_plan(contract: dict, requirements: dict) -> dict:
                              "{{bg_facts}}: explain the latest action result honestly (recorded, rejected or uncertain) and "
                              "ask the next question the bank rules require. Do not restart the call or reset any counter. "
                              "Never perform an action, claim recording without recorded evidence, or say goodbye here."),
-            "routing_prompt": "Current approved context: {{bg_facts}}. Route every caller answer to the decision step.",
             "extraction_schema": extraction,
             "transitions": [{"target_node": "decide", "description": "Process the caller's answer.",
                              "condition": {"operator": "matches_intent", "description": "Any caller answer, including unclear or unrelated answers."}}]},

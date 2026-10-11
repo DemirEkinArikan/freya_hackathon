@@ -1,16 +1,20 @@
 """Invented source/input names exercised through sealed compiler and init code."""
+import ast
 import copy
 import json
 import unittest
 
 from builder.action_bindings import compile_action_bindings
+from builder.build import make_policy_prompt
 from builder.contract import compile_policy_contract
 from builder.execution_requirements import compile_execution_requirements, ExecutionRequirementsError
 from builder.guards import compile_guarded_workflow, GuardCompileError
-from builder.policy import compile_execution_policy
+from builder.policy import compile_execution_policy, execution_rule_guidance
 from builder.safety import digest
 from builder.validation import validate_workflow
+from test_call_input_formats import authored
 from test_execution_requirements import packet, plan
+from test_goal_scoped_resolution import CompiledCall
 
 
 def input_packet(names=None):
@@ -166,6 +170,87 @@ class RequiredCallInputTests(unittest.TestCase):
                             for error in validate_workflow(bundle["workflow"], api, policy)))
         self.assertTrue(any("unresolved required binding" in error for error in validate_workflow(
             bundle["workflow"], api, {"call_variables": ["unexpected_name"]})))
+
+
+class RequiredInputGuidanceTests(unittest.TestCase):
+    """The rule shapes the policy model reads state every sealed initial-input refusal."""
+
+    FORMATS = ("call_input_formats", "malformed/date-only/offset-less values quarantine")
+    # Each refusal in the sealed init's input checks -> (rule shape, the text that states it).
+    STATED = {
+        "required call input is absent": ("call_variables", "absent, null or exactly empty text"),
+        "missing engine customer id": ("call_variables", "customer_id is not nonempty text"),
+        "expected an ISO date": ("call_variables", "now does not start with a valid YYYY-MM-DD date"),
+        "protected call-input snapshot is malformed": ("call_variables", "re-checks the sealed snapshot"),
+        "protected call-input snapshot has an absent value": ("call_variables", "re-checks the sealed snapshot"),
+        "protected call-input format is malformed": FORMATS,
+        "protected call input requires a date, time and explicit offset": FORMATS,
+        "protected call-input offset is malformed": FORMATS,
+        "missing offset": FORMATS,
+        "protected call-input datetime is malformed": FORMATS,
+        "protected product-resolution selector is missing or unknown":
+            ("resolve_all_products", "Missing, non-string or unknown initial selector values quarantine"),
+    }
+
+    def test_every_sealed_initial_input_refusal_is_stated_in_the_rule_shapes(self):
+        call = CompiledCall(authored(names=["supplied_label"]), {"supplied_label": "Invented Label"})
+        code = call.workflow["nodes"]["bg_init"]["pre_actions"][0]["function"]["parameters"]["properties"]["code"]["default"]
+        module = ast.parse(code)
+        functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
+        body = [node for node in module.body if isinstance(node, ast.Try)][-1].body
+        # The input checks run before the init's 'done' route; follow every kernel function they call.
+        pending = body[:next(index for index, node in enumerate(body) if isinstance(node, ast.Assign)
+                             and ast.unparse(node.targets[0]) == "(route, body, readback)")]
+        refusals, seen = set(), set()
+        while pending:
+            for node in ast.walk(pending.pop()):
+                if isinstance(node, ast.Raise):
+                    message = node.exc.args[0] if isinstance(node.exc, ast.Call) and node.exc.args else None
+                    refusals.add(message.value if isinstance(message, ast.Constant) else ast.unparse(node))
+                elif isinstance(node, ast.Call) and getattr(node.func, "id", None) in functions.keys() - seen:
+                    seen.add(node.func.id)
+                    pending.append(functions[node.func.id])
+        self.assertEqual(refusals, set(self.STATED))
+        shapes = execution_rule_guidance()
+        payload = json.loads(make_policy_prompt([], call.context["openapi"]).split("AUTHORIZED INPUTS:\n", 1)[1])
+        self.assertEqual(payload["execution_interface"]["rule_shapes"], shapes)
+        for message, (kind, text) in self.STATED.items():
+            with self.subTest(message=message):
+                self.assertIn(text, shapes[kind])
+
+    def test_stated_presence_and_engine_checks_match_the_sealed_init_and_later_steps(self):
+        context = authored(names=["supplied_label", "supplied_title"])
+        valid = {"supplied_label": "Invented Label", "supplied_title": "Mx"}
+        workflow = CompiledCall(context, valid).workflow
+        self.assertEqual(workflow["initial_node"], "bg_init")
+        self.assertEqual((workflow["nodes"]["bg_quarantine"]["node_type"], workflow["nodes"]["bg_quarantine"]["on_enter"]),
+                         ("end_call", {"type": "silent"}))
+        for values in ({"supplied_title": "Mx"}, {**valid, "supplied_label": None}, {**valid, "supplied_label": ""},
+                       {**valid, "customer_id": ""}, {**valid, "customer_id": None}, {**valid, "now": None},
+                       {**valid, "now": "2031-13-02"}, {**valid, "now": "2031-05-02T25:00"}):
+            with self.subTest(refused=values):
+                call = CompiledCall(context, values)
+                self.assertEqual(call.target("bg_init"), "bg_quarantine")
+                self.assertFalse(call.variables["bg_body"])
+        for values in (valid, {**valid, "supplied_label": "  "}, {**valid, "supplied_label": 0, "supplied_title": False},
+                       {**valid, "now": "2031-05-02T11:30"}):
+            with self.subTest(passes=values):
+                self.assertEqual(CompiledCall(context, values).variables["bg_route"], "done")
+        for node in ("identity", "account", "callback", "close"):
+            for snapshot in ({**valid, "supplied_label": ""}, {**valid, "supplied_label": None},
+                             {"supplied_title": "Mx"}, {**valid, "unexpected_label": "x"}):
+                with self.subTest(node=node, snapshot=snapshot):
+                    call = CompiledCall(context, {**valid, "answer_field": "postal_code", "answer_text": "provided-answer"})
+                    original = copy.deepcopy(call.variables)
+                    call.code(node)
+                    self.assertNotEqual(call.target(node), "bg_quarantine")
+                    call.variables = original
+                    state = call.state
+                    state["call_inputs"] = snapshot
+                    call.variables["bg_state"] = json.dumps(state)
+                    call.code(node)
+                    self.assertEqual(call.target(node), "bg_quarantine")
+                    self.assertFalse(call.variables["bg_body"])
 
 
 if __name__ == "__main__":

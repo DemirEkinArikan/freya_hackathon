@@ -31,7 +31,7 @@ class BuilderLeaseTests(unittest.TestCase):
             self.assertEqual(len(observed), 1)
             self.assertEqual(observed[0]['lease_path'], lease.resolve())
             self.assertEqual(observed[0]['reserve'], 300)
-            self.assertEqual(observed[0]['deadline'].limit - observed[0]['deadline'].start, 1800)
+            self.assertEqual(observed[0]['deadline'].duration_seconds, 1800)
             self.assertFalse(lease.exists())  # injected local client does no real simulation
 
     def test_default_lease_stays_next_to_output(self):

@@ -210,6 +210,7 @@ class HostedBackend:
     def call(self, call_id): return self.client.get_call(call_id)
 
     def validate_deployment(self, deployment):
+        from builder.platform import PlatformError, _payload, _valid_id
         from builder.safety import digest
         expected_number = deployment.get("version_number")
         if type(expected_number) is not int or expected_number < 1:
@@ -217,10 +218,21 @@ class HostedBackend:
         stored = self.client.get_workflow(deployment["workflow_id"])
         if stored.get("agentId") != deployment["agent_id"] or digest(stored.get("workflow")) != digest(deployment["workflow"]):
             raise ValueError("agent or stored graph changed from pinned deployment")
-        versions = self.client.request("GET", f"/api/v2/versions/workflow/{deployment['workflow_id']}", params={"workspaceId": self.client.workspace_id()})["versions"]
-        selected = next((v for v in versions if v.get("id") == deployment["version_id"]), None)
-        if (not selected or type(selected.get("versionNumber")) is not int
-                or selected["versionNumber"] != expected_number or selected.get("isPublished") is not True):
+        response = self.client.request("GET", f"/api/v2/versions/workflow/{deployment['workflow_id']}", params={"workspaceId": self.client.workspace_id()})
+        try:
+            versions = _payload(response, "versions", list)
+        except PlatformError:
+            raise ValueError("pinned version metadata is invalid") from None
+        if not versions or any(not isinstance(version, dict) or not _valid_id(version.get("id"))
+                               or type(version.get("versionNumber")) is not int or version["versionNumber"] < 1
+                               or type(version.get("isPublished")) is not bool for version in versions):
+            raise ValueError("pinned version metadata is invalid")
+        if (len({version["id"] for version in versions}) != len(versions)
+                or len({version["versionNumber"] for version in versions}) != len(versions)):
+            raise ValueError("pinned version metadata is ambiguous")
+        published = [version for version in versions if version["isPublished"]]
+        if (len(published) != 1 or published[0]["id"] != deployment["version_id"]
+                or published[0]["versionNumber"] != expected_number):
             raise ValueError("pinned version is no longer published")
         return {"workflow_id": deployment["workflow_id"], "agent_id": deployment["agent_id"],
                 "version_id": deployment["version_id"], "version_number": deployment["version_number"],

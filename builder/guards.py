@@ -2346,7 +2346,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     for name, node in nodes.items():
         rows = node.get("transitions", [])
         target = nodes.get(rows[-1].get("target_node"), {}) if rows and not node.get("passthrough") else {}
-        exits = target.get("transitions", [])
+        # The node-discipline reply relay row runs only after a caller turn in the decision itself.
+        exits = [row for row in target.get("transitions", []) if row["target_node"] != PREFIX + rows[-1]["target_node"] + "_reply"]
         if (rows[-1:] and rows[-1]["condition"].get("operator") == "matches_intent" and exits
                 and not any(row.get("is_tool_call") or row.get("target_node") == rows[-1]["target_node"]
                             or "matches_intent" in canonical_json(row["condition"]) for row in rows[:-1])

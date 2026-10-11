@@ -47,7 +47,9 @@ class HopLatencyTests(unittest.TestCase):
         self.assertEqual(talk["extraction_schema"], frozen["plan"]["nodes"]["talk"]["extraction_schema"])
         gate = talk["transitions"][-1]["target_node"]
         self.assertTrue(any(row["target_node"] == "decide" for row in nodes[gate]["transitions"]))
-        self.assertTrue(all(row.get("is_tool_call") for row in nodes["decide"]["transitions"]))
+        *choices, relay = nodes["decide"]["transitions"]
+        self.assertTrue(all(row.get("is_tool_call") for row in choices))
+        self.assertEqual(relay["target_node"], "bg_decide_reply")  # F5: a reply in the decision returns to talk
 
     def test_other_shapes_keep_their_intent_routes(self):
         cases = {

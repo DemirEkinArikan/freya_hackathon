@@ -695,7 +695,7 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 raise GuardCompileError([name + ": missing unambiguous trusted result field for " + semantic])
         if len(set(results.values())) != len(results):
             raise GuardCompileError([name + ": trusted result roles cannot share an API field"])
-        if "bg_http_status" in results.values():
+        if {"bg_http_status", "bg_result_types"} & set(results.values()):
             raise GuardCompileError([name + ": bank result field collides with reserved envelope status transport"])
         for semantic, actual in results.items():
             leaf = response["properties"][actual]
@@ -711,9 +711,20 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 valid = kind == "string"
             if not valid:
                 raise GuardCompileError([name + ": unsupported trusted result schema for " + semantic])
+        # Raw JSON types each trusted result field may take in any declared
+        # response schema. A field that some schema leaves untyped is unchecked.
+        declared = [s["properties"] for media in op["response_schemas"].values() for s in media.values()
+                    if isinstance(s, dict) and isinstance(s.get("properties"), dict)]
+        result_types = {}
+        for semantic, actual in results.items():
+            found = [schema[actual].get("type") if isinstance(schema[actual], dict) else None
+                     for schema in declared if actual in schema]
+            if all(type(kind) is str for kind in found):
+                result_types[semantic] = sorted(set(found))
         catalog[name] = {"name": actual_name, "path": op["path"], "method": op["method"],
                          "request_schema": copy.deepcopy(request), "fields": fields,
-                         "results": results, "tool": copy.deepcopy(tools[actual_name])}
+                         "results": results, "result_types": result_types,
+                         "tool": copy.deepcopy(tools[actual_name])}
         if name == "verify_identity":
             budget = response["properties"][results["wrong_answers_left"]].get("maximum")
             if type(budget) is int and budget >= 1:
@@ -1656,6 +1667,22 @@ def guard_continue(state, catalog):
         state['consent'] = ''
         return state, 'failure', dict(), ''
 
+def guard_mistyped(data, spec):
+    # The API hook records each trusted result field's raw JSON type, in sorted
+    # semantic order, before the string mapping erases it. A non-string type
+    # that no declared response schema allows is malformed evidence. A string
+    # is never type evidence, so a host that hands the hook strings keeps the
+    # earlier behaviour. Absent and null keep the missing-value rules; no
+    # record at all is no type evidence.
+    kinds = str(data.get('_types') or '').split(',')
+    if kinds == ['']:
+        return False
+    names = sorted(spec['results'])
+    allowed = spec.get('result_types', dict())
+    return len(kinds) != len(names) or any(
+        name in allowed and kind != 'string' and kind not in allowed[name] + ['absent', 'null']
+        and not (kind == 'integer' and 'number' in allowed[name]) for name, kind in zip(names, kinds))
+
 def guard_result(state, data, profile, catalog, expected_action):
     state = json.loads(guard_json(state))
     tx = state['inflight']
@@ -1674,7 +1701,8 @@ def guard_result(state, data, profile, catalog, expected_action):
     # A positive flag and an error cannot jointly prove success. Preserve the
     # pending request and every earlier record; this never grants a replay.
     contradictory_error = guard_true(ok) and 'error' in data and data['error'] != ''
-    if not status_valid or guard_true(ok) and not success_status or contradictory_error:
+    if (not status_valid or guard_true(ok) and not success_status or contradictory_error
+            or guard_mistyped(data, catalog[tx['operation']])):
         if action == 'verify_identity':
             return guard_identity_end(state, profile, 'uncertain')
         state['quarantined'] = True
@@ -1840,7 +1868,7 @@ def guard_result(state, data, profile, catalog, expected_action):
                 # Only an exact declared non-2xx receipt valid for that status
                 # schema is definite; any other negative receipt raises, and
                 # the result handler quarantines it.
-                guard_body(dict((k, v) for k, v in data.items() if v not in ('', None)), str(status), catalog['get_account']['failure_receipts'])
+                guard_body(dict((k, v) for k, v in data.items() if v not in ('', None) and k != '_types'), str(status), catalog['get_account']['failure_receipts'])
                 state['account_failed'] = True
             return state, 'failure', dict(), ''
         products = data.get('products')
@@ -2131,6 +2159,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         result_vars = {semantic: PREFIX + name + "_result_" + semantic for semantic in catalog[operation]["results"]} if operation else {}
         if operation:
             result_vars['_http_status'] = PREFIX + name + '_result_http_status'
+            result_vars['_types'] = PREFIX + name + '_result_types'
         needs_confirmation = (action == "commit_promises" and profile.get("require_confirmation") is True
                               or action in profile.get("confirmation_actions", []))
         routes = [copy.deepcopy(quarantine_route), _transition(success, "done")]
@@ -2155,15 +2184,23 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         # This hook only transports the already validated immutable JSON body.
         # It never decides whether an action is authorized or rewrites its URL.
         tool["pre_process_code"] = "try:\n    config['body'] = str(vars.get('bg_body') or '')\nexcept Exception:\n    pass\n"
-        # Transport only the actual immutable HTTP envelope status. The kit
-        # documents hooks before response_mapping; API pre_action automatic
-        # result-key naming is insufficiently explicit to use as evidence.
-        tool["post_process_code"] = "try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\nexcept Exception:\n    pass\n"
+        # Transport only the actual immutable HTTP envelope status and the raw
+        # JSON type of each trusted result field, which the string mapping
+        # erases. The kit documents hooks before response_mapping; API
+        # pre_action automatic result-key naming is insufficiently explicit.
+        names = [actual for _, actual in sorted(catalog[operation]["results"].items())]
+        tool["post_process_code"] = ("try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\n"
+            "        kinds = list()\n        for name in " + repr(names) + ":\n            value = result['data'].get(name)\n"
+            "            kinds.append('absent' if name not in result['data'] else 'null' if value is None else 'boolean' if value is True or value is False"
+            " else 'integer' if isinstance(value, int) else 'number' if isinstance(value, float) else 'string' if isinstance(value, str)"
+            " else 'array' if isinstance(value, list) else 'object' if isinstance(value, dict) else 'other')\n"
+            "        result['data']['bg_result_types'] = ','.join(kinds)\nexcept Exception:\n    pass\n")
         nodes[api] = {"name": api, "node_type": "api_request", "on_enter": {"type": "silent"},
             "passthrough": True, "passthrough_default_transition": reconcile, "pre_actions": [tool],
             "response_mapping": [{"variable": result_vars[semantic], "path": "data." + actual}
                                  for semantic, actual in sorted(catalog[operation]["results"].items())]
-                                 + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"}],
+                                 + [{"variable": result_vars['_http_status'], "path": "data.bg_http_status"},
+                                    {"variable": result_vars['_types'], "path": "data.bg_result_types"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
             nodes[confirm] = {"name": confirm, "node_type": "conversation", **_confirmation_speech(profile, action),

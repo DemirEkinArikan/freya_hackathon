@@ -43,7 +43,7 @@ violation is open, including the known one below.
 | First write recorded, second receipt missing | `test_s05_receipt_matrix` first-known-second-unknown |
 | Positive flag plus error (200 and 503) | `test_s05_receipt_matrix` positive-plus-error |
 | Blank record ID, malformed `ok` type, malformed HTTP status | `test_s05_receipt_matrix` malformed cases |
-| Non-string record ID (91, true, {}, []) | `test_s05_receipt_matrix` known violation V1 |
+| Non-string record ID (91, true, {}, []) | `test_s05_receipt_matrix` non-string record ID (V1, now handled) |
 | Qualified 503 negative: one exact retry, then record | `test_s05_receipt_matrix` qualified-negative |
 | Qualified negative that carries a record ID | `test_s05_receipt_matrix` negative-with-record |
 | Callback call cap, retry cap and exact-request scope across changed slots | `test_s05_dispatch_caps` |
@@ -73,10 +73,14 @@ result binding), so the kernel's `isinstance(promise_id, str)` check in
 `guard_result` sees "91", "true", "{}" or "[]". The compiled
 `post_process_code` hook sees the typed envelope, but it only transports the
 HTTP status. Both live in reserved guard code (`builder/guards.py`), so this
-lane only reports the defect. The case stays in the suite as
-`test_known_violation_non_string_record_identity_is_recorded`, marked
-`expectedFailure` with the expectation unchanged. When a fix lands, the
-unexpected success fails the suite until the marker is removed.
+lane only reported the defect.
+
+Status: handled by the result-type evidence change
+(`rapid/gap-receipt-type-20261011-claude`). The hook now also records each
+trusted result field's raw JSON type. The kernel treats a type that the API
+does not declare as unknown persistence. The case runs as
+`test_non_string_record_identity_is_unknown_persistence`, with the same
+expectation and no `expectedFailure` marker.
 
 ## Review fixes (Claude S05)
 

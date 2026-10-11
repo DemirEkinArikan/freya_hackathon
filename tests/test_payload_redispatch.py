@@ -54,6 +54,12 @@ class RefusedStepTests(unittest.TestCase):
         variables, config = {"bg_route": "allow", "bg_body": '{"a":1}'}, {"body": ""}
         exec(api["pre_process_code"], {"vars": variables, "config": config})
         self.assertEqual((variables["bg_route"], config["body"]), ("sent", '{"a":1}'))
+        class ReadOnly(dict):  # a host that refused hook writes to vars must still get the raw body
+            def __setitem__(self, key, value):
+                raise TypeError(key)
+        config = {"body": ""}
+        exec(api["pre_process_code"], {"vars": ReadOnly(bg_body='{"a":1}'), "config": config})
+        self.assertEqual(config["body"], '{"a":1}')
         node, stale = workflow["nodes"]["bg_callback_result"], {"bg_route": "allow", "bg_quarantined": ""}
         # The allow row a fresh reconciliation may use (next batch member or qualified retry).
         self.assertEqual(replay_guarded._route(node, stale)[0], "bg_callback_api")

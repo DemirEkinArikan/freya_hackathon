@@ -2417,7 +2417,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         # It never decides whether an action is authorized or rewrites its URL.
         # It also consumes the one-shot allow that authorised this request, so
         # only fresh reconciliation can authorise another one.
-        tool["pre_process_code"] = "try:\n    vars['bg_route'] = 'sent'\n    config['body'] = str(vars.get('bg_body') or '')\nexcept Exception:\n    pass\n"
+        tool["pre_process_code"] = "try:\n    config['body'] = str(vars.get('bg_body') or '')\n    vars['bg_route'] = 'sent'\nexcept Exception:\n    pass\n"
         # Transport only the actual immutable HTTP envelope status and the raw
         # JSON type of each trusted result field, which the string mapping
         # erases. The kit documents hooks before response_mapping; API

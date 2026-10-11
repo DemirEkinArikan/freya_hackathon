@@ -194,6 +194,22 @@ class StoredWorkflowTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     assert_equivalent_stored_workflow(stored, self.authored)
 
+    def test_integral_float_read_back_as_int_is_the_same_authored_number(self):
+        authored = {"initial_node": "start", "nodes": {"start": {"name": "start", "min_confidence": 1.0, "retries": 2}}}
+        for value, equivalent in ((1, True), (1.0, True), (2, False), (0.9, False), (True, False), ("1", False), (None, False)):
+            stored = copy.deepcopy(authored)
+            stored["nodes"]["start"]["min_confidence"] = value
+            with self.subTest(value=value):
+                if equivalent:
+                    assert_equivalent_stored_workflow(stored, authored)
+                else:
+                    with self.assertRaises(ValueError):
+                        assert_equivalent_stored_workflow(stored, authored)
+        stored = copy.deepcopy(authored)
+        stored["nodes"]["start"]["retries"] = True
+        with self.assertRaises(ValueError):
+            assert_equivalent_stored_workflow(stored, authored)
+
     def test_default_at_wrong_path_is_rejected(self):
         self.stored["nodes"]["start"]["on_enter"]["passthrough"] = False
         with self.assertRaises(ValueError):

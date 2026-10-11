@@ -20,8 +20,8 @@ RULES:
 - Answer what you are asked. Do not volunteer information nobody asked for.
 - When you give a number or a date, say all of it in one turn. Never stop halfway through.
 - Do not invent dates, amounts or facts that are not written above. If asked something that is not covered, give a short neutral answer.
-- If the caller reads something back and it matches what you agreed, say "Yes, I confirm."
-- When the caller says goodbye, say "Thank you, goodbye." and say nothing more."""
+- If the caller reads something back and it matches what you agreed, say "{confirm}"
+- When the caller says goodbye, say "{goodbye}" and say nothing more."""
 
 # How a customer talks. The facts of the case stay the same, only the way of saying them changes.
 STYLES = {
@@ -43,14 +43,15 @@ def persona_for(case, ident, style=None):
                "company_number": "Your company number is {}.", "founded_year": "The company was founded in {}."}
         who = f"You are {me}. " + " ".join(say.get(k, "Your " + k.replace("_", " ") + " is {}.").format(x) for k, x in i.items()) + " Give these only when asked, and give the wrong ones where the text below says so."
     style = style or case.get("style")
-    text = PERSONA.format(who=who, script=case["script"]) + ("\n\n" + STYLES[style] if style else "")
+    ph = case.get("persona") or {}        # the fixed phrases in the call's language, when the case gives them
+    text = PERSONA.format(who=who, script=case["script"], confirm=ph.get("confirm", "Yes, I confirm."), goodbye=ph.get("goodbye", "Thank you, goodbye.")) + ("\n\n" + STYLES[style] if style else "")
     return {"name": case["id"] + " " + case["title"] + (f" [{style}]" if style else ""), "prompt": text, "successCriteria": "All of these are true:\n- " + "\n- ".join(case["checks"]), "tags": ["hackathon", "brief-" + case["brief"]]}
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("agent_id"); ap.add_argument("--brief"); ap.add_argument("--cases", default=str(ROOT / "public-test-set.json")); ap.add_argument("--out"); ap.add_argument("--only"); ap.add_argument("--reps", type=int, default=1); ap.add_argument("--style", choices=sorted(STYLES)); ap.add_argument("--rerun-if-slow", type=int, default=0)
     a = ap.parse_args()
     cases = [c for c in json.load(open(a.cases)) if (not a.brief or c["brief"] == a.brief) and (not a.only or c["id"] in a.only.split(","))]
-    ident = {c["id"]: {"identity": c["identity"]} for c in cases}
+    ident = {c["id"]: {"identity": c.get("identity") or {}} for c in cases}
     store = ROOT / ".personas.json"; ids = json.load(open(store)) if store.exists() else {}
     # a persona is recreated whenever its text changes, so an edited case never runs with a stale customer
     spec = {c["id"]: persona_for(c, ident[c["id"]], a.style) for c in cases}
@@ -95,8 +96,8 @@ def run_once(agent_id, cases, ids):
         j = judge.get(ids[c["id"]], {})                      # the conversation checks, read from the transcript by the judge model
         if j.get("outcome") != "pass": r["failed"].append("conversation: " + " ".join(str(j.get("reason") or "no verdict").split())[:400])
         r["pass"] = not r["failed"]
-        rows.append({"id": c["id"], "level": c["level"], "family": c["family"], "pass": r["pass"], "failed": r["failed"], "call_id": j.get("callId"), "tools": [x["tool"] for x in led["calls"]], "customer_id": sessions[c["id"]]["customer_id"]})
-        print(("PASS" if r["pass"] else "FAIL"), c["id"], f"{c['level']:<6}", f"{c['family']:<14}", "|", " > ".join(x["tool"].replace("verify_identity", "verify").replace("create_promise", "promise") for x in led["calls"]) or "(no tool calls)")
+        rows.append({"id": c["id"], "level": c["level"], "family": c["family"], "pass": r["pass"], "failed": r["failed"], "call_id": j.get("callId"), "tools": [x["tool"] for x in led.get("calls") or []], "customer_id": sessions[c["id"]]["customer_id"]})
+        print(("PASS" if r["pass"] else "FAIL"), c["id"], f"{c['level']:<6}", f"{c['family']:<14}", "|", " > ".join(x["tool"].replace("verify_identity", "verify").replace("create_promise", "promise") for x in led.get("calls") or []) or "(no tool calls)")
         for f in r["failed"]: print("       -", f[:260])
     # How long the phone agent kept the customer waiting. A call whose customer hung up after long silences says
     # something about the speed of the model at that moment, not only about the agent.

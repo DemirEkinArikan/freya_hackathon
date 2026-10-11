@@ -205,9 +205,11 @@ def depth(e):
 
 def write_index(entries, src, out):
     cell = lambda v: v.replace('|', '\\|')
+    kb = lambda t: (out / t).stat().st_size // 1000
+    mark = lambda t: t if kb(t) <= 100 else f'{t} (LARGE, {kb(t)} KB: query it with python3 -I, json or csv, instead of reading it whole)'
     rows = []
     for i, e in enumerate(entries, 1):
-        read = ', '.join(e['text']) or ('(image: open it with Read)' if e['kind'] == 'image' else '(no text: see the original)')
+        read = ', '.join(map(mark, e['text'])) or ('(image: open it with Read)' if e['kind'] == 'image' else '(no text: see the original)')
         rows.append(f"| {i} | {cell(e['source'])} | {cell(read)} | {e['files'][0]} | {cell(e['readme'])} |")
     images = [f"- {img}" + (f" (inside {e['source']})" if e['kind'] != 'image' else '') for e in entries for img in e['images']]
     problems = [f"- {e['source']}: {e['error']}. The original is {e['files'][0]}." for e in entries if e['error']]

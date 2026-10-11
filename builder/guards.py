@@ -84,6 +84,7 @@ _CONTROLLER_STATE_EFFECTS = {
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
                        "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged.",
                        "An amount that is not positive, is below the product's floor_fields amount or exceeds its past_due amount is refused.",
+                       "An amount with more than two decimal places is refused.",
                        "A staged or recorded transfer handoff refuses this action; after a handoff only commit_transfer and close_call are accepted.",
                        "A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "commit_promises": {
@@ -116,11 +117,16 @@ _CONTROLLER_STATE_EFFECTS = {
         "rejections": ["A call whose sealed initial goal code is listed by a scoped goal_close refuses this action."]},
     "schedule_callback": {
         "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
-        "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
+        "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."],
+        "rejections": ["A time that is not HH:MM or falls outside the callback_window start to end, inclusive, is refused.",
+                       "A date before the first eligible day (today with allow_today, otherwise the next business day), after the last eligible day (the next_business_days-th business day after today, or today when it is 0), or on a non-business day other than an allowed today is refused.",
+                       "A callback for today is refused unless the supplied now includes a time and the requested time is strictly later than it."]},
     "close_call": {
-        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close."],
+        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close.",
+                             "Closing facts are derived from protected state, never from the proposal: transferred from a recorded transfer, promise from any recorded promise, paid only once notes are finalized and every loaded product's disposition (its recorded note when record_notes is true, otherwise its staged disposition) is paid, and no_promise once notes are finalized, with the reason of the first non-paid disposition in product order."],
         "positive_recording": ["Validated positive close evidence marks the close recorded."],
-        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
+        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt.",
+                       "A transferred, promise, paid or no_promise close other than its derived fact is refused, and several derived facts are refused unless close_precedence ranks one of them."]},
 }
 
 
@@ -717,7 +723,10 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
             keys = product_schema.get("properties", {})
             mapping = {s: product_fields.get(s, s) for s in ("product_id", "type", "days_late", "past_due")}
             if any(field not in keys for field in mapping.values()):
-                raise GuardCompileError(["get_account: product field aliases require explicit active product_fields"])
+                missing = ", ".join(s for s, field in mapping.items() if not isinstance(field, str) or field not in keys)
+                raise GuardCompileError(["get_account: product field aliases require explicit active product_fields for "
+                                         + missing + " (its keys are the semantic names product_id, type, "
+                                         "days_late and past_due, each mapped to the get_account product field with that meaning)"])
             catalog[name]["product_fields"] = mapping
             catalog[name]["product_schema"] = copy.deepcopy(product_schema)
             # Declared non-2xx responses whose success flag can be false: the

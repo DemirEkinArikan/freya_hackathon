@@ -656,6 +656,89 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
     return errors
 
 
+_QUOTE_MARKS = str.maketrans("‘’‚‛“”„‟", "''''\"\"\"\"")
+_QUOTE_EDGE = ".,;:!?…\"'‘’‚‛“”„‟"
+_READ_RULE_FIELDS = {"id", "kind", "value", "source", "overrides", "text", "sources"}
+
+
+def _canonical(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """Straight quotation marks and one space per whitespace run, with each character's source span."""
+    pieces = list(re.finditer(r"\s+|.", text, re.S))
+    return ("".join(" " if piece.group().isspace() else piece.group().translate(_QUOTE_MARKS) for piece in pieces),
+            [piece.span() for piece in pieces])
+
+
+def _source_span(quote: str, document: str, canonical: tuple[str, list[tuple[int, int]]]) -> tuple[int, int, str] | None:
+    """Return (start, end, exact source text) for the least-trimmed quote equal after canonicalisation."""
+    text, spans = canonical
+    edge = [character.isspace() or character in _QUOTE_EDGE for character in quote]
+    if all(edge):
+        return None
+    lead, tail = edge.index(False), edge[::-1].index(False)
+    starts = {lead} | {i for i in range(min(lead, 8)) if not quote[i].isspace()}
+    ends = {len(quote) - tail} | {len(quote) - k for k in range(min(tail, 8)) if not quote[-k - 1].isspace()}
+    for start, end in sorted(((s, e) for s in starts for e in ends), key=lambda c: (c[0] + len(quote) - c[1], c[0])):
+        needle = _canonical(quote[start:end])[0]
+        at = text.find(needle)
+        if at >= 0:
+            return start, end, document[spans[at][0]:spans[at + len(needle) - 1][1]]
+    return None
+
+
+def _descriptive_annotation(value: Any, rule_ids: set) -> bool:
+    """Only nonempty text: no flag, number, null, ISO date or other rule's id anywhere in the value."""
+    if isinstance(value, str):
+        return bool(value.strip()) and value not in rule_ids and not re.search(r"\d{4}-\d{2}-\d{2}", value)
+    if isinstance(value, dict):
+        return bool(value) and all(_descriptive_annotation(key, rule_ids) and _descriptive_annotation(item, rule_ids)
+                                   for key, item in value.items())
+    return isinstance(value, list) and bool(value) and all(_descriptive_annotation(item, rule_ids) for item in value)
+
+
+def normalise_policy(policy: Any, source_documents: Mapping[str, str]) -> tuple[Any, list[dict[str, Any]]]:
+    """Apply recorded, deterministic rewrites that spare a repair; validation itself stays strict.
+
+    A rule quote absent from its cited source becomes the exact source text it equals once edge
+    punctuation and whitespace are trimmed (least trimming first), curly quotation marks are
+    straightened and whitespace runs collapse. Words must still match exactly; nothing fuzzy.
+    A rule field that no builder code reads is dropped only when it holds descriptive text alone;
+    a flag, number, date or rule reference keeps the strict rejection. One record per change.
+    """
+    if not isinstance(policy, dict) or not isinstance(policy.get("rules"), list):
+        return policy, []
+    policy, records, canonical = copy.deepcopy(policy), [], {}
+    rule_ids = {rule.get("id") for rule in policy["rules"] if isinstance(rule, dict) and isinstance(rule.get("id"), str)}
+    for index, rule in enumerate(policy["rules"]):
+        if not isinstance(rule, dict):
+            continue
+        dropped = {field: rule[field] for field in sorted(set(rule) - _READ_RULE_FIELDS)
+                   if _descriptive_annotation(rule[field], rule_ids)}
+        if dropped:
+            for field in dropped:
+                del rule[field]
+            records.append({"rule": index, "rule_id": rule.get("id"), "change": "dropped_unread_fields", "fields": dropped})
+        source = rule.get("source")
+        sid = source.get("id") if isinstance(source, dict) else None
+        quote = source.get("quote") if isinstance(source, dict) else None
+        document = source_documents.get(sid) if isinstance(sid, str) else None
+        if not isinstance(quote, str) or not isinstance(document, str) or quote in document:
+            continue
+        if sid not in canonical:
+            canonical[sid] = _canonical(document)
+        match = _source_span(quote, document, canonical[sid])
+        if match is None:
+            continue
+        start, end, exact = match
+        kept = quote[start:end]
+        steps = (["trimmed_edges"] if (start, end) != (0, len(quote)) else []) + \
+                (["quotation_marks"] if re.sub(r"\s+", " ", kept) != re.sub(r"\s+", " ", exact) else []) + \
+                (["whitespace_runs"] if kept.translate(_QUOTE_MARKS) != exact.translate(_QUOTE_MARKS) else [])
+        source["quote"] = exact
+        records.append({"rule": index, "rule_id": rule.get("id"), "change": "normalised_quote", "source": sid,
+                        "steps": steps, "quote": quote, "exact_source_text": exact})
+    return policy, records
+
+
 def _active_rules(policy: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """Select retained active rules; callers validate override graphs first."""
     rules = [rule for rule in policy.get("rules", []) if isinstance(rule, dict)]

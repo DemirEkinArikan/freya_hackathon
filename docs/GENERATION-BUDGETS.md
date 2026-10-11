@@ -11,7 +11,7 @@ Original failed artifacts remain unchanged; no policy/workflow was accepted.
 
 Each unconditional 450-second timeout left about 1343 seconds of the same
 1800-second deadline. Initial policy extraction now allows at most 900 seconds,
-retaining 570 seconds for the pending first workflow generation and 300 seconds
+retaining 450 seconds for the pending first workflow generation and 300 seconds
 for export. Policy validation repairs allow at most 450 seconds and share that
 same reserve. Extraction-only mode retains the 300 export/completion reserve
 without reserving a nonexistent workflow stage. The workflow stage still uses
@@ -19,21 +19,26 @@ at most 900 seconds, clipped by the remaining global time and export reserve.
 The two-repair limit remains shared across policy and workflow validation.
 Timeouts remain failures; they do not automatically restart a model call.
 
-Repair admission (11 Oct). The first-workflow reserve was 450 seconds; it is
-now 570, because the slowest first plan call that completed on a public brief
-that day took 563.5 seconds. A repair rewrites its whole document, so a policy
+Repair admission (11 Oct). A repair rewrites its whole document, so a policy
 or plan repair starts only when its allocation covers 90% of 61 seconds plus
 0.0044 seconds per character of the previous attempt's compact JSON. The 38
 policy and plan repairs completed on 11 Oct took 0.62-1.19 times that estimate,
 and none would have been refused. Five of that day's seven timed-out repairs
 would not have started. A refused repair ends the build with `DeadlineExceeded`.
 The message gives the available and estimated seconds, then the real validation
-or format failure, instead of a generic timeout. The 1800-second limit and the
-300-second export reserve are unchanged. Every repair decision is a
-`repair_admission` trace event. `stage_completed` events with elapsed and
-remaining seconds now cover policy, workflow, deployment, testing and export.
-These times come from the build's own deadline clock. A failed build's `end`
-event carries its `stage_durations`.
+or format failure, instead of a generic timeout.
+
+The 1800-second limit, the 300-second export reserve and the 450-second
+first-workflow reserve are unchanged. In a replay of that day's call times, a
+larger first-workflow reserve refused policy repairs that would have succeeded.
+A smaller one changed timing success by at most 0.07, and only when two policy
+repairs were needed. One public-A build passed its third policy attempt with
+496 seconds left, and its 303-second first plan then validated.
+
+Every repair decision is a `repair_admission` trace event. `stage_completed`
+events with elapsed and remaining seconds now cover policy, workflow,
+deployment, testing and export. These times come from the build's own deadline
+clock. A failed build's `end` event carries its `stage_durations`.
 
 The controller and generator use the original `Deadline` instance. Actual
 subprocess allocation is recalculated after capability inspection and mandatory

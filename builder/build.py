@@ -47,9 +47,10 @@ MAX_REPAIRS = 2
 POLICY_INITIAL_CAP = 900
 POLICY_REPAIR_CAP = 450
 WORKFLOW_CAP = 900
-# Kept from policy repairs for the first plan call. Measured: the slowest first
-# plan call that completed on a public brief on 11 Oct took 563.5 s.
-FIRST_WORKFLOW_RESERVE = 570
+# Kept from policy repairs for the first plan call. In a replay of 11 Oct call
+# times, a larger reserve refused policy repairs that would have succeeded and
+# a smaller one changed timing success by at most 0.07.
+FIRST_WORKFLOW_RESERVE = 450
 # A repair rewrites its whole document: about 61 s plus 0.0044 s per character of
 # the previous attempt's compact JSON (38 policy and plan repairs completed on
 # 11 Oct took 0.62-1.19 times this). A repair starts only when its allocation

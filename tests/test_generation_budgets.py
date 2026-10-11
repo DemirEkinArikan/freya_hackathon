@@ -32,12 +32,12 @@ class GenerationBudgetTests(unittest.TestCase):
         result = execute(self.args("--generate-only"), generator=generator)
         kwargs = generator.generate.call_args.kwargs
         self.assertEqual(kwargs["max_seconds"], 900)
-        self.assertEqual(kwargs["reserve_seconds"], 870)
+        self.assertEqual(kwargs["reserve_seconds"], 750)
         source = json.loads((PROJECT / result["run_directory"] / "builder-source.json").read_text())
         config = source["resolved_config"]
         self.assertEqual(config["generation_budgets"], {
             "policy_initial_cap_seconds": 900, "policy_repair_cap_seconds": 450,
-            "first_workflow_reserve_seconds": 570, "workflow_cap_seconds": 900,
+            "first_workflow_reserve_seconds": 450, "workflow_cap_seconds": 900,
             "repair_admission": {"base_seconds": 61, "fraction": 0.9,
                                  "seconds_per_character": 0.0044}})
         self.assertEqual((config["deadline_seconds"], config["export_reserve_seconds"], config["max_repairs"]),
@@ -57,8 +57,8 @@ class GenerationBudgetTests(unittest.TestCase):
         generator.generate.side_effect = extract
         result = execute(self.args("--generate-only"), generator=generator, deadline=deadline)
         self.assertEqual(result["policy_repairs"], 1)
-        self.assertEqual([call.kwargs["max_seconds"] for call in generator.generate.call_args_list], [900, 310])
-        self.assertEqual([call.kwargs["reserve_seconds"] for call in generator.generate.call_args_list], [870, 870])
+        self.assertEqual([call.kwargs["max_seconds"] for call in generator.generate.call_args_list], [900, 430])
+        self.assertEqual([call.kwargs["reserve_seconds"] for call in generator.generate.call_args_list], [750, 750])
         self.assertEqual(generator.generate_plan.call_count, 1)
         self.assertEqual(deadline.start, 0)
 
@@ -77,7 +77,7 @@ class GenerationBudgetTests(unittest.TestCase):
     def test_pending_workflow_stops_policy_when_only_reserve_remains(self):
         now = [0.0]
         deadline = Deadline(1800, clock=lambda: now[0])
-        now[0] = 929
+        now[0] = 1049
         generator = self.generator()
         with self.assertRaises(DeadlineExceeded):
             execute(self.args("--generate-only"), generator=generator, deadline=deadline)
@@ -95,7 +95,7 @@ class GenerationBudgetTests(unittest.TestCase):
         self.assertEqual(manifest["status"], "failed")
 
     def test_policy_repair_starts_only_if_a_rewrite_of_that_size_fits_before_the_workflow_reserve(self):
-        # The first call ends at 620 s: min(450, 1180 - 300 - 570) = 310 s remain for a repair.
+        # The first call ends at 740 s: min(450, 1060 - 300 - 450) = 310 s remain for a repair.
         for padding, repaired in ((0, True), (60000, False)):
             now = [0.0]
             deadline = Deadline(1800, clock=lambda: now[0])
@@ -107,7 +107,7 @@ class GenerationBudgetTests(unittest.TestCase):
             generator = self.generator()
             generator.generate.return_value = fixture()
             def extract(*args, **kwargs):
-                now[0] += 620 if generator.generate.call_count == 1 else 100
+                now[0] += 740 if generator.generate.call_count == 1 else 100
                 return copy.deepcopy(invalid) if generator.generate.call_count == 1 else fixture()
             generator.generate.side_effect = extract
             out = self.directory / f"out-{padding}"
@@ -127,7 +127,7 @@ class GenerationBudgetTests(unittest.TestCase):
                 self.assertEqual({key: admission[key] for key in ("stage", "attempt", "admitted", "available_seconds",
                                                                    "estimated_seconds", "reserve_seconds")},
                                  {"stage": "policy", "attempt": 2, "admitted": repaired, "available_seconds": 310,
-                                  "estimated_seconds": round(estimate, 1), "reserve_seconds": 870})
+                                  "estimated_seconds": round(estimate, 1), "reserve_seconds": 750})
                 if not repaired:
                     manifest = json.loads((run / "manifest.json").read_text())
                     self.assertEqual(manifest["status"], "failed")
@@ -138,7 +138,7 @@ class GenerationBudgetTests(unittest.TestCase):
         deadline = Deadline(1800, clock=lambda: now[0])
         generator = self.generator()
         def extract(*args, **kwargs):
-            now[0] = 880  # 920 s remain: 50 s before the 870 s reserve, below 90% of the 61 s base.
+            now[0] = 1000  # 800 s remain: 50 s before the 750 s reserve, below 90% of the 61 s base.
             raise GenerationFormatError("inner_json")
         generator.generate.side_effect = extract
         with self.assertRaisesRegex(DeadlineExceeded, r"^No time for a repair \(50 s available, about 61 s needed\): "

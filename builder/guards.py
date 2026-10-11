@@ -121,7 +121,8 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close.",
                              "Before verification, with no recorded callback or verification evidence, an empty outcome and reason proposal selects the recorded identity phase's identity_close row when that row is one eligible declared choice; any other proposal must match a declared choice."],
         "positive_recording": ["Validated positive close evidence marks the close recorded."],
-        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
+        "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt.",
+                       "A refused close sets the quarantine flag and ends the call without a close; it never returns to dialogue."]},
 }
 
 
@@ -1189,8 +1190,13 @@ def guard_close(state, proposed, profile, maps):
                     requirement = choice['requires']
                     if requirement in GUARD_IDENTITY_EVIDENCE.values():
                         raise ValueError('identity closing proposal lacks required verification evidence')
-                    if requirement == 'recorded_callback' and not state['callbacks'] or requirement == 'no_recorded_callback' and state['callbacks']:
-                        raise ValueError('identity closing proposal lacks required callback evidence')
+                    if requirement == 'recorded_callback':
+                        # No callback is recorded on this path, so the evidence decides
+                        # a callback claim: the scope's one row requiring that absence.
+                        matching = [row for row in choices if row['requires'] == 'no_recorded_callback']
+                        if len(matching) != 1:
+                            raise ValueError('identity closing proposal lacks required callback evidence')
+                        choice = matching[0]
                     proposal = dict((key, value) for key, value in choice.items() if key != 'requires')
         else:
             # Identity is verified (and possibly the account loaded) without a
@@ -1208,7 +1214,10 @@ def guard_close(state, proposed, profile, maps):
                     raise ValueError('goal closing proposal must be text')
                 outcome = guard_decode('outcomes', proposed.get('outcome', ''), maps)
                 reason = guard_decode('reasons', proposed.get('reason', ''), maps)
-                rows = [row for row in rows if row['outcome'] == outcome and row.get('reason', '') == reason]
+                claim = [row['requires'] for row in guard_goal_close(state, profile)[phase] if row['outcome'] == outcome and row.get('reason', '') == reason]
+                # Without a recorded callback, a callback claim closes through the phase's one row requiring that absence.
+                rows = [row for row in rows if row['outcome'] == outcome and row.get('reason', '') == reason
+                        or claim == ['recorded_callback'] and not state['callbacks'] and row['requires'] == 'no_recorded_callback']
             if len(rows) != 1:
                 raise ValueError('goal closing proposal lacks one declared eligible choice')
             proposal = dict((key, value) for key, value in rows[0].items() if key != 'requires')
@@ -2017,7 +2026,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = 'unclear'\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
-    if phase != "prepare":
+    # A refused close has no eligible close left to prove, so it is flagged, never a silent unflagged end.
+    if phase != "prepare" or action == "close_call":
         tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        retained['quarantined'] = True\n        retained['batch'] = dict()\n        retained['consent'] = ''\n        vars['bg_state'] = guard_json(retained)\n    except Exception:\n        vars['bg_state'] = json.dumps(dict(quarantined=True))\n"
     else:
         tail += "    vars['bg_state'] = str(vars.get('bg_state') or '')\n"
@@ -2245,8 +2255,9 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         routes += [_transition(blocked)]
         if action == "close_call":
             # A turn-limit exit must not return to the same public recovery
-            # loop when no authorized bank disposition can be formed. End
-            # silently without fabricating a bank close or persistence claim.
+            # loop when no authorized bank disposition can be formed. A refused
+            # close is quarantined above and ends at the quarantine terminal,
+            # without fabricating a bank close or persistence claim.
             routes = [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition("bg_terminal")]
         nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
         entries.append(name)

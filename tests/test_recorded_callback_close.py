@@ -110,8 +110,9 @@ class RecordedCallbackCloseTests(unittest.TestCase):
     def test_missing_recorded_callback_cannot_claim_declared_callback_success(self):
         for proposal in ({"outcome": "Z_REACH", "reason": "Q_BOOKED"},
                          {"outcome": "not_reached", "reason": "callback"}):
-            with self.subTest(proposal=proposal), self.assertRaisesRegex(ValueError, "callback evidence"):
-                self.close(proposal)
+            with self.subTest(proposal=proposal):
+                # The absent callback decides the claim: the declared no_recorded_callback row closes.
+                self.assertEqual(self.close(proposal)[2]["cause_wire"], "Q_UNBOOKED")
 
     def test_without_callback_existing_declared_no_callback_choice_still_works(self):
         _, route, body, _ = self.close({"outcome": "Z_REACH", "reason": "Q_UNBOOKED"})

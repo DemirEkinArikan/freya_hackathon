@@ -278,7 +278,7 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if _scoped_value_errors(kind, value) is not None:
             errors.append("scoped execution rules lack protected runtime selection")
             continue
-        if kind in {"record_notes", "resolve_all_products"} and type(value) is not bool:
+        if kind == "record_notes" and type(value) is not bool:
             errors.append(kind + " must be boolean")
         elif kind == "confirmation_scope" and value not in {"each", "batch"}:
             errors.append("confirmation_scope must be each or batch")
@@ -330,6 +330,21 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     or not isinstance(value.get("value_labels", {}), dict)
                     or any(not isinstance(labels, dict) or any(not isinstance(k, str) or not isinstance(v, str) or not v for k, v in labels.items()) for labels in value.get("value_labels", {}).values())):
                 errors.append("promise_readback needs human product fields and optional field value labels, excluding internal IDs")
+    selected_actions = {node.get("action") for node in plan.get("nodes", {}).values()
+                        if isinstance(node, dict) and node.get("node_type") == "guard_action"}
+    scopes = profile.get("attempt_scopes", {})
+    limits = {"commit_promises": "promise_failure_limit", "finalize_notes": "note_failure_limit",
+              "schedule_callback": "callback_failure_limit", "commit_transfer": "transfer_failure_limit"}
+    if isinstance(scopes, dict):
+        for action in selected_actions & set(scopes) & set(limits):
+            limit = profile.get(limits[action])
+            if type(limit) is not int or limit < 1:
+                errors.append("selected attempt_scopes action requires its explicit positive " + limits[action])
+        resume = profile.get("definite_failure_resume", [])
+        if isinstance(resume, list) and all(isinstance(action, str) for action in resume):
+            for action in set(resume) & selected_actions:
+                if action not in scopes:
+                    errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
     if errors:
@@ -354,6 +369,25 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         # This is not an invented cross-product policy rule or sort order;
         # explicitly supplied resolution rules still take precedence.
         result.setdefault("resolve_all_products", True)
+    resolution = result.get("resolve_all_products")
+    if isinstance(resolution, dict):
+        selector = resolution["selector"]
+        if selector not in declared_call_variables(contract):
+            raise GuardCompileError(["product-resolution selector requires a source-declared read-only call input"])
+        provenance = contract["active_rules"]["resolve_all_products"].get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or
+                not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", source["quote"]) for source in provenance):
+            raise GuardCompileError(["product-resolution selector must occur literally in its own sourced rule"])
+        # Categories with other names carry no selector meaning. In particular
+        # a generic goals category cannot silently reinterpret a call input.
+        codes = result.get("wire_codes", {}).get(selector, {})
+        selected = resolution["by_value"]
+        if any(key in codes.values() and codes.get(key, key) != key for key in selected):
+            raise GuardCompileError(["product-resolution key is ambiguous between semantic and wire selector codes"])
+        normalized = {codes.get(key, key): required for key, required in selected.items()}
+        if len(normalized) != len(selected):
+            raise GuardCompileError(["product-resolution selector keys collide through frozen code bindings"])
+        resolution["by_value"] = normalized
     # Decode controller-verified wire categories only for internal semantics.
     categories = (bindings or {}).get("categories", {})
     def decode(group: str, value: str) -> str:
@@ -756,7 +790,7 @@ def guard_body(semantic, operation, catalog):
         raise ValueError('missing required request value')
     return body
 
-def guard_new(customer_id, now):
+def guard_new(customer_id, now, call_inputs=None):
     if not isinstance(customer_id, str) or not customer_id:
         raise ValueError('missing engine customer id')
     text = str(now)
@@ -766,8 +800,34 @@ def guard_new(customer_id, now):
                 identity_status='pending', products=list(), account_loaded=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
+                attempt_counts=dict(),
                 transfer=dict(), callbacks=list(), notes_finalized=False, closed=False, close_attempted=False,
-                quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict())
+                quarantined=False, inflight=dict(), batch=dict(), consent='', close=dict(),
+                call_inputs=json.loads(guard_json(call_inputs if call_inputs is not None else dict())))
+
+def guard_call_inputs(state, profile):
+    captured = state['call_inputs']
+    names = profile.get('call_variables', list())
+    if type(captured) is not dict or set(captured) != set(names):
+        state['quarantined'] = True
+        raise ValueError('protected call-input snapshot is malformed')
+    if any(value is None or type(value) is str and value == '' for value in captured.values()):
+        state['quarantined'] = True
+        raise ValueError('protected call-input snapshot has an absent value')
+    guard_json(captured)
+    rule = profile.get('resolve_all_products')
+    if isinstance(rule, dict):
+        value = captured.get(rule['selector'])
+        if type(value) is not str or value not in rule['by_value']:
+            state['quarantined'] = True
+            raise ValueError('protected product-resolution selector is missing or unknown')
+
+def guard_resolve_all_products(state, profile):
+    rule = profile['resolve_all_products']
+    if type(rule) is bool:
+        return rule
+    guard_call_inputs(state, profile)
+    return rule['by_value'][state['call_inputs'][rule['selector']]]
 
 def guard_close(state, proposed, profile, maps):
     transfer = state['transfer']
@@ -1008,6 +1068,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     state = json.loads(guard_json(state))
     if state['closed'] or state.get('close_attempted') or state['quarantined'] or state['inflight']:
         raise ValueError('call is closed, uncertain or has an unresolved operation')
+    if any(type(key) is not str or not key or type(count) is not int or count < 0
+           for key, count in state['attempt_counts'].items()):
+        state['quarantined'] = True
+        return state, 'failure', dict(), ''
     local_handoff = profile.get('record_notes') is False and action in ('stage_transfer', 'commit_transfer')
     if state['notes_finalized'] and action not in ('finalize_notes', 'close_call') and not local_handoff:
         raise ValueError('the disposition phase is sealed')
@@ -1142,7 +1206,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         elif action == 'close_call':
             if state['pending_promises'] or state['pending_notes'] and not state['notes_finalized'] or state['transfer'].get('status') in ('pending', 'failed'):
                 raise ValueError('closing has unresolved commitments, dispositions or transfer')
-            if state['account_loaded'] and profile['resolve_all_products'] and state['transfer'].get('status') != 'recorded':
+            if state['account_loaded'] and guard_resolve_all_products(state, profile) and state['transfer'].get('status') != 'recorded':
                 dispositions = state['recorded_notes'] if profile['record_notes'] else state['pending_notes'] if state['notes_finalized'] else dict()
                 if any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in dispositions for p in state['products']):
                     raise ValueError('policy requires every product resolved before close')
@@ -1160,6 +1224,16 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         for item in items:
             guard_body(item, operation, catalog)
         batch = dict(action=action, operation=operation, items=items, index=0)
+        scope = profile.get('attempt_scopes', dict()).get(action)
+        if scope is not None:
+            limit_kind = dict(commit_promises='promise_failure_limit', finalize_notes='note_failure_limit',
+                              schedule_callback='callback_failure_limit', commit_transfer='transfer_failure_limit')
+            batch['attempt_scope'] = scope
+            batch['attempt_limit'] = 1 if action == 'close_call' else profile[limit_kind[action]]
+            # Validate callback budgets before asking for new confirmation;
+            # proposals/corrections cannot reset the dispatch counter.
+            if action == 'schedule_callback':
+                guard_attempt_slot(state, batch, items[0], catalog)
         state['batch'] = batch
         state['consent'] = ''
         confirmation = action == 'commit_promises' and profile['require_confirmation'] or action in profile.get('confirmation_actions', list())
@@ -1170,6 +1244,49 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
     body = guard_body(semantic, operation, catalog)
     state['inflight'] = dict(action=action, operation=operation, body=body, semantic=semantic)
     return state, 'allow', body, ''
+
+def guard_attempt_slot(state, batch, semantic, catalog, exhausted_ok=False):
+    scope = batch.get('attempt_scope')
+    if scope is None:
+        return '', 0
+    action = batch['action']
+    limit = batch.get('attempt_limit')
+    if type(limit) is not int or limit < 1:
+        raise ValueError('malformed policy attempt budget')
+    if scope == 'call':
+        key = action + ':call'
+    elif scope == 'product' and action in ('commit_promises', 'finalize_notes'):
+        product = semantic.get('product_id')
+        if type(product) is not str or not product:
+            raise ValueError('product-scoped attempt lacks a trusted product')
+        key = action + ':product:' + product
+    elif scope == 'exact_request':
+        key = action + ':request:' + batch['operation'] + ':' + guard_json(guard_body(semantic, batch['operation'], catalog))
+    else:
+        raise ValueError('unsupported policy attempt scope')
+    count = state['attempt_counts'].get(key, 0)
+    if type(count) is not int or count < 0 or count > limit or count == limit and not exhausted_ok:
+        raise ValueError('policy dispatch attempt budget exhausted or malformed')
+    # The separate counter must agree with the already protected dispatch
+    # history. A removed/reset but superficially valid zero is not a new call.
+    prefix = batch['operation'] + ':'
+    actual = 0
+    for attempt_key, attempt in state['attempts'].items():
+        if not attempt_key.startswith(prefix):
+            continue
+        if scope == 'exact_request' and attempt_key != batch['operation'] + ':' + guard_json(guard_body(semantic, batch['operation'], catalog)):
+            continue
+        if scope == 'product':
+            request = json.loads(attempt_key[len(prefix):])
+            if request.get(catalog[batch['operation']]['fields']['product_id']) != semantic['product_id']:
+                continue
+        recorded_count = attempt.get('count')
+        if type(recorded_count) is not int or recorded_count < 1:
+            raise ValueError('malformed protected dispatch history')
+        actual += recorded_count
+    if count != actual:
+        raise ValueError('policy attempt counter differs from protected dispatch history')
+    return key, count
 
 def guard_send(state, catalog):
     batch = state['batch']
@@ -1184,6 +1301,9 @@ def guard_send(state, catalog):
     previous = state['attempts'].get(key, dict())
     if previous and previous.get('status') != 'nonpersistent_failed':
         raise ValueError('duplicate or unresolved bank write')
+    count_key, count = guard_attempt_slot(state, batch, semantic, catalog)
+    if count_key:
+        state['attempt_counts'][count_key] = count + 1
     state['attempts'][key] = dict(status='sent', count=previous.get('count', 0) + 1)
     state['inflight'] = dict(action=batch['action'], operation=operation, body=body, semantic=semantic, key=key)
     if batch['action'] == 'close_call':
@@ -1227,7 +1347,10 @@ def guard_result(state, data, profile, catalog, expected_action):
         status = int(status)
     status_valid = '_http_status' not in data or type(status) is int and 100 <= status <= 599
     success_status = '_http_status' not in data or status_valid and 200 <= status <= 299
-    if not status_valid or guard_true(ok) and not success_status:
+    # A positive flag and an error cannot jointly prove success. Preserve the
+    # pending request and every earlier record; this never grants a replay.
+    contradictory_error = guard_true(ok) and 'error' in data and data['error'] != ''
+    if not status_valid or guard_true(ok) and not success_status or contradictory_error:
         state['quarantined'] = True
         if tx.get('key'):
             state['attempts'][tx['key']]['status'] = 'unknown_persistence'
@@ -1306,6 +1429,32 @@ def guard_result(state, data, profile, catalog, expected_action):
             return state, 'failure', dict(), ''
         state['quarantined'] = True
         return state, 'failure', dict(), ''
+    if (action in profile.get('definite_failure_resume', list()) and sourced_failure
+            and nonpersistent and (negative_ok or bodyless_failure)):
+        state['inflight'] = dict()
+        state['attempts'][tx['key']]['status'] = 'nonpersistent_failed'
+        batch = state['batch']
+        try:
+            limit_kind = dict(finalize_notes='note_failure_limit', schedule_callback='callback_failure_limit',
+                              commit_transfer='transfer_failure_limit')
+            if (batch.get('attempt_scope') != profile['attempt_scopes'][action]
+                    or batch.get('attempt_limit') != profile[limit_kind[action]]):
+                raise ValueError('pending attempt budget differs from frozen policy')
+            count_key, count = guard_attempt_slot(state, batch, tx['semantic'], catalog, True)
+            if not count_key:
+                raise ValueError('resume lacks a policy attempt scope')
+        except Exception:
+            state['quarantined'] = True
+            return state, 'failure', dict(), ''
+        if count == batch['attempt_limit']:
+            # The request is known not to have persisted, and the source
+            # explicitly permits continuation. No successful fact is created.
+            state['batch'] = dict()
+            state['consent'] = ''
+            if action == 'commit_transfer' and state['transfer'].get('status') != 'recorded':
+                state['transfer'] = dict()
+            return state, 'failure', dict(), ''
+        return guard_continue(state, catalog)
     if not (type(ok) is bool or type(ok) is str and ok in ('true', 'false', 'True', 'False')):
         state['quarantined'] = True
         return state, 'failure', dict(), ''
@@ -1403,9 +1552,9 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
-        tail += "    previous_state = None\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n    state = guard_new(vars.get('customer_id'), vars.get('now'))\n    route, body, readback = 'done', dict(), ''\n"
+        tail += "    previous_state = None\n    call_inputs = dict()\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n        call_inputs[name] = vars[name]\n    state = guard_new(vars.get('customer_id'), vars.get('now'), call_inputs)\n    vars['bg_state'] = guard_json(state)\n    guard_call_inputs(state, spec['profile'])\n    route, body, readback = 'done', dict(), ''\n"
     else:
-        tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
+        tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    guard_call_inputs(state, spec['profile'])\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
         if phase == "prepare":
             tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
             tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"

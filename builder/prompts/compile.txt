@@ -63,11 +63,24 @@ defines that concept. They are interface names, not predetermined banking rules:
   to exact opaque API values, only when the supplied documents define the meanings.
 - action_fields/result_fields: operation-to-semantic-field maps for renamed API fields.
 - product_fields: semantic product fields mapped to returned account field names.
-- account_disclosure_fields: explicit list of returned product fields permitted
-  for account narration. Preserve conditional disclosure constraints separately;
-  a field list cannot encode permission limited to a particular product/state.
-- record_notes/resolve_all_products: explicit booleans for note writes and whether
-  every returned product must be resolved before final close.
+- account_disclosure_fields: use an explicit array of returned scalar fields only
+  when every listed field is required/permitted for every product. For supplied
+  type-conditional disclosure, use {common: [returned fields], by_product_type:
+  {source/API type: [returned fields]}}. Common fields apply to every product;
+  selected-type fields apply only to that product type. Preserve actual field
+  aliases, source-defined types and frozen product_types wire bindings without
+  broadening permission to other products. Do not flatten conditional fields into
+  the unconditional array. Conditions beyond this typed interface must remain
+  explicit unsupported constraints, not silently widened disclosures.
+- record_notes: explicit boolean for note writes.
+- resolve_all_products: explicit boolean for whether every returned product must
+  be resolved before final close, or {selector:"source_declared_input_name",
+  by_value:{"supplied_input_code":boolean}} when the source explicitly varies that
+  prerequisite by initial call scope. The selector must occur literally in its
+  rule quotation and in source-backed call_variables; use exact supplied codes,
+  never defaults or an inferred goal category. Runtime seals the initial value;
+  missing, non-string or unknown selector values quarantine. This grants no
+  outcome, note permission or action and does not change note finalization.
 - confirmation_scope: "each" or "batch"; confirmation_actions: an explicit array
   of commit_promises/commit_transfer/schedule_callback roles, possibly empty.
 - product_order: {mode:"account_order"} or {field,direction,tie_breaker:"account_order"}.

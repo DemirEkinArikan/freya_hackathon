@@ -7,12 +7,14 @@ occur literally in its own cited quotation and belong to the frozen
 grant no format rule or default value.
 
 Completeness: when a source statement (sentence, list item or table row) names
-`now` or a declared call variable beside explicit, UTC or time-zone offset
-wording, with no negation or optionality cue, contract compilation rejects a
-policy that does not map that name to `offset_datetime`, and rejects a mapped
-name missing from `call_variables`. Both data-free diagnostics reach bounded
-extraction repairs; a requirement this format cannot express stays an
-unsupported constraint. The check is literal wording, not interpretation.
+`now`, or a declared call variable it calls a date and time, beside UTC or
+time-zone offset wording, with no negation or optionality cue, no bare signed
+`HH:MM` offset value and no offset-less example date-time, contract
+compilation rejects a policy that does not map that name to `offset_datetime`,
+and rejects a mapped name missing from `call_variables`. Both data-free
+diagnostics reach bounded extraction repairs; a requirement this format cannot
+express stays an unsupported constraint. The check is a literal-wording
+backstop, not interpretation: other phrasings rely on the extraction guidance.
 
 `offset_datetime` requires a raw string containing an extended `YYYY-MM-DD`
 calendar date, a `T`, `t` or space separator, `HH:MM`, optional seconds and their

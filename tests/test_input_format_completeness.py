@@ -17,7 +17,8 @@ REQUIRED = ("now must carry an explicit UTC offset.",
             "| now | Local date-time with a UTC offset. |",
             "The clock input now states its offset from UTC.",
             "Supply now as a date and time with an explicit time zone.",
-            "The engine clock now is a local date and time\nwith a time-zone offset.")
+            "The engine clock now is a local date and time\nwith a time-zone offset.",
+            "| now | `2031-05-02T11:30+04:00` | Local date and time with its UTC offset. |")
 
 
 def declare_offset_clock(policy, text, source_id):
@@ -43,7 +44,7 @@ class InputFormatCompletenessTests(unittest.TestCase):
                 self.assertEqual(CompiledCall(context, {"now": "2031-05-02T11:30+03:00"}).variables["bg_route"], "done")
 
     def test_declared_generic_input_is_checked_by_name(self):
-        statement = "\nopening_clock requires a time zone offset."
+        statement = "\nopening_clock is a local date and time with a time zone offset."
         with self.assertRaisesRegex(PolicyContractError, MISSING):
             authored(None, names=["opening_clock"], quote=statement)
         context = authored({"opening_clock": "offset_datetime"}, quote=statement)
@@ -55,9 +56,19 @@ class InputFormatCompletenessTests(unittest.TestCase):
                           "Ignore any explicit offset in now.", "If now has a UTC offset, keep it unchanged.",
                           "now is the current date and time. Callback times keep an explicit UTC offset.",
                           "Times known to the bank use an explicit UTC offset.",
-                          "now_reference must carry an explicit UTC offset."):
+                          "now_reference must carry an explicit UTC offset.",
+                          "Translate a relative date into an explicit offset from now in business days.",
+                          "| `now` | `2031-05-02T11:30` | The current local date and time; the branch time zone offset is +04:00. |",
+                          "A callback is today or the next business day, 10:00 to 18:00 local time (UTC offset +04:00), and later than now."):
             with self.subTest(statement=statement):
                 call = CompiledCall(authored(None, quote="\n" + statement), {"now": "2031-05-02T11:30"})
+                self.assertEqual(call.variables["bg_route"], "done")
+
+    def test_declared_offset_or_zone_input_is_not_a_clock(self):
+        for name, statement in (("caller_zone", "| caller_zone | The caller's time zone offset. |"),
+                                ("caller_offset", "| caller_offset | The caller's UTC offset, for example -05:00. |")):
+            with self.subTest(name=name):
+                call = CompiledCall(authored(None, names=[name], quote="\n" + statement), {"now": "2031-05-02T11:30", name: "-05:00"})
                 self.assertEqual(call.variables["bg_route"], "done")
 
     def test_mapping_must_be_declared_and_cover_every_required_input(self):

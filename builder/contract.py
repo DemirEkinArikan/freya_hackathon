@@ -253,8 +253,9 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
         declared = declared_call_variables(contract)
     except CallVariablesError as exc:
         raise PolicyContractError([str(exc)]) from exc
-    # Completeness: a source-required offset clock must reach the sealed format
-    # check (or stay an explicit unsupported constraint), never pass silently.
+    # Completeness backstop: a clock that plain source wording requires to carry
+    # an offset must reach the sealed format check (or stay an explicit unsupported
+    # constraint). Other phrasings rely on the extraction guidance.
     formats = active.get("call_input_formats", {}).get("value")
     formats = formats if isinstance(formats, dict) else {}
     if set(formats) - set(declared):

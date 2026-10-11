@@ -135,23 +135,29 @@ def execution_rule_guidance() -> dict[str, str]:
     return {kind: guidance[kind] for kind in sorted(guidance)}
 
 
-_OFFSET_WORDING = re.compile(r"\b(?:explicit|utc|gmt|time[- ]?zone)\s+(?:(?:utc|gmt)\s+)?offsets?\b"
+_OFFSET_WORDING = re.compile(r"\b(?:utc|gmt|time[- ]?zone)\s+offsets?\b"
                              r"|\boffsets?\s+(?:from|to)\s+(?:utc|gmt)\b|\bexplicit\s+time[- ]?zones?\b", re.I)
 _NOT_REQUIRED = re.compile(r"\b(?:no|not|never|without|optional|optionally|may|if|unless|ignore[sd]?|omit(?:s|ted)?)\b|n['’]t\b", re.I)
+_STATED_OFFSET = re.compile(r"(?<![\d:])(?<!\d\s)[+-]\d{2}:\d{2}(?!\d)"
+                            r"|\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:[.,]\d+)?)?(?![\d:]|[.,]\d|\s*(?:[Zz]\b|[+-]\d))")
+_DATE_TIME = re.compile(r"\bdate\b.*\btime\b|\bdatetime\b|\btimestamp\b", re.I | re.S)
 
 
 def offset_datetime_inputs(texts: Any, names: Any) -> set[str]:
     """Input names a source statement requires to carry an explicit UTC offset.
 
     Literal wording only: a statement (sentence, list item or table row) that
-    names the input beside explicit/UTC/time-zone offset wording, with no
-    negation or optionality cue. Unclear wording is left to extraction review.
+    names the input beside UTC/time-zone offset wording, with no negation or
+    optionality cue, no stated offset value and no offset-less example
+    date-time; a name other than the engine clock now also needs date and time
+    wording. Unclear wording is left to extraction review.
     """
     found = set()
     for text in texts:
         for statement in re.split(r"\n\s*\n|\n(?=\s*(?:[|#*-]|\d+[.)]\s))|(?<=[.!?])\s+", text):
-            if _OFFSET_WORDING.search(statement) and not _NOT_REQUIRED.search(statement):
-                found.update(name for name in names if re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", statement))
+            if _OFFSET_WORDING.search(statement) and not (_NOT_REQUIRED.search(statement) or _STATED_OFFSET.search(statement)):
+                found.update(name for name in names if (name == "now" or _DATE_TIME.search(statement))
+                             and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", statement))
     return found
 
 

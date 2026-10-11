@@ -19,8 +19,13 @@ silently drop a base brief, amendment, raw policy document or code list.
 Each rule has id, kind,
 value and source {id, quote}, where quote occurs verbatim in that supplied source.
 Keep unsupported requirements in unsupported_constraints instead of guessing.
-unsupported_constraints is an array of strings, empty when there is no unresolved
-bank requirement. Preserve each rule's scope, precondition and temporal phase.
+unsupported_constraints is an array of declaration objects {category, requirement,
+rule_ids, justification}, empty when there is no unresolved bank requirement.
+category is dialogue_only, controller_stricter (with an exact controller_effect),
+protected_unenforceable or source_ambiguous. protected_unenforceable, and
+source_ambiguous without a typed fallback_rule cited from the same source
+statement, reject the build; the others are recorded as limitations.
+Preserve each rule's scope, precondition and temporal phase.
 Preserve the full consequence of every exhausted counter, rejected proposal and
 terminal branch in its typed value: required disposition, reason, deferred action
 and final selection rule, whenever the source specifies them. A value that only
@@ -104,6 +109,13 @@ defines that concept. They are interface names, not predetermined banking rules:
   and after a recorded callback only recorded_callback rows apply. One row is
   fixed; several rows need a matching closing proposal.
 
+- goal_close per goal: when other goals of the source select promise, note or
+  transfer roles, add selector (a source-declared call input) and goals (its
+  supplied codes). Rows then close only calls whose sealed value is listed, and
+  the controller refuses promise, note and transfer roles in those calls. A
+  listed goal must have product resolution false; other goals keep
+  evidence-only closes.
+
 - identity_close_choices: optional unreached/incomplete arrays of
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"|
   "uncertain_verification"|"definite_verification_failure"}.
@@ -132,7 +144,9 @@ merely to satisfy a compiler. Missing/ambiguous semantics remain unsupported.
 Do not populate inapplicable concepts, invent a limit, or force every banking goal
 into payment collection. Add descriptive extension kinds for other constraints or
 shapes (including an unbounded interval) and generate their appropriate workflow
-logic. Each active semantic kind should have one resolved value. Preserve superseded
+logic. Dialogue duties (wording, ordering, utterances, dialogue counters and
+speech-only triggers) belong in these descriptive kinds, which the workflow
+implements, not in unsupported_constraints. Each active semantic kind should have one resolved value. Preserve superseded
 rules with overrides referencing their IDs; do not leave conflicting active values.
 
 Generate a complete Freya workflow using the supplied runtime reference. Separate

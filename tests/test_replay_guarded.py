@@ -13,7 +13,7 @@ from development_protocol_samples import protocol_response
 from test_guards import fixture
 from test_guard_aliases import renamed_context
 from test_call_variables import inputs as call_inputs, context as call_context
-from tools.replay_guarded import replay, ReplayError, _execute
+from tools.replay_guarded import replay, ReplayError, _execute, _mapped, _path
 
 
 FIELDS = ("answer_field", "answer_text", "product", "amount", "day", "note_reason", "queue", "outcome", "close_reason")
@@ -77,6 +77,35 @@ class GuardedReplayTests(unittest.TestCase):
         self.assertEqual((report["unused_frames"], report["unused_responses"]), (0, 0))
         self.assertTrue(report["mock"])
         self.assertFalse(report["conversation_compliance_proven"])
+
+    def test_hosted_container_mapping_receives_account_products_as_json_text(self):
+        # The hosted mapping turns a JSON array into '' (11 Oct). Integer amounts
+        # stand where the API declares number, as in the platform payload.
+        self.assertEqual((_mapped([{"product_id": "x"}]), _mapped({"a": 1})), ("", ""))
+        workflow, context, api, aliases = authored()
+        node = workflow["nodes"]["bg_account_api"]
+        hook = node["pre_actions"][0]["post_process_code"]
+        products = [{"product_id": "a1", "type": "revolving", "days_late": 9, "past_due": 220, "minimum_due": 66},
+                    {"product_id": "a2", "type": "fixed", "days_late": 3, "past_due": 75, "instalment_due": 25}]
+        envelope = {"status": "success", "status_code": 200, "data": {"ok": True, "products": deepcopy(products)}}
+        _execute(hook, {"result": envelope}, 5)
+        mapped = {row["variable"]: _mapped(_path(envelope, row["path"])) for row in node["response_mapping"]}
+        self.assertEqual(json.loads(mapped["bg_account_result_products"]), products)
+        self.assertEqual((mapped["bg_account_result_types"], mapped["bg_account_result_http_status"]), ("absent,boolean,array", "200"))
+        # A container the hook cannot encode still maps to '' with its status
+        # and type evidence intact, so the kernel fails closed as before.
+        envelope = {"status_code": 200, "data": {"ok": True, "products": [{"product_id": "a1", "past_due": float("nan")}]}}
+        _execute(hook, {"result": envelope}, 5)
+        self.assertEqual((envelope["data"]["bg_http_status"], envelope["data"]["bg_result_types"]), (200, "absent,boolean,array"))
+        self.assertEqual(_mapped(_path(envelope, "data.products")), "")
+        script = scenario(context, aliases)
+        script["responses"][2]["envelope"]["data"]["products"] = products
+        script["frames"] = script["frames"][:3]
+        script["responses"] = script["responses"][:3]
+        report = replay(workflow, context, api, script)
+        self.assertTrue(report["final_state"]["account_loaded"])
+        self.assertFalse(report["final_state"]["quarantined"])
+        self.assertEqual([p["product_id"] for p in report["final_state"]["products"]], ["a1", "a2"])
 
     def test_exact_confirmed_request_retries_without_another_confirmation(self):
         workflow, context, api, aliases = authored()

@@ -55,8 +55,8 @@ verified ZIP and organizer-ready attachments. Do not consume that buffer on test
 |---|---|---|
 | Before 17:00 | Before 20:00 | Finish broad tests, T17 acceptance/freeze and preparation gates; frozen checkout, guard and preflight |
 | 17:00–17:02 | 20:00–20:02 | Save both briefs/APIs as exact bytes with ordered amendments, write `spec.json` and pins; read submission instructions |
-| 17:02 | 20:02 | `tools/final_attempts.py launch`: 3 attempts per brief, 6 builders at once |
-| 17:02–17:35 | 20:02–20:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `select` |
+| 17:02–17:07 | 20:02–20:07 | `tools/final_attempts.py launch`: 3 attempts per brief, 6 builders, starts interleaved 60 s apart |
+| 17:02–17:37 | 20:02–20:37 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
 | 17:35–18:00 | 20:35–21:00 | `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
 | 18:00–19:15 | 21:00–22:15 | Retries only for a brief with no eligible attempt: a new round starts by 21:45 and ends by 22:15 |
 | 19:15–19:45 | 22:15–22:45 | Select, package and verify retry results; prepare attachments |
@@ -76,6 +76,26 @@ occasion. If the launcher refuses the machine cap, or the first attempts fail on
 Codex usage limits, launch `--attempts 2` or `--attempts 1` per brief instead.
 The builders take the simulation lease only for their own hosted tests, and
 tonight they run none.
+
+### Platform failures are infrastructure, not builder results
+
+Freya staging returned 503/504 for about 40 minutes today (09:38–10:19 UTC).
+The builder does not retry platform errors. A 5xx during dry-run validation,
+save, publication, read-back or export ends that attempt, and its manifest
+error names the `HTTP 50x` request. Only the hosted test runner retries GETs.
+Such an attempt is simply not eligible: it never counts as a builder result, and
+a brief left without an eligible attempt gets a retry round.
+
+Two measures limit the damage:
+- The launcher interleaves the briefs and starts attempts `--stagger-seconds`
+  apart (default 60), so publication times do not coincide.
+- Before each start, the launcher appends one read-only staging probe to
+  `artifacts/final/health.jsonl` and copies it into that attempt's `launch.json`.
+  The probe records the time, ok, latency and only the HTTP status. It is
+  evidence, never a gate: policy extraction needs no platform for its first 15
+  minutes. `tools/final_attempts.py health --env-file <.env>` appends one more
+  probe; run it with every `select` poll. Before a retry round, wait until a
+  probe returns `ok: true`.
 
 ### Declared selection order
 

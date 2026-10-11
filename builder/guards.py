@@ -11,7 +11,7 @@ import re
 from typing import Any, Mapping
 
 from .action_bindings import COLLECTION_ROLES
-from .policy import _execution_errors, _profile_errors, _scoped_value_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
+from .policy import _execution_errors, _profile_errors, _scoped_value_errors, _sourced_stop_words, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -423,6 +423,15 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
                     errors.append("selected definite_failure_resume action requires an explicit attempt_scopes entry")
     if ("confirmation_question" in profile) != ("confirmation_question_actions" in profile):
         errors.append("prescribed confirmation wording requires its explicit source-backed action scope")
+    wording = profile.get("confirmation_readback")
+    if "confirmation_readback" in profile and not _profile_errors("confirmation_readback", wording):
+        provenance = contract.get("active_rules", {}).get("confirmation_readback", {}).get("provenance", [])
+        if not provenance or any(not isinstance(source.get("quote"), str) or any(
+                not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", source["quote"]) for item in wording["clauses"]) for source in provenance):
+            errors.append("confirmation_readback wording must occur literally in its own sourced quotation")
+        confirmed = set(profile.get("confirmation_actions", [])) | ({"commit_promises"} if profile.get("require_confirmation") is True else set())
+        if selected_actions & set(wording["actions"]) - confirmed:
+            errors.append("confirmation_readback names a selected action that requires no confirmation")
     if errors:
         raise GuardCompileError(errors)
     result = copy.deepcopy(profile)
@@ -1980,6 +1989,17 @@ def _code_node(name: str, code: str, transitions: list[dict]) -> dict:
                     "timeout_ms": {"type": "number", "default": 10000}}}}}], "transitions": transitions}
 
 
+def _confirmation_speech(profile: dict, action: str) -> dict:
+    """Compiler-owned confirmation entry; sourced clauses are spoken verbatim."""
+    wait = ("Wait for a clear yes or no about the exact terms just read. "
+            "Do not change terms, call tools, or treat another topic as agreement.")
+    wording = profile.get("confirmation_readback", {})
+    terms = "{{bg_readback}}" + "".join("; " + clause for clause in (wording["clauses"] if action in wording.get("actions", []) else []))
+    question = profile.get("confirmation_question") if action in profile.get("confirmation_question_actions", []) else None
+    text = terms + ". " + question if question else "Please confirm these exact terms: " + terms + ". Do you agree?"
+    return {"on_enter": {"type": "tts", "text": text}, "task_message": wait}
+
+
 def _terminal() -> dict:
     return {"name": "bg_terminal", "node_type": "end_call", "on_enter": {"type": "silent"},
             "disable_inactivity_monitor": True, "terminal": {"type": "function", "function": {
@@ -2094,8 +2114,19 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     nodes = {name: copy.deepcopy(node) for name, node in plan["nodes"].items() if node["node_type"] == "conversation"}
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
-    # A silent quarantine terminal never fabricates a successful bank close.
+    # A quarantine terminal never fabricates a successful bank close. It is
+    # silent unless the source requires an explanation; that line is speech
+    # only, so it stays out of the profile every sealed code node embeds.
     nodes["bg_quarantine"] = {**_terminal(), "name": "bg_quarantine"}
+    explanation = profile.pop("uncertain_stop_explanation", None)
+    if explanation is not None:
+        quotes = [source.get("quote") for source in contract["active_rules"]["uncertain_stop_explanation"]["provenance"]]
+        if explanation is not True and any(not isinstance(quote, str) or not _sourced_stop_words(explanation, quote) for quote in quotes):
+            raise GuardCompileError(["uncertain_stop_explanation wording must occur literally as whole words in its own sourced quotation, not as words it forbids saying"])
+        # The kit's verbatim farewell: no model writes, extends or follows the line.
+        nodes["bg_quarantine"]["terminal"]["function"]["parameters"]["properties"] = {
+            "message_mode": {"type": "string", "default": "custom"},
+            "spoken_message": {"type": "string", "default": "the result of this request could not be confirmed" if explanation is True else explanation}}
     nodes["bg_init"] = _code_node("bg_init", _code("init", "", {}, profile, catalog, maps, {}),
         [_transition(plan["initial_node"], "done"), _transition("bg_quarantine")])
     quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",
@@ -2163,10 +2194,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                                     {"variable": result_vars['_types'], "path": "data.bg_result_types"}],
             "transitions": [_transition(reconcile)]}
         if needs_confirmation:
-            question = ("{{bg_readback}}. " + profile["confirmation_question"] if action in profile.get("confirmation_question_actions", [])
-                        else "Please confirm these exact terms: {{bg_readback}}. Do you agree?")
-            nodes[confirm] = {"name": confirm, "node_type": "conversation", "on_enter": {"type": "tts", "text": question},
-                "task_message": "Wait for a clear yes or no about the exact terms just read. Do not change terms, call tools, or treat another topic as agreement.",
+            nodes[confirm] = {"name": confirm, "node_type": "conversation", **_confirmation_speech(profile, action),
                 "extraction_schema": [{"name": "bg_consent", "type": "string", "enum_values": ["yes", "no", "unclear"], "description": "Only a fresh unconditional affirmative answer to all exact terms just read is yes. A refusal is no. Any changed term, condition, question or other topic is unclear.", "min_confidence": 0.95, "max_retries": 0}],
                 "max_node_turns": 1, "max_turn_transition": accept,
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [

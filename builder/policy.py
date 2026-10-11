@@ -67,13 +67,14 @@ _PROFILE_KINDS = {"identity_fields", "identity_wrong_limit", "holidays", "busine
                   "write_retryable_errors", "confirmation_scope", "note_failure_limit", "callback_failure_limit",
                   "transfer_failure_limit", "action_fields", "result_fields", "product_fields"}
 _PROFILE_KINDS.update({"wire_codes", "policy_applicability", "product_count_bounds"})
-_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "product_order",
+_EXECUTION_ONLY_KINDS = {"nonpersistent_failures", "confirmation_actions", "confirmation_readback", "product_order",
                          "close_precedence", "identity_close", "promise_failure_disposition",
                          "record_notes", "resolve_all_products", "transfer_prerequisites",
                          "promise_readback", "account_disclosure_fields", "identity_close_choices", "goal_close", "call_variables", "call_input_formats",
                          "attempt_scopes", "definite_failure_resume",
                          "confirmation_question", "confirmation_question_actions",
-                         "identity_factor_state", "identity_counter_movement", "identity_failure_classes"}
+                         "identity_factor_state", "identity_counter_movement", "identity_failure_classes",
+                         "uncertain_stop_explanation"}
 
 # Interface descriptions contain no bank values. They explain an existing
 # rejection; the predicates below remain the authority for accepted shapes.
@@ -81,7 +82,7 @@ _DESCRIPTIVE_EXTENSION_GUIDANCE = {
     "promise_failure_resolution": "descriptive extension only: operation is the selected actual API ID; optional api_annotations is either {document: openapi, HTTP-status: {pointer, quote}} with three-digit response-status keys, or a nonempty array of exact {document: openapi, operation: actual API ID, http_status: integer100..599, pointer, quote} rows; statuses unique, witnesses literal and operation/status-scoped, every annotation has a matching operative nonpersistent_failures row; no executable rule or guarantee is inferred from this extension",
 }
 _SHAPE_GUIDANCE = {
-    "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed",
+    "call_variables": "an optional array of unique ordinary initial call-input variable names, or a nonempty mapping from those names to nonempty text descriptions; each name occurs literally in its source quotation; no target values or defaults; read-only; controller/credential namespaces forbidden; an empty array is allowed. Every declared name is a required initial input: when one is absent, null or exactly empty text, the sealed init ends the call silently in quarantine before any dialogue, bank request or close. Whitespace-only text and other present values such as 0 or false pass this presence check; call_input_formats and a resolve_all_products selector add their own value checks. The init ends the call the same way when the engine customer_id is not nonempty text, or when now does not start with a valid YYYY-MM-DD date (a longer now must parse as an ISO date-time). Every later guarded action step re-checks the sealed snapshot of declared inputs and quarantines if it is malformed. A source requirement limited to this presence check is enforced and needs no declaration",
     "call_input_formats": "optional nonempty object mapping source-declared read-only initial call-variable names to offset_datetime only. Each name occurs literally in this rule's quotation and is also declared in call_variables. Use only when the source expressly requires a date+time with explicit UTC offset, and then always, including for the engine clock now; never infer formats from API schemas or add defaults. offset_datetime validates a full YYYY-MM-DD local calendar date, HH:MM with optional seconds/fraction, and explicit Z or +/-HH:MM offset on the raw sealed initial string before any bank request. Values/date/offset are retained without conversion; malformed/date-only/offset-less values quarantine and cannot be repaired through ordinary dialogue variables. Absence preserves legacy behavior; this grants no action or permission",
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
@@ -105,6 +106,7 @@ _SHAPE_GUIDANCE = {
     "confirmation_scope": 'the string "each" or "batch"',
     "confirmation_question": "optional nonempty literal text containing the exact question prescribed by the source, present verbatim in its cited source quotation; preserve spelling/language/punctuation; no variable templates, control characters or private engine/credential prefixes (the compiler prepends its protected readback). Requires source-backed confirmation_question_actions to state exactly where the wording applies, never infer a global scope. Omit both when no wording is prescribed. This changes text only, not confirmation requirements or guarded consent semantics; different questions for different actions are not representable by this scalar interface",
     "confirmation_question_actions": "paired with confirmation_question: a nonempty unique array containing only commit_promises, commit_transfer, schedule_callback, with literal source provenance establishing the question's action scope. No default/inferred scope. A common source question can explicitly include multiple roles. This grants neither actions nor confirmation requirements; other confirmation nodes retain their generic fallback",
+    "confirmation_readback": "optional exactly {actions: nonempty unique array of commit_promises/commit_transfer/schedule_callback, clauses: nonempty unique array of facts the source requires the confirmation read-back to state}. Each clause is copied verbatim, as whole words, from this rule's own source quotation and contains no digits or other numerals, braces, control or format characters or private engine/credential prefixes. The compiler checks only these literal properties, not meaning: a clause states a fixed fact, never a date, time, amount or other value (the protected terms carry those) and never words the source forbids saying. Requests keep only their sealed fields. Clauses are spoken verbatim after the protected terms. A selected named action must require confirmation. Use confirmation_question for a prescribed literal question; omit this rule when the source prescribes no read-back fact",
     "note_failure_limit": "a positive integer; booleans are not integers",
     "callback_failure_limit": "a positive integer; booleans are not integers",
     "transfer_failure_limit": "a positive integer; booleans are not integers",
@@ -130,6 +132,7 @@ _SHAPE_GUIDANCE = {
     "transfer_prerequisites": 'a nonempty object mapping permitted transfer queue names to "none", "identity", "account" or "unstated". Use "unstated" when the source authorizes dispatching that queue but states no identity/account prerequisite: no evidence gate is added and nothing else is granted; never add identity or account from omission. Omit a queue the source names only in closing vocabulary without authorizing its dispatch; the controller refuses staging an omitted queue',
     "promise_readback": 'an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps; an absent or empty selected field is left out of that product\'s label. Use exactly "product_type" when the source requires confirming the product but prescribes no product fields: each product is named only by its protected product type, the type already used for floors; labels shared by two loaded products block the confirmation and no other field is read back. Use exactly "none" only when the source requires no confirmation for commit_promises (require_confirmation false and commit_promises not in confirmation_actions)',
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
+    "uncertain_stop_explanation": "optional: what the source requires the caller to be told when the call stops without a close because a write's persistence is unknown or its evidence is missing, malformed or contradictory. Either the exact words to say to the caller, copied verbatim as whole words from this rule's own source quotation (never words the source forbids saying; no digits, braces, control characters or private engine/credential prefixes), or true when the source requires an explanation there but prescribes no words (a fixed neutral line is then used). The controller's single sealed quarantine end speaks exactly these words, verbatim and once, at every quarantine stop (unknown persistence, input failure, controller fault) and adds no write, close, retry or other words; turn-budget and entry-budget stops stay silent. Omit when the source requires no speech at that stop; different words for different stops are not representable",
 }
 
 
@@ -259,7 +262,7 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
                  and all(type(bound) is int and bound >= 0 for bound in value.values())
                  and (not {"min", "max"} <= set(value) or value["min"] <= value["max"]))
     elif kind in {"account_disclosure_fields", "confirmation_question", "confirmation_question_actions", "resolve_all_products", "call_input_formats",
-                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes"}:
+                  "identity_factor_state", "identity_counter_movement", "identity_failure_classes", "uncertain_stop_explanation"}:
         return _execution_errors(kind, value)
     elif kind in {"identity_wrong_limit", "promise_failure_limit", "note_failure_limit", "callback_failure_limit", "transfer_failure_limit"}:
         valid = type(value) is int and value > 0
@@ -297,6 +300,8 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
         valid = strings(value, empty=True) and len(set(value)) == len(value)
     elif kind == "confirmation_scope":
         valid = isinstance(value, str) and value in {"each", "batch"}
+    elif kind == "confirmation_readback":
+        return _execution_errors(kind, value)
     elif kind in {"action_fields", "result_fields", "product_fields"}:
         valid = isinstance(value, dict) and all(isinstance(k, str) and k and
                     ((isinstance(v, str) and bool(v)) or (isinstance(v, dict) and bool(v) and
@@ -352,6 +357,17 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = (isinstance(value, list) and bool(value) and all(text(item) for item in value)
                  and len(set(value)) == len(value)
                  and not set(value) - {"commit_promises", "commit_transfer", "schedule_callback"})
+    elif kind == "confirmation_readback":
+        # Literal sourced words only: no numerals, templates, hidden characters
+        # or engine names. Meaning is not checked; requests stay sealed.
+        clauses = value.get("clauses") if isinstance(value, dict) else None
+        valid = (isinstance(value, dict) and set(value) == {"actions", "clauses"}
+                 and not _execution_errors("confirmation_question_actions", value["actions"])
+                 and isinstance(clauses, list) and bool(clauses)
+                 and all(text(item) and bool(item.strip())
+                         and all(char.isprintable() and char not in "{}" and not char.isnumeric() for char in item)
+                         and not any(prefix in item.casefold() for prefix in ("bg_", "auth_", "bank_token")) for item in clauses)
+                 and len(set(clauses)) == len(clauses))
     elif kind == "account_disclosure_fields":
         def fields(items):
             return (isinstance(items, list) and all(text(item) for item in items)
@@ -408,6 +424,12 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
         valid = value == "latest_check"
     elif kind == "identity_counter_movement":
         valid = value == "exact"
+    elif kind == "uncertain_stop_explanation":
+        # Sourced words only: no digits, templates or engine names can add a
+        # value, binding or field to the stop line.
+        valid = value is True or (text(value) and bool(value.strip())
+                 and not any(char in "{}" or char.isdigit() or ord(char) < 32 or ord(char) == 127 for char in value)
+                 and not any(prefix in value.casefold() for prefix in ("bg_", "auth_", "bank_token")))
     elif kind == "identity_failure_classes":
         matchers = [canonical_json(case) for cases in value.values() for case in cases] if (
             isinstance(value, dict) and value and set(value) <= {"repeat_once", "fault", "sealed"}
@@ -471,6 +493,17 @@ def _execution_errors(kind: str, value: Any) -> list[str]:
                     valid = False
                     break
     return [] if valid else [_structured_error(kind, value, "execution")]
+
+
+# A stop line is sourced only as whole words of its quotation, and not where the
+# quotation forbids saying them ("never tell the caller that ...").
+_NEGATED_SPEECH = re.compile(r"(?:\bnot|\bnever|\bcannot|n['\u2019]t)\s+(?:say|tell|claim|state|mention|imply|suggest|promise|report|inform|announce|confirm)"
+                             r"(?:\s+(?:to\s+)?(?:the\s+)?(?:caller|customer|user|them|him|her))?(?:\s+that)?[\s:\"'\u201c\u2018]*$", re.I)
+
+
+def _sourced_stop_words(words: str, quote: str) -> bool:
+    return bool(words.strip()) and any(not _NEGATED_SPEECH.search(quote, 0, found.start())
+        for found in re.finditer(r"(?<!\w)" + re.escape(words.strip()) + r"(?!\w)", quote))
 
 
 def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = None,
@@ -570,6 +603,9 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                 question = rule.get("value")
                 if rule.get("kind") == "confirmation_question" and isinstance(question, str) and question not in quote:
                     errors.append(prefix + " confirmation_question must appear literally in its cited source quote")
+                if rule.get("kind") == "confirmation_readback" and isinstance(question, dict) and isinstance(question.get("clauses"), list):
+                    if any(isinstance(item, str) and not re.search(r"(?<!\w)" + re.escape(item) + r"(?!\w)", quote) for item in question["clauses"]):
+                        errors.append(prefix + " confirmation_readback wording must appear literally as whole words in its cited source quote")
                 if rule.get("kind") == "resolve_all_products" and isinstance(question, dict):
                     selector = question.get("selector")
                     if isinstance(selector, str) and not re.search(r"(?<!\w)" + re.escape(selector) + r"(?!\w)", quote):
@@ -578,6 +614,8 @@ def validate_policy(policy: Any, source_documents: Mapping[str, str] | None = No
                     for name in question:
                         if isinstance(name, str) and not re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", quote):
                             errors.append(prefix + " formatted call-input name must appear literally in its cited source quote")
+                if rule.get("kind") == "uncertain_stop_explanation" and isinstance(question, str) and not _sourced_stop_words(question, quote):
+                    errors.append(prefix + " uncertain_stop_explanation must appear literally as whole words in its cited source quote, not as words it forbids saying")
                 if source_documents is not None:
                     document = source_documents.get(sid) if isinstance(sid, str) else None
                     if document is None or quote not in document:

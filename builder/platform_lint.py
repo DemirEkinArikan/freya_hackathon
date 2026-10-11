@@ -17,7 +17,7 @@ from .guards import PREFIX, execution_action_catalogue
 from .validation import _router_judged, code_write_schema_errors
 
 PAYLOAD_LIMIT = 131072  # "Code and data for code_exec total 131235 bytes, over the 131072-byte limit"
-RUNTIME_DATA = 48255  # runtime data when PUB-11's result step first failed (comment 6110116409)
+RUNTIME_DATA = 48255  # runtime data when a hosted result step first failed (comment 6110207779)
 GROWTH_PER_LOOP = 1526  # runtime data added per guarded action loop in that call
 MIN_LOOPS = 20
 MIN_TURNS = 20
@@ -32,7 +32,7 @@ EVIDENCE = {
     "enum_write_refused": "probes 6109617253 Q3: a code write outside a variable's declared enum_values (checked by name across the "
         "workflow, '' included) is dropped with validation_errors; first check: 27 dropped consent resets (6109482247 F7)",
     "code_payload_limit": "rounds 1-2 R4/S2: 'Code and data for code_exec total 131235 bytes, over the 131072-byte limit'; runtime "
-        "data was 48,255 bytes at the first failure and grew 1,526 bytes per loop (6110116409)",
+        "data was 48,255 bytes at the first failure and grew 1,526 bytes per loop (6110207779)",
     "controller_known_input": "diagnosis 6109482247 F2: an extracted identity field was never extracted and every verify was refused; "
         "round 2 S4: an extracted field refused later answers (order); S5: an extracted close proposal was refused into quarantine",
     "checked_value_confidence": "kit workflow-format.md Extraction schema: confidence comes from token probabilities and a value below "
@@ -40,11 +40,11 @@ EVIDENCE = {
     "date_year_not_required": "probes 6109617253 Q2: a date said without its year was stored with the current year at confidence 1.0; "
         "ws2 pieces pass P1 (6109931493): placeholder-year dates went to the bank",
     "relative_date_platform_clock": "kit workflow-format.md: date extraction anchors to the real clock; rounds 1 and ws2 R8: 'tomorrow' "
-        "resolved against the platform date (11 Oct), not the call's now (14 Oct), and a valid callback was refused",
+        "resolved against the platform date, not the call's now 3 days later, and a valid callback was refused",
     "split_value_not_joined": "probes 6109617253 Q2: each half of a 4-digit value failed validation_pattern and the halves were never "
-        "joined; a first-half amount was accepted as 12.0; ws2 P1: fragments were sent as identity answers",
+        "joined; the first half of a 4-digit amount was accepted alone as the amount; ws2 P1: fragments were sent as identity answers",
     "answer_format_unstated": "round 2 S3: an answer whose extraction text did not name the API's format went out in words and the bank "
-        "refused it as a format error (A PUB-04 to 08 and 10)",
+        "refused it as a format error",
     "no_tool_line_missing": "kit workflow-format.md Rules for task_message: a node without tools states that no tool call is allowed in "
         "this turn (in loop_prompt too); diagnosis F5: a tool-less node spoke pseudo tool calls",
     "speak_after_tool_result_missing": "kit tools-and-code.md Tool descriptions and Tool results and the next turn; platform audit N6: "
@@ -53,7 +53,7 @@ EVIDENCE = {
         "turns per entry and 6 calls ended silently at 10; ws2 P1: split answers reach it sooner",
     "end_without_close": "the scorer requires close_call as the last bank call; diagnosis F6, audit N3 and round 1 R2: refused-close and "
         "turn-cap paths ended at a silent terminal with no close_call",
-    "stale_allow_redispatch": "round 1 R4 (6110116409): a failed code step writes nothing, so its own allow row re-sent the bank request "
+    "stale_allow_redispatch": "round 1 R4 (6109852909, 6110116409): a failed code step writes nothing, so its own allow row re-sent the bank request "
         "(30 resends in 40 s); round 2 S2: 52 verify resends and get_account x49",
     "platform_clock_reference": "kit workflow-format.md System variables: system dates and extraction date placeholders are the real "
         "clock; R8 (6110032192): the platform date was 3 days before the call's now",

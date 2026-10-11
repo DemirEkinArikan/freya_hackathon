@@ -168,8 +168,14 @@ class IndependentBundleTests(unittest.TestCase):
         for name in ('../escaped.py', '/absolute.py', 'C:/windows.py',
                      'builder\\escape.py', 'builder/../escape.py',
                      './escape.py', 'builder//escape.py'):
-            with self.subTest(name=name), self.assertRaises(ValueError):
-                self.verify(self.rewrite(extra=[(name, b'safe payload')]))
+            # Index the member with its true hash, so only the name check rejects it.
+            index = self.index()
+            index['source_only'] = False
+            index['evidence_files'][name] = hashlib.sha256(b'safe payload').hexdigest()
+            archive = self.rewrite({'package-index.json': json.dumps(index).encode()},
+                                   extra=[(name, b'safe payload')])
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, '^archive_structure$'):
+                self.verify(archive)
         self.assertFalse((Path(self.temp.name) / 'escaped.py').exists())
 
     def test_symlink_member_is_rejected_even_when_payload_hash_matches(self):
@@ -186,9 +192,11 @@ class IndependentBundleTests(unittest.TestCase):
                                 ('MAX_FILE_BYTES', 1),
                                 ('MAX_BYTES', self.archive.stat().st_size - 1)):
             with self.subTest(constant=constant), patch.object(verifier, constant, limit), \
-                 patch.object(zipfile.ZipFile, 'open', side_effect=AssertionError('oversized payload was read')), \
-                 self.assertRaisesRegex(ValueError, 'archive_structure'):
-                self.verify()
+                 patch.object(zipfile.ZipFile, 'open', side_effect=AssertionError('oversized payload was read')) as opened:
+                with self.assertRaisesRegex(ValueError, '^archive_structure$'):
+                    self.verify()
+                # verify_bundle turns any exception into a category, so check the call itself.
+                opened.assert_not_called()
 
     def test_case_collisions_and_file_parent_collisions_are_structural_failures(self):
         for name in ('builder/BUILD.py', 'builder', 'Tools/extra.py'):

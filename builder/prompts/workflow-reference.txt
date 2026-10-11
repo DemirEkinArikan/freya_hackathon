@@ -26,7 +26,8 @@ conditions. Every conversation fallback and failure route targets a public node.
 The host evaluates deterministic conditions (variable checks, always) before
 matches_intent and merges same-target routes, so list every ordinary
 deterministic route before every intent route and never follow intent routes
-with an ordinary always; an unmatched caller turn stays in its node anyway.
+with an ordinary always. An unmatched caller turn stays in its node anyway; a
+catch-all that must move elsewhere is itself a final matches_intent route.
 
 Entry scheduling follows the kit, not just graph reachability:
 - on_enter:{type:silent} alone waits for the user. A state-only decision on

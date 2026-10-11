@@ -59,11 +59,13 @@ Entry speech and a graph edge are not themselves routing triggers. A silent
 conversation waits for the caller unless it declares passthrough. The kit checks
 deterministic conditions (variable checks and always) before the routing model:
 in each node, list every ordinary deterministic route before every matches_intent
-route and add no always fallback after intent routes; an unmatched caller turn
-already stays in its node. For a state-only decision on declared public variables
-that needs no new answer, set node-level passthrough:true, a public
-passthrough_default_transition, deterministic routes and an ordinary final always
-fallback without a tool-call flag; a passthrough node never uses matches_intent.
+route and add no always fallback after intent routes. An unmatched caller turn
+already stays in its node; when unmatched answers must move elsewhere, end with a
+matches_intent catch-all route instead. For a state-only decision on declared
+public variables that needs no new answer, set node-level passthrough:true, a
+public passthrough_default_transition, deterministic routes and an ordinary final
+always fallback without a tool-call flag; a passthrough node never uses
+matches_intent.
 A state-only decision judged from the bg_facts view is instead an LLM-entry step
 whose task_message reads that view and directs the dialogue model, without waiting
 for the caller, to take the one engine-offered completion transition

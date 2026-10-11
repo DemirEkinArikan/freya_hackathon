@@ -329,6 +329,93 @@ class PolicyPatchBuildTests(unittest.TestCase):
         self.assertFalse(any(e["event"] == "policy_patch" for e in read_events(self.run_directory())))
 
 
+def moved(fixed, broken=None):
+    """Restore rule `fixed` and misquote rule `broken` (indexes), so a patch changes the error set."""
+    good = fixture()["policy"]["rules"]
+    operations = [{"op": "replace", "rule_id": good[fixed]["id"], "value": good[fixed]}]
+    if broken is not None:
+        bad = copy.deepcopy(good[broken])
+        bad["source"]["quote"] = "A sentence the brief does not contain."
+        operations.append({"op": "replace", "rule_id": bad["id"], "value": bad})
+    return {"patch": {"operations": operations}}
+
+
+class PatchRepairBudgetTests(unittest.TestCase):
+    """Patches continue while admitted, up to MAX_PATCH_REPAIRS, and stop on no progress; full re-emissions keep MAX_REPAIRS."""
+    setUp = test_builder.BuilderTests.setUp
+    tearDown = test_builder.BuilderTests.tearDown
+    args = test_builder.BuilderTests.args
+    generator = test_builder.BuilderTests.generator
+    run_directory = PolicyPatchBuildTests.run_directory
+
+    def budget(self):
+        return [(e["attempt"], e["patch_repairs"], e["full_repairs"], e["no_progress"], e["next_repair"])
+                for e in read_events(self.run_directory()) if e["event"] == "policy_repair_budget"]
+
+    def test_patches_continue_past_two_repairs_while_each_is_admitted(self):
+        generator = self.generator()
+        generator.generate.return_value = {"policy": misquoted(), "workflow": fixture()["workflow"]}
+        generator.generate_policy_patch.side_effect = [moved(0, 1), moved(1, 2), moved(2, 3), moved(3)]
+        result = execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((result["status"], result["policy_repairs"]), ("generated_validated", 4))
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (1, 4))
+        self.assertEqual(self.budget(), [(n, n - 1, 0, False, "patch") for n in range(1, 5)])
+        events = read_events(self.run_directory())
+        self.assertEqual([e.get("repair_mode") for e in events if e["event"] == "repair_admission"], ["patch"] * 4)
+        passed = next(e for e in events if e["event"] == "policy_execution_requirements")
+        self.assertEqual((passed["attempt"], passed["repair_mode"]), (5, "patch"))
+        source = json.loads((self.run_directory() / "builder-source.json").read_text())
+        self.assertEqual((source["resolved_config"]["max_repairs"], source["resolved_config"]["max_patch_repairs"]), (2, 6))
+
+    def test_a_patch_without_progress_stops_patching_and_a_full_re_emission_follows(self):
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        generator.generate.side_effect = [{"policy": misquoted(), "workflow": fixture()["workflow"]}, fixture()]
+        same = {"operations": [{"op": "replace", "rule_id": "r1", "value": misquoted()["rules"][0]}]}
+        generator.generate_policy_patch.return_value = {"patch": same}
+        result = execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((result["status"], result["policy_repairs"]), ("generated_validated", 2))
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (2, 1))
+        self.assertEqual(self.budget(), [(1, 0, 0, False, "patch"), (2, 1, 0, True, "full")])
+        full = json.loads(generator.generate.call_args_list[1].args[0].split("\n\nAUTHORIZED INPUTS:\n", 1)[1])
+        self.assertEqual(full["repair"]["previous_policy"], misquoted())
+        passed = next(e for e in read_events(self.run_directory()) if e["event"] == "policy_execution_requirements")
+        self.assertEqual((passed["attempt"], passed["repair_mode"]), (3, "full"))
+
+    def test_patches_stop_at_their_cap_and_full_re_emissions_keep_today_limit(self):
+        generator = self.generator()
+        generator.generate.return_value = {"policy": misquoted(), "workflow": fixture()["workflow"]}
+        generator.generate_policy_patch.side_effect = [moved(0, 1), moved(1, 0)] * 3  # alternating: never an exact repeat
+        with self.assertRaisesRegex(ValueError, r"^Policy extraction failed after bounded repairs: policy.rules\[0\] quote"):
+            execute(self.args("--generate-only"), generator=generator)
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (3, 6))
+        self.assertEqual([row[4] for row in self.budget()], ["patch"] * 6 + ["full", "full", None])
+        self.assertEqual(len(list(self.run_directory().glob("policy.rejected-*.json"))), 9)
+
+    def test_patches_stop_when_the_admission_estimate_no_longer_fits(self):
+        now = [0.0]
+        deadline = Deadline(1800, clock=lambda: now[0])
+        generator = self.generator()
+        generator.generate.return_value = fixture()
+        def extract(*args, **kwargs):
+            now[0] += 700
+            return {"policy": misquoted(), "workflow": fixture()["workflow"]}
+        patches = iter([moved(0, 1), moved(1, 0)] * 3)
+        def patch(prompt, **kwargs):
+            now[0] += 100
+            return next(patches)
+        generator.generate.side_effect = extract
+        generator.generate_policy_patch.side_effect = patch
+        # Available for a patch: min(450, remaining - 750) = 350, 250, 150, then 50 s.
+        with self.assertRaisesRegex(DeadlineExceeded, r"^No time for a repair \(50 s available, about 6\d s needed\): "
+                                                      r"Policy extraction failed: policy.rules\[1\] quote"):
+            execute(self.args("--generate-only"), generator=generator, deadline=deadline)
+        self.assertEqual((generator.generate.call_count, generator.generate_policy_patch.call_count), (1, 3))
+        admissions = [(e["admitted"], e["available_seconds"], e.get("repair_mode"))
+                      for e in read_events(self.run_directory()) if e["event"] == "repair_admission"]
+        self.assertEqual(admissions, [(True, 350, "patch"), (True, 250, "patch"), (True, 150, "patch"), (False, 50, "patch")])
+
+
 class PolicyPatchRuntimeTests(unittest.TestCase):
     setUp = test_builder.BuilderTests.setUp
     tearDown = test_builder.BuilderTests.tearDown

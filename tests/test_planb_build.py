@@ -134,7 +134,8 @@ class PlanBBuildTests(unittest.TestCase):
                     (kit / 'results/log.jsonl').write_text(json.dumps({'at': '20:10', 'agent_id': 'ag-1', 'passed': 5, 'total': 6, 'seconds': 120, 'failed': ['C-3']}) + '\n')
                     (kit / 'out/final.notes.txt').write_text('smoke 3/3, full 5/6\n')
                 yield AssistantMessage([ToolUseBlock('t2', 'Bash', {'command': 'python3 tools/run_cases.py ag-1 --cases results/selftest.json'})], 'claude-sonnet-5-5', 'm2')
-                yield ResultMessage('success', 9, 600000, 4.5, {'claude-opus-5-5': {'inputTokens': 10, 'outputTokens': 20, 'costUSD': 4.5}}, 'workflow wf-1 agent ag-1')
+                yield ResultMessage('success', 9, 600000, 4.5, {'claude-opus-5-5': {'inputTokens': 10, 'outputTokens': 20, 'costUSD': 4.5},
+                                                                'claude-haiku-5-5': {'inputTokens': 3, 'outputTokens': 1, 'costUSD': 0.01}}, 'workflow wf-1 agent ag-1')
             finally:
                 self.seen['closed'] = True
         return query
@@ -157,7 +158,8 @@ class PlanBBuildTests(unittest.TestCase):
         for line in ('start: ', 'command: python3 planb/build.py', 'mock: tool base URL ' + MOCK + '/v1; the mock reports 6 customers and 2 operations',
                      'Freya simulations in workspace ws-1, at most 10 calls at once', 'case: 2 documents (2 text)',
                      'model call 1 (claude-opus-5-5): Read: out/case/INDEX.md', '      also: says: Key [key removed] must never show.',
-                     'model call 2 (claude-sonnet-5-5): Bash: python3 tools/run_cases.py', 'model claude-opus-5-5: 10 input',
+                     'model call 2 (claude-sonnet-5-5): Bash: python3 tools/run_cases.py', 'model claude-opus-5-5: 10 input (+0 cached), 20 output tokens, $4.50\n',
+                     "model claude-haiku-5-5: 3 input (+0 cached), 1 output tokens, $0.01; Claude Code's own helper calls",
                      'self-test at 20:10: 5 / 6 passed', '  smoke 3/3, full 5/6', 'created on Freya: workflow id wf-1, agent id ag-1',
                      'steps: 2 (setup, identity); tools: 3 (close_call, end_call, verify_identity)', 'tool URLs: 2, all on the mock',
                      'export: submission/final.workflow.json', 'result: OK'):

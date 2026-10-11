@@ -111,13 +111,14 @@ async def session(mock, kit):
                         if key in calls:
                             say(f'      also: {purpose(b)}')
                         else:
-                            calls[key] = len(calls) + 1
-                            say(f"[{time.strftime('%H:%M:%S')}] model call {calls[key]} ({m.model}): {purpose(b)}")
+                            calls[key] = (len(calls) + 1, m.model)
+                            say(f"[{time.strftime('%H:%M:%S')}] model call {len(calls)} ({m.model}): {purpose(b)}")
                 elif isinstance(m, ResultMessage):
                     say(f'Claude finished: {m.subtype}, {m.num_turns} turns, {m.duration_ms / 1000:.0f} s, ${m.total_cost_usd or 0:.2f}'
                         + (f'; errors: {one_line(getattr(m, "errors", None), 500)}' if getattr(m, 'errors', None) else ''))
-                    for k, v in (m.model_usage or {}).items():   # every model the session called, helpers included
-                        say(f"  model {k}: {v.get('inputTokens', 0)} input (+{v.get('cacheReadInputTokens', 0)} cached), {v.get('outputTokens', 0)} output tokens, ${v.get('costUSD', 0):.2f}")
+                    for k, v in (m.model_usage or {}).items():   # every model the session called, Claude Code's helpers included
+                        helper = '' if k in {c[1] for c in calls.values()} else '; Claude Code\'s own helper calls (such as summaries), not listed one by one'
+                        say(f"  model {k}: {v.get('inputTokens', 0)} input (+{v.get('cacheReadInputTokens', 0)} cached), {v.get('outputTokens', 0)} output tokens, ${v.get('costUSD', 0):.2f}{helper}")
                     say('Claude\'s last message:', one_line(m.result or '', 2000))
         finally:
             await stream.aclose()   # stops the Claude process when the time limit cancels the loop

@@ -84,6 +84,16 @@ class CaseFolderTests(unittest.TestCase):
         self.assertIn('blob.bin: binary file with no converter', index)
         self.assertEqual(json.loads((out / 'manifest.json').read_text()), entries)
 
+    def test_large_text_file_is_marked_in_the_index(self):
+        (self.case / 'big.json').write_text(json.dumps([{'n': i, 'pad': 'x' * 100} for i in range(1500)]))
+        entries, out = self.bundle()
+        size = (out / 'text/big.json').stat().st_size // 1000
+        self.assertGreater(size, 100)
+        index = (out / 'INDEX.md').read_text()
+        self.assertIn(f'| text/big.json (LARGE, {size} KB: query it with python3 -I, json or csv, instead of reading it whole) |', index)
+        self.assertEqual(index.count('LARGE'), 1)
+        self.assertEqual({e['source']: e['text'] for e in entries}['big.json'], ['text/big.json'])
+
     def test_zip_with_one_top_folder(self):
         archive = self.root / 'case.zip'
         with zipfile.ZipFile(archive, 'w') as z:

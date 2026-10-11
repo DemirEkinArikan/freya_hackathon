@@ -102,8 +102,11 @@ def _maps(policy: Mapping[str, Any], *, canonical_only: bool,
         # A declared semantic key resolves to its unique wire code; the check
         # above makes that resolution unambiguous. Anything else is unbound.
         loose = {mapping.get(value, value) for value in values} - set(mapping.values())
+        # Relaxed mode refuses only names of this category's own meanings: an outcome code
+        # "failed" is just an API code (guarded spellings stay refused in every category).
+        named = CANONICAL[category] if relaxed else set().union(*CANONICAL.values())
         if loose and (canonical_only or category not in ("outcomes", "reasons")
-                      or loose & set().union(*CANONICAL.values()) or {_name(v) for v in loose} & guarded
+                      or loose & named or {_name(v) for v in loose} & guarded
                       or not (relaxed or _unbound_permitted(policy))):
             raise ActionBindingError(
                 "policy " + category + " vocabulary has a code that is neither a wire_codes." + category
@@ -174,13 +177,13 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declara
 
     Relaxed declarations (last-resort attempts) also leave close outcome and reason
     codes unbound in goals with other roles: codes the API accepts (members of its enum
-    when it has one) that are no builder meaning and not spelled like a guarded one, as
-    identity-only goals already may. The kernel sends them only through a sourced close
-    row or transfer reason, so guarded meanings keep their protection.
+    when it has one) that are no builder meaning of their own category and not spelled
+    like a guarded one, as identity-only goals already may. The kernel sends them only
+    through a sourced close row or transfer reason, so guarded meanings keep their protection.
     """
     if declarations not in ("strict", "relaxed"):
         raise ActionBindingError("declaration mode must be strict or relaxed")
-    unguarded = declarations == "relaxed" and not _unbound_permitted(policy)
+    relaxed = declarations == "relaxed"
     catalogue = {operation["name"]: operation for operation in operations(openapi)}
     aliases = rule_value(policy, "tool_aliases", {})
     if not isinstance(aliases, dict):
@@ -190,7 +193,11 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declara
         raise ActionBindingError("allowed_actions must be operation names")
     categories = {}
     local_notes = _local_dispositions(policy)
-    maps, unbound = _maps(policy, canonical_only=False, relaxed=unguarded)
+    maps, unbound = _maps(policy, canonical_only=False, relaxed=relaxed)
+    # Marked only where the strict reading refuses the unbound codes; checks then re-read them relaxed.
+    names = set().union(*CANONICAL.values())
+    unguarded = relaxed and bool(unbound) and (not _unbound_permitted(policy)
+                                               or any(set(codes) & names for codes in unbound.values()))
     for category, mapping in maps.items():
         if category == "notes" and local_notes:
             categories[category] = {"binding_kind": "local_disposition", "semantic_to_wire": deepcopy(mapping),
@@ -209,7 +216,7 @@ def compile_action_bindings(policy: Mapping[str, Any], openapi: dict, *, declara
                                 "field": field, "api_enum": deepcopy(enum), "api_enum_constrained": constrained}
         if category in unbound:
             categories[category]["unbound_codes"] = unbound[category]
-    return _finish(policy, categories, digest(openapi), "api_validated", relaxed=unguarded and bool(unbound))
+    return _finish(policy, categories, digest(openapi), "api_validated", relaxed=unguarded)
 
 
 def checked_action_bindings(policy: Mapping[str, Any], binding: dict | None = None) -> dict:

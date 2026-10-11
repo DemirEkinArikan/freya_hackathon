@@ -41,6 +41,7 @@ from .source_provenance import capture_source_provenance, verify_source_unchange
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 from .policy_patch import apply_policy_patch, repair_excerpt
+from .policy_demotion import PolicyDemotionError, demote_policy
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -111,7 +112,8 @@ def parser() -> argparse.ArgumentParser:
                      help="Fail instead of exporting the deterministic fallback plan when no model plan validates")
     out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
                      help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
-                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy")
+                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy; after bounded "
+                          "repairs, typed rules the sealed compiler still refuses are demoted the same way and recorded")
     return out
 
 
@@ -278,7 +280,39 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
 
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
-                    repair_mode="patch", declarations="strict"):
+                    repair_mode="patch", declarations="strict", demotions=None):
+    """Bounded extraction; a relaxed build that still fails, or has no time for a repair, demotes the last rejected policy."""
+    last = {}
+    try:
+        return _extract_policy_attempts(generator, sources, openapi, run_dir, trace, deadline, secrets, last,
+                                        workflow_pending=workflow_pending, repair_mode=repair_mode,
+                                        declarations=declarations)
+    except (DeadlineExceeded, GenerationError, ValueError) as exc:
+        if declarations != "relaxed" or "policy" not in last or deadline.remaining() <= EXPORT_RESERVE:
+            raise
+        original = f"{type(exc).__name__}: {exc}"
+        try:
+            policy, steps = demote_policy(last["policy"], sources, openapi)
+        except PolicyDemotionError as failure:
+            trace.emit("policy_demotion", passed=False, attempt=last["attempt"], steps=failure.demotions,
+                       errors=list(failure.errors))
+            raise ValueError(f"{exc}; relaxed demotion could not compile the policy: "
+                             + "; ".join(failure.errors)) from exc
+    compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
+    requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
+    _write_json(run_dir / "policy.demoted.json", sanitize({"policy": policy, "demotions": steps}, secrets=secrets))
+    trace.emit("policy_demotion", passed=True, attempt=last["attempt"], steps=steps,
+               original_failure=original)
+    trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
+               selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
+               attempt=last["attempt"], repair_mode="demotion")
+    if demotions is not None:
+        demotions.extend(steps)
+    return copy.deepcopy(policy), compiled, requirements, last["attempt"] - 1
+
+
+def _extract_policy_attempts(generator, sources, openapi, run_dir, trace, deadline, secrets, last, *,
+                             workflow_pending=True, repair_mode="patch", declarations="strict"):
     repair = failure = rejected = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     # Injected generators without the patch call keep full repairs.
@@ -325,6 +359,8 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             policy, changes = normalise_policy(policy, {source["id"]: source["text"] for source in sources})
             if changes:
                 trace.emit("policy_normalisation", attempt=attempt + 1, changes=changes)
+            if isinstance(policy, dict):  # secret-free and normalised: the only kind relaxed demotion may use
+                last.update(policy=copy.deepcopy(policy), attempt=attempt + 1)
             compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
             # Execution-shape errors belong to bounded extraction repairs,
             # before the policy is frozen; plans cannot repair bank rules.
@@ -574,6 +610,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                 reasoning_effort=args.reasoning_effort)
         trace.emit("stage_started", stage="policy")
         stage_started = deadline.elapsed()
+        demotions = []
         if args.policy_file:
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
@@ -587,7 +624,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             policy, compiled, requirements, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
                 workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair,
-                declarations=declarations)
+                declarations=declarations, demotions=demotions)
             policy_origin = "extracted"
         _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
                          repairs=policy_repairs, origin=policy_origin)
@@ -605,6 +642,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 for entry in compiled["prompt_enforced_limitations"]],
                 "unguarded_close_codes": {category: data["unbound_codes"] for category, data in unguarded["categories"].items()
                                           if "unbound_codes" in data and unguarded.get("declaration_mode") == "relaxed"}})
+            if demotions:
+                relaxed_record["policy_demotions"] = demotions
             trace.emit("relaxed_declarations", **relaxed_record)
         if mode == "extract-policy-only":
             deadline.require()

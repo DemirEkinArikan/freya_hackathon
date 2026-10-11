@@ -23,8 +23,9 @@ corresponding evaluation evidence.
 
 The existing termination harness executes the real new gate before asserting
 its original public recovery target. The old absorbing-loop replay regression
-now proves termination at a reduced controller resource bound, with no bank
-call. It does not accept a replay step-limit as successful termination.
+now proves a real controller-action self-cycle terminates at a reduced resource
+bound, with no bank call or extra caller turn. It does not treat an ordinary
+conversation as immediate routing, or accept a replay step-limit as success.
 
 The replay's no-match handling now follows routing rule 4 in the pinned kit:
 an unmatched supplied conversation turn stays in that node and consumes a

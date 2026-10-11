@@ -51,7 +51,7 @@ class CurrentCompilerMutationTests(unittest.TestCase):
     def test_current_formatted_passthrough_and_budget_candidate_is_accepted_statically(self):
         self.assertEqual(self.checked(deepcopy(self.original)), [])
         self.assertEqual(self.checked(deepcopy(self.original), guarded=True), [])
-        self.assertIn("bg_turn_budget_stop", self.original["nodes"])
+        self.assertEqual(self.original["nodes"]["talk"]["max_turn_transition"], "bg_budget_close")
 
     def test_passthrough_default_and_final_route_must_agree_without_canonical_check(self):
         self.mutated(lambda workflow: workflow["nodes"]["talk"].update(

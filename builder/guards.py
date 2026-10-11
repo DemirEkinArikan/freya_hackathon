@@ -6,7 +6,9 @@ Speech interpretation and the Freya sandbox still require hosted verification.
 """
 from __future__ import annotations
 
+import ast
 import copy
+import functools
 import re
 from typing import Any, Mapping
 
@@ -1968,6 +1970,31 @@ def guard_result(state, data, profile, catalog, expected_action):
 '''
 
 
+@functools.lru_cache(maxsize=32)
+def _kernel_for(kernel: str, roots: frozenset) -> str:
+    """The top-level kernel statements a code step can reach, without comment lines.
+
+    The platform refuses a code step whose code and runtime data exceed its
+    131072-byte sandbox limit, so no step carries kernel code it cannot call.
+    """
+    blocks = []
+    for statement in ast.parse(kernel).body:
+        defined = {getattr(statement, "name", None)} - {None}
+        defined |= {n.id for target in getattr(statement, "targets", []) for n in ast.walk(target) if isinstance(n, ast.Name)}
+        defined |= {alias.asname or alias.name for alias in getattr(statement, "names", [])}
+        blocks.append((defined, {n.id for n in ast.walk(statement) if isinstance(n, ast.Name)},
+                       ast.get_source_segment(kernel, statement)))
+    needed, pending = set(), set(roots)
+    while pending:
+        name = pending.pop()
+        needed.add(name)
+        pending |= {used for defined, uses, _ in blocks if name in defined for used in uses} - needed
+    kept = [line for defined, _, source in blocks if not defined or defined & needed
+            for line in source.split("\n") if not line.lstrip().startswith("#")]
+    # One space per four-space level; the kernel has no multi-line strings.
+    return "\n" + "\n".join(" " * ((len(line) - len(line.lstrip(" "))) // 4) + line.lstrip(" ") for line in kept) + "\n"
+
+
 def _literal(value: Any) -> str:
     # Freya source templating must never see adjacent braces, including nested
     # JSON endings. Python reconstructs them only at execution time.
@@ -2037,7 +2064,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail += "    try:\n        retained = json.loads(str(vars.get('bg_state') or ''))\n        guard_known_counts(retained)\n        if retained.get('quarantined') is True:\n            vars['bg_quarantined'] = 'yes'\n    except Exception:\n        vars['bg_quarantined'] = 'yes'\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
-    return _KERNEL + tail
+    roots = frozenset(n.id for n in ast.walk(ast.parse(tail)) if isinstance(n, ast.Name))
+    return _kernel_for(_KERNEL, roots) + tail
 
 
 def _transition(target: str, route: str | None = None) -> dict:
@@ -2226,6 +2254,14 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     quarantine_route = {"target_node": "bg_quarantine", "description": "sealed quarantine",
                         "condition": {"logic": "or", "conditions": [{"variable": "bg_quarantined",
                             "operator": "equals", "operand": "yes"}]}}
+
+    def sealed(node, *extra):
+        # A code step the platform refuses (e.g. over its sandbox payload limit)
+        # leaves every earlier route value in place, a dispatch's allow too. Its
+        # documented failure counter routes to quarantine, never to a resend.
+        route = copy.deepcopy(quarantine_route)
+        route["condition"]["conditions"] += [{"variable": node + "_failure_count", "operator": "greater_than", "operand": 0}, *extra]
+        return route
     entries = []
     for name, node in sorted(plan["nodes"].items()):
         if node["node_type"] != "guard_action":
@@ -2247,7 +2283,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             result_vars['_types'] = PREFIX + name + '_result_types'
         needs_confirmation = (action == "commit_promises" and profile.get("require_confirmation") is True
                               or action in profile.get("confirmation_actions", []))
-        routes = [copy.deepcopy(quarantine_route), _transition(success, "done")]
+        routes = [sealed(name), _transition(success, "done")]
         if operation:
             routes += [_transition(api, "allow")]
             if needs_confirmation:
@@ -2258,7 +2294,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             # loop when no authorized bank disposition can be formed. A refused
             # close is quarantined above and ends at the quarantine terminal,
             # without fabricating a bank close or persistence claim.
-            routes = [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition("bg_terminal")]
+            routes = [sealed(name), _transition(api, "allow"), _transition("bg_terminal")]
         nodes[name] = _code_node(name, _code("prepare", action, node.get("inputs", {}), profile, catalog, maps, result_vars), routes)
         entries.append(name)
         if not operation:
@@ -2269,13 +2305,15 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             leaf["default"] = "{{bg_arg_" + key + "}}"
         # This hook only transports the already validated immutable JSON body.
         # It never decides whether an action is authorized or rewrites its URL.
-        tool["pre_process_code"] = "try:\n    config['body'] = str(vars.get('bg_body') or '')\nexcept Exception:\n    pass\n"
+        # It also consumes the one-shot allow that authorised this request, so
+        # only fresh reconciliation can authorise another one.
+        tool["pre_process_code"] = "try:\n    vars['bg_route'] = 'sent'\n    config['body'] = str(vars.get('bg_body') or '')\nexcept Exception:\n    pass\n"
         # Transport only the actual immutable HTTP envelope status and the raw
         # JSON type of each trusted result field, which the string mapping
         # erases. The kit documents hooks before response_mapping; API
         # pre_action automatic result-key naming is insufficiently explicit.
         names = [actual for _, actual in sorted(catalog[operation]["results"].items())]
-        tool["post_process_code"] = ("try:\n    if isinstance(result, dict):\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\n"
+        tool["post_process_code"] = ("try:\n    if isinstance(result, dict):\n        result.pop('header', None)\n        if not isinstance(result.get('data'), dict):\n            result['data'] = dict()\n        result['data'].pop('bg_http_status', None)\n        if 'status_code' in result:\n            result['data']['bg_http_status'] = result['status_code']\n"
             "        kinds = list()\n        for name in " + repr(names) + ":\n            value = result['data'].get(name)\n"
             "            kinds.append('absent' if name not in result['data'] else 'null' if value is None else 'boolean' if value is True or value is False"
             " else 'integer' if isinstance(value, int) else 'number' if isinstance(value, float) else 'string' if isinstance(value, str)"
@@ -2295,10 +2333,11 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "transitions": [{"target_node": accept, "description": "evaluate fresh answer", "condition": {"logic": "or", "conditions": [
                     {"variable": "bg_consent", "operator": "equals", "operand": value} for value in ("yes", "no", "unclear")]}}]}
             nodes[accept] = _code_node(accept, _code("confirm", action, {}, profile, catalog, maps, result_vars),
-                [copy.deepcopy(quarantine_route), _transition(api, "allow"), _transition(blocked)])
+                [sealed(accept), _transition(api, "allow"), _transition(blocked)])
         nodes[reconcile] = _code_node(reconcile, _code("result", action, {}, profile, catalog, maps, result_vars),
             ([_transition("bg_terminal")] if action == "close_call" else
-             [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
+             [sealed(reconcile, {"variable": "bg_route", "operator": "equals", "operand": "sent"}),
+              _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
     _bound_entries(nodes, list(plan["nodes"]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}

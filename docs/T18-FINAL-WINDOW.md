@@ -89,8 +89,11 @@ tonight they run none.
 - **Strict** is the builder's default declaration handling. **Relaxed** is the
   builder's last-resort declaration mode (R1, issue 8 comment 6108951431). A
   protected declaration without a typed construct then no longer fails the
-  build. Its requirement becomes a dialogue-level rule, and the trace lists it as
-  not enforced by the controller. Everything the sealed kernel enforces stays
+  build. Its requirement becomes a dialogue-level rule, and the trace must list it
+  as not enforced by the controller: a relaxed run writes one
+  `relaxed_declarations` event with `prompt_enforced_limitations` (each
+  `enforced_by: dialogue_prompt`) and `unguarded_close_codes`, and its
+  `manifest.json` repeats both. Everything the sealed kernel enforces stays
   enforced.
 - `launch --round 2` passes `--declarations relaxed` when the frozen
   `builder/build.py` parser declares that option. If the frozen source has none,
@@ -112,7 +115,10 @@ tonight they run none.
   `DISABLED` file. It passes each one to its builder as `CODEX_HOME`. With two
   accounts, the two attempts of each brief use different accounts, and each
   account runs one high and one medium attempt, so one account's outage cannot
-  fail a brief. Tonight's attempts never wait for other builds. Calls slow down
+  fail a brief. At most four of tonight's builders run at once, two per brief
+  and two per account, because a brief's next round waits for all of its
+  attempts; `--max-running` (default 6) is a backstop. Tonight's attempts never
+  wait for other builds. Calls slow down
   as more builds share an account (issue 19 comment 6108793427), so other lanes
   start no build after 19:30. Builds take up to 30 minutes. Before 20:00, put a
   `DISABLED` file in any account that cannot run the builder model.

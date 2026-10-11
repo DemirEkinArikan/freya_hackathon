@@ -146,7 +146,10 @@ into payment collection. Add descriptive extension kinds for other constraints o
 shapes (including an unbounded interval) and generate their appropriate workflow
 logic. Dialogue duties (wording, ordering, utterances, dialogue counters and
 speech-only triggers) belong in these descriptive kinds, which the workflow
-implements, not in unsupported_constraints. Each active semantic kind should have one resolved value. Preserve superseded
+implements, not in unsupported_constraints. The exception is what the source says
+to tell the caller when the call stops without a close on unknown or contradictory
+write evidence: the sealed stop ends the call before any workflow node can speak,
+so encode it in uncertain_stop_explanation. Each active semantic kind should have one resolved value. Preserve superseded
 rules with overrides referencing their IDs; do not leave conflicting active values.
 
 Generate a complete Freya workflow using the supplied runtime reference. Separate

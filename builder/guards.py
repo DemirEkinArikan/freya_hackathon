@@ -118,7 +118,8 @@ _CONTROLLER_STATE_EFFECTS = {
         "accepted_staging": ["Prepares the validated callback request; sending or confirming it does not establish a callback record."],
         "positive_recording": ["Validated positive callback evidence appends the submitted callback to recorded callbacks."]},
     "close_call": {
-        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close."],
+        "accepted_staging": ["Selects an eligible frozen disposition using protected state, then seals one close attempt; an attempted close is not a recorded close.",
+                             "Before verification, with no recorded callback or verification evidence, an empty outcome and reason proposal selects the recorded identity phase's identity_close row when that row is one eligible declared choice; any other proposal must match a declared choice."],
         "positive_recording": ["Validated positive close evidence marks the close recorded."],
         "rejections": ["Every close result is terminal; negative or uncertain evidence cannot authorize another close attempt."]},
 }
@@ -1162,6 +1163,13 @@ def guard_close(state, proposed, profile, maps):
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
             elif all(len(item) == 1 and item == rows[0] for item in rows) and rows[0][0].get('requires') == 'no_recorded_callback':
                 proposal = dict((key, value) for key, value in rows[0][0].items() if key != 'requires')
+            elif proposed.get('outcome', '') == '' and proposed.get('reason', '') == '':
+                # Nothing was proposed (no extracted value, or a close step
+                # without proposal inputs): the recorded identity phase selects
+                # its fixed row, only where that row is one eligible choice.
+                proposal = dict(table['unreached' if unreached else 'incomplete'])
+                if [dict((key, value) for key, value in row.items() if key != 'requires') for row in rows[0 if unreached else -1]].count(proposal) != 1:
+                    raise ValueError('identity closing proposal lacks one declared eligible choice')
             else:
                 if not isinstance(proposed.get('outcome', ''), str):
                     raise ValueError('identity closing outcome proposal must be text')
@@ -1231,6 +1239,43 @@ def guard_known_counts(state):
 def guard_failed_facts(state, action, route):
     return dict(version=1, route=route, call_status='quarantined', recorded_counts=guard_known_counts(state),
                 latest_action=dict(action=action, status='fact_projection_failed'))
+
+# A policy refusal keeps the runtime view with one sanitized reason code; its
+# text is never projected. A blank or unparseable caller value is asked for
+# again. Any other unlisted fault keeps the degraded view.
+GUARD_REFUSALS = dict(
+    closed=('call is closed, uncertain or has an unresolved operation', 'identity verification has ended',
+            'the disposition phase is sealed', 'a staged or recorded transfer permits only handoff and final close',
+            'identity is complete or exhausted', 'transfer takes precedence over commitments and notes',
+            'product is already recorded', 'this product exhausted its policy write budget',
+            'duplicate or unresolved bank write'),
+    not_verified=('account requires verified identity and is read once', 'action requires trusted identity and account results',
+                  'transfer lacks the policy-required identity/account evidence'),
+    order=('identity factors must follow policy order', 'product proposals must follow supplied policy order',
+           'no valid staged promises', 'policy requires separate product confirmation',
+           'all products need resolved promises or staged dispositions', 'no requested staged transfer'),
+    missing_input=('invalid amount', 'amount must have at most two decimal places', 'expected an ISO date',
+                   'missing required request value'),
+    out_of_policy=('promise amount outside policy floor or past due', 'promise date outside policy calendar',
+                   'product id must come from the account result', 'invalid or already recorded disposition',
+                   'transfer not permitted in current state', 'a goal closed by goal rows uses no promise, note or transfer role',
+                   'callback time outside policy window', 'callback date outside policy window',
+                   'today callback requires a supplied clock and later time', 'request value outside supplied enum',
+                   'request numeric bound', 'request string length', 'request string pattern'))
+
+def guard_refusal(state, action, inputs, message):
+    reason = next((code for code, messages in GUARD_REFUSALS.items() if message in messages), '')
+    if reason == 'not_verified' and state['identity_status'] == 'verified':
+        reason = 'closed' if action == 'get_account' else 'order'
+    if reason in ('', 'order', 'out_of_policy'):
+        try:
+            if any(value is None or str(value).strip() == '' for value in inputs.values()):
+                raise ValueError('blank caller value')
+            guard_date(inputs.get('date', state['now']))
+            datetime.time.fromisoformat(str(inputs.get('time', '00:00')))
+        except ValueError:
+            reason = 'missing_input'
+    return reason
 
 def guard_projection_quarantine(state):
     # Raw account items may themselves contain a nonfinite/unserializable value.
@@ -1942,7 +1987,12 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
             tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry budget exhausted')\n"
         if phase == "prepare":
             tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
-            tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
+            tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n"
+            call = "state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
+            # A policy refusal keeps the unchanged state for the view below; a
+            # refused close keeps its own termination path.
+            tail += ("    " + call if action == "close_call" else
+                     "    refusal = ''\n    try:\n        " + call + "    except ValueError as error:\n        refusal = guard_refusal(state, spec['action'], inputs, str(error))\n        if not refusal:\n            raise\n        route, body, readback = 'blocked', dict(), ''\n")
         elif phase == "confirm":
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"
         else:
@@ -1958,6 +2008,8 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
+    if phase == "prepare" and action != "close_call":
+        tail += "    if refusal and facts['call_status'] != 'quarantined':\n        facts['latest_action'] = dict(action=spec['action'], status='refused', reason=refusal)\n        vars['bg_facts'] = guard_json(facts)\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
     tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"

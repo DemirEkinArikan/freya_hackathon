@@ -288,9 +288,9 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 
 6. Start round 1 of the [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix). That is
    four builders, each in its own `artifacts/final/<label>/attempt-<k>/` with its own
-   new slot. Starts alternate between the briefs, 60 s apart, so the launcher runs for
-   about 3 minutes, longer if it has to wait for the Codex account limit; `nohup`
-   keeps it going if the terminal closes:
+   new slot, spread over the logged-in Codex accounts. Starts alternate between the
+   briefs, 60 s apart, so the launcher runs for about 3 minutes; `nohup` keeps it
+   going if the terminal closes:
 
    ```sh
    nohup python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \

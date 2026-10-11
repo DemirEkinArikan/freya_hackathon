@@ -48,6 +48,7 @@ class FinalAttemptsTests(unittest.TestCase):
         self.failures, self.alive = set(), False
         self.client, self.sleep = MagicMock(), MagicMock()  # Staging probes and pauses never really happen here.
         self.builds, self.relaxed = [], ['--declarations', 'relaxed']  # Builder process counts; the builder's option.
+        self.accounts = []  # Logged-in Codex accounts.
 
     def run_main(self, *argv):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
@@ -59,10 +60,12 @@ class FinalAttemptsTests(unittest.TestCase):
         with patch.object(final.subprocess, 'Popen', popen), patch.object(final.shutil, 'which', return_value='/bin/codex'), \
              patch.object(final, '_alive', side_effect=lambda pid: self.alive), \
              patch.object(final, '_codex_builds', side_effect=lambda: self.builds.pop(0) if self.builds else 0), \
+             patch.object(final, '_codex_accounts', side_effect=lambda: self.accounts), \
              patch.object(final, '_relaxed_option', side_effect=lambda: self.relaxed), \
              patch.object(final, 'FreyaClient', self.client), patch.object(final.time, 'sleep', self.sleep), \
              patch.dict(final.os.environ, {'OPENAI_API_KEY': 'synthetic-openai-value'}):
             final.os.environ.pop('FREYA_API_KEY', None)  # Only the --env-file supplies the key here.
+            final.os.environ.pop('CODEX_HOME', None)
             result = self.run_main('launch', '--env-file', str(self.env_file), '--model', 'synthetic-model',
                                    '--simulation-lease', '/shared/.simulation.lock',
                                    *([] if '--round' in extra else ['--round', '1']), *extra)
@@ -98,11 +101,12 @@ class FinalAttemptsTests(unittest.TestCase):
             self.assertIs(kwargs['stdin'], subprocess.DEVNULL)
             self.assertEqual(kwargs['env']['FREYA_API_KEY'], 'synthetic-launch-key')
             self.assertNotIn('OPENAI_API_KEY', kwargs['env'])
+            self.assertNotIn('CODEX_HOME', kwargs['env'])  # No logged-in account found: Codex keeps its default.
             record = json.loads((self.root / directory / 'launch.json').read_text())
             self.assertEqual(record['argv'], argv)
             self.assertEqual(record['pid'] - 7100, popen.call_args_list.index(call))
-            self.assertEqual((record['round'], record['mode'], record['reasoning_effort'], record['builder_processes_before_start']),
-                             (1, 'strict', argv[argv.index('--reasoning-effort') + 1], 0))
+            self.assertEqual((record['round'], record['mode'], record['reasoning_effort'], record['builder_processes_before_start'],
+                              record['codex_account']), (1, 'strict', argv[argv.index('--reasoning-effort') + 1], 0, None))
         self.assertEqual(len(slots), 4)
         self.assertNotEqual(final.os.environ.get('FREYA_API_KEY'), 'synthetic-launch-key')
         # The matrix, interleaved and spread: both briefs start at high first, and starts are a pause apart.
@@ -116,18 +120,38 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertIs(json.loads((self.root / 'artifacts/final/hidden-2/attempt-2/launch.json').read_text())
                       ['staging_health']['ok'], True)
 
-    def test_starts_wait_while_five_builder_processes_run(self):
-        self.builds = [5, 7, 4, 3]  # Process counts seen before the first start (three checks) and the second.
-        (code, out, _), popen = self.launch('--labels', 'hidden-1')
-        self.assertEqual((code, popen.call_count), (0, 2))
-        self.assertEqual([call.args for call in self.sleep.call_args_list], [(20,), (20,), (60,)])
-        self.assertEqual(out.count('"waiting"'), 2)
-        self.assertEqual([json.loads((self.root / f'artifacts/final/hidden-1/attempt-{number}/launch.json').read_text())
-                          ['builder_processes_before_start'] for number in (1, 2)], [4, 3])
+    def test_starts_spread_over_codex_accounts_and_never_wait_for_other_builds(self):
+        self.accounts = [Path('/synthetic-home/.codex'), Path('/synthetic-home/.codex-acct2')]
+        self.builds = [5, 7, 4, 3]  # Builder processes seen before each start: recorded, never a reason to wait.
+        (code, out, _), popen = self.launch()
+        self.assertEqual((code, popen.call_count), (0, 4))
+        self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 3)
+        homes = [(argv[argv.index('--output-dir') + 1], call.kwargs['env']['CODEX_HOME'])
+                 for argv, call in ((call.args[0], call) for call in popen.call_args_list)]
+        # Each brief's two attempts use different accounts, and each account gets one high and one medium attempt.
+        self.assertEqual(homes, [('artifacts/final/hidden-1/attempt-1', '/synthetic-home/.codex'),
+                                 ('artifacts/final/hidden-2/attempt-1', '/synthetic-home/.codex-acct2'),
+                                 ('artifacts/final/hidden-1/attempt-2', '/synthetic-home/.codex-acct2'),
+                                 ('artifacts/final/hidden-2/attempt-2', '/synthetic-home/.codex')])
+        records = [json.loads((self.root / directory / 'launch.json').read_text()) for directory, _ in homes]
+        self.assertEqual([(record['codex_account'], record['builder_processes_before_start']) for record in records],
+                         [('.codex', 5), ('.codex-acct2', 7), ('.codex-acct2', 4), ('.codex', 3)])
+        self.assertEqual([json.loads(line)['codex_account'] for line in out.splitlines()],
+                         ['.codex', '.codex-acct2', '.codex-acct2', '.codex'])
         # The count is the rules' own: every process whose command line names builder/build.py.
         with patch.object(final.subprocess, 'run', return_value=SimpleNamespace(stdout='4101\n4102\n')) as run:
             self.assertEqual(final._codex_builds(), 2)
         self.assertEqual(run.call_args.args[0], ['pgrep', '-f', 'builder/build.py'])
+
+    def test_codex_accounts_are_logged_in_and_not_disabled(self):
+        home = self.root / 'home'
+        for name, files in (('.codex', ['auth.json']), ('.codex-acct2', ['auth.json']),
+                            ('.codex-acct3', ['auth.json', 'DISABLED']), ('.codex-acct4', ['config.toml'])):
+            (home / name).mkdir(parents=True)
+            for file in files:
+                (home / name / file).write_text('{}')
+        with patch.dict(final.os.environ, {'HOME': str(home)}):
+            self.assertEqual(final._codex_accounts(), [home / '.codex', home / '.codex-acct2'])
 
     def test_relaxed_option_comes_from_the_frozen_builder_parser(self):
         def parser(*arguments):
@@ -227,6 +251,22 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual([call.args[0][call.args[0].index('--output-dir') + 1] for call in popen.call_args_list],
                          ['artifacts/final/hidden-1/attempt-5', 'artifacts/final/hidden-1/attempt-6'])
+
+    def test_no_round_starts_while_an_attempt_of_the_brief_still_runs(self):
+        # select ran between the launcher's mkdir and its launch record: the new attempt looked finished.
+        self.attempt('hidden-1', 1, status='failed')
+        (self.root / 'artifacts/final/hidden-1/attempt-2').mkdir(parents=True)
+        self.assertEqual(self.select()[0], 3)
+        self.assertEqual(self.record()['attempt_count'], 2)
+        self.attempt('hidden-1', 2, running=True, effort='medium')
+        self.alive = True
+        self.assertEqual(self.select()[0], 2)  # A running attempt never rewrites the earlier record.
+        before = self.snapshot()
+        (code, _, error), popen = self.launch('--round', '2', '--labels', 'hidden-1')
+        self.assertEqual(code, 1)
+        self.assertIn('hidden-1: run select once every attempt has finished', error)
+        popen.assert_not_called()
+        self.assertEqual(self.snapshot(), before)
 
     def attempt(self, label, number, *, status='exported', errors=0, declared=0,
                 finished='2026-10-11T17:20:00+00:00', running=False, mode='strict', effort='high'):

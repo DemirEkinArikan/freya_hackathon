@@ -105,13 +105,18 @@ tonight they run none.
 
   A brief whose selection is relaxed may still get one more `--round 1` by 21:45,
   because selection prefers a strict export.
-- **Codex account limit (lane rules section 10).** Before each start, the
-  launcher waits while 5 or more `builder/build.py` processes run on this machine.
-  It prints each wait. As issue 19 comment 6108793427 recommends, no other build
-  should use the Codex account from 20:00 until the attempts finish. Builds take
-  up to 30 minutes, so other lanes start none after 19:30.
+- **Codex accounts.** The launcher spreads the attempts over the logged-in Codex
+  accounts: `~/.codex` and every `~/.codex-acct<N>` with an `auth.json` and no
+  `DISABLED` file. It passes each one to its builder as `CODEX_HOME`. With two
+  accounts, the two attempts of each brief use different accounts, and each
+  account runs one high and one medium attempt, so one account's outage cannot
+  fail a brief. Tonight's attempts never wait for other builds. Calls slow down
+  as more builds share an account (issue 19 comment 6108793427), so other lanes
+  start no build after 19:30. Builds take up to 30 minutes. Before 20:00, put a
+  `DISABLED` file in any account that cannot run the builder model.
 - **Records.** Each `launch.json` records the round, mode, effort, exact argv,
-  PID, the builder-process count before the start and the staging probe.
+  PID, Codex account name (never a token), the builder-process count before the
+  start and the staging probe.
   `selection.json` lists every attempt with its mode and effort.
 
 ### Platform failures are infrastructure, not builder results

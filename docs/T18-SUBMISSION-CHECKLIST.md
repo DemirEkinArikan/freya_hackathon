@@ -14,10 +14,13 @@ From the [kit README](../build-the-builder/README.md) "The final" and "Rules":
   that built it; also submit the builder code. One trace per brief.
 - A builder run on one brief may take 30 minutes, including any test it runs on
   its own agent. The builder may run more than once; submit one run's agent with
-  that run's trace, and no manual step inside a run. Tonight each brief gets three
-  parallel attempts from `tools/final_attempts.py launch`. `select` picks one by
-  the order declared in [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order),
-  and every attempt stays on disk.
+  that run's trace, and no manual step inside a run. Tonight each brief gets the
+  [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix) from `tools/final_attempts.py launch`:
+  round 1 is strict high + strict medium. Round 2, relaxed high + relaxed medium,
+  runs only for a brief that round 1 left without a selected attempt, or with a
+  selected deterministic fallback export. `select` picks one by the order declared in
+  [T18-FINAL-WINDOW.md](T18-FINAL-WINDOW.md#declared-selection-order), which
+  prefers a model-plan export, then a strict one. Every attempt stays on disk.
 - The kit exports with `freya.export_workflow(workflow_id, "<brief>.workflow.json")`.
   The builder writes the same envelope to `<run>/submission.workflow.json`, and
   the ZIP stores it as `workflows/hidden-N.workflow.json`. For upload, copy those
@@ -51,8 +54,8 @@ the channel the instructions came from. Do not guess an address.
 ## Before sending (on the evidence HEAD)
 
 - [ ] `final_attempts.py select` exited 0. Both `artifacts/final/<label>/selection.json`
-      records name the selected attempt k of N, and no attempt directory was
-      removed or edited. The manifest came from `final_attempts.py manifest`, so it
+      records name the selected attempt k of N and its mode, and no attempt directory was
+      removed or edited. A relaxed selection is named as relaxed in the issue 19 post, and a deterministic fallback selection as a fallback. The manifest came from `final_attempts.py manifest`, so it
       has `selections`. `health.jsonl` and every attempt's `launch.json` are in the
       evidence commit.
 - [ ] `package_submission.py --check --manifest`, ZIP write, `zipfile -t` and
@@ -85,9 +88,14 @@ issue 19 without credentials or transcripts.
 
 ## Contingencies
 
-- **A brief has no eligible attempt (`select` exits 3).** Launch a retry round for
-  that brief alone (`--labels hidden-N`), no later than 18:45 UTC / 21:45 Istanbul.
-  It adds new attempt numbers, and every earlier attempt stays. Then run `select` again.
+- **A brief has no eligible attempt (`select` exits 3).** After round 1, launch
+  `--round 2 --labels hidden-N` for that brief alone. If every strict attempt ended
+  on a platform error, launch another `--round 1` instead. After round 2, one more
+  round may start, no later than 18:45 UTC / 21:45 Istanbul. Each round adds new
+  attempt numbers, and every earlier attempt stays. Then run `select` again.
+- **A brief's selected attempt is a deterministic fallback export.** It stays
+  eligible and is kept. If time allows, launch `--round 2 --labels hidden-N` for that
+  brief as above, because any model-plan export ranks before the fallback.
 - **One brief has no eligible run by 19:15 UTC.** The packager needs exactly two
   runs and refuses a one-run package. Send the eligible run's export and trace
   with `package_submission.py --source-only` code, and state that the other brief

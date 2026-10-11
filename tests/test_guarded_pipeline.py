@@ -33,7 +33,7 @@ class GuardedPipelineTests(unittest.TestCase):
         generator = self.configured_generator()
         self.propose(generator, proposal)
         with self.assertRaisesRegex(ValueError, "Candidate validation failed after bounded repairs"):
-            execute(self.args("--generate-only"), generator=generator,
+            execute(self.args("--generate-only", "--no-plan-fallback"), generator=generator,
                     client_factory=lambda **kwargs: self.fail("platform touched by invalid plan"))
         self.assertEqual(generator.generate.call_count, 1)
         self.assertEqual(generator.generate_plan.call_count, 3)

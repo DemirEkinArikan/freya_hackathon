@@ -381,7 +381,7 @@ def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict],
 def _known_secrets() -> tuple[str, ...]:
     return tuple(v for k, v in os.environ.items() if v and
                  (k.endswith(("API_KEY", "ACCESS_TOKEN", "SECRET", "PASSWORD")) or
-                  k in {"FREYA_BANK_TEAM_KEY"} or k.startswith("FREYA_TOOL_AUTH_")))
+                  k in {"FREYA_BANK_TEAM_KEY", "FREYA_API_KEY_2"} or k.startswith("FREYA_TOOL_AUTH_")))
 
 
 

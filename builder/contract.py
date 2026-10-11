@@ -11,7 +11,7 @@ from __future__ import annotations
 import copy
 from typing import Any, Mapping
 
-from .policy import _active_rules, degraded_constraint_shape, validate_policy
+from .policy import _active_rules, _profile_errors, _scoped_value_errors, degraded_constraint_shape, validate_policy
 from .safety import canonical_json, digest
 from .toolbindings import BindingError, operations
 from .policy_conflicts import ConditionalConflictError, compile_conditional_conflicts
@@ -244,6 +244,21 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
                         "superseded_provenance": [{"rule_id": ident, "id": by_id[ident]["source"]["id"],
                                                    "quote": by_id[ident]["source"]["quote"]}
                                                   for ident in ancestors]}
+        if _scoped_value_errors(kind, ordered[0]["value"]) == []:
+            # Retain the two sourced values a date selector references, so the
+            # guarded runtime can choose between them by the sealed call date.
+            selection = ordered[0]["value"]["effective_date"]
+            refs = [selection["before_rule"], selection["on_or_after"]["rule"]]
+            overridden = {ident for rule in ordered for ident in rule.get("overrides", [])}
+            if refs[0] == refs[1] or not set(refs) <= overridden:
+                errors.append("effective_date selector must reference two distinct same-kind rules that it explicitly overrides")
+            elif any(_scoped_value_errors(kind, by_id[ref]["value"]) is not None
+                     or _profile_errors(kind, by_id[ref]["value"]) for ref in refs):
+                errors.append("effective_date selector references must hold primitive values of their kind")
+            else:
+                active[kind]["referenced_rule_values"] = {ref: copy.deepcopy(by_id[ref]["value"]) for ref in refs}
+    if errors:
+        raise PolicyContractError(errors)
     contract = {"version": 1, "goal": policy["goal"], "active_rules": active,
                 "permitted_operations": catalogue, "sources": copy.deepcopy(manifest),
                 "provenance_is_operative": False,

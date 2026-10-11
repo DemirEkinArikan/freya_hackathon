@@ -192,7 +192,7 @@ class HostedCommandRecordingTests(unittest.TestCase):
             with patch("sys.argv", argv), patch("benchmarks.hosted.ROOT", root / "benchmarks"), \
                  patch("benchmarks.hosted.load_cases", return_value=({}, rows)), \
                  patch("builder.config.load_local_environment"), \
-                 patch("builder.platform.FreyaClient", return_value=SimpleNamespace(base_url=STAGING)), \
+                 patch("builder.platform.FreyaClient", return_value=SimpleNamespace(base_url=STAGING, request=None)), \
                  patch("benchmarks.hosted.HostedBackend", return_value=backend), patch("builtins.print"):
                 main()
             record = json.loads(next((root / "artifacts/evaluations").glob("*/trial.json")).read_text())
@@ -200,6 +200,7 @@ class HostedCommandRecordingTests(unittest.TestCase):
             self.assertEqual(record["conditions"]["concurrency"], 2)
             self.assertEqual(record["conditions"]["budget_seconds"], 120)
             self.assertEqual(record["conditions"]["max_call_seconds"], 137)
+            self.assertEqual(record["conditions"]["platform_gateway_retries"], 5)
             self.assertEqual(record["conditions"]["platform_base_url"], STAGING)
             self.assertIsNone(record["conditions"]["builder_model"])
             self.assertEqual(len(backend.simulations), 1)

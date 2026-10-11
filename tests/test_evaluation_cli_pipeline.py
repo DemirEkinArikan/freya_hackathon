@@ -85,7 +85,7 @@ class EvaluationCliPipelineTests(unittest.TestCase):
                         "--evidence-dir", str(directory / "evaluations"), "--out", str(directory / (split + "-summary.json"))]
                     printed = io.StringIO()
                     with patch("builder.config.load_local_environment"), \
-                         patch("builder.platform.FreyaClient", return_value=SimpleNamespace(base_url=STAGING)), \
+                         patch("builder.platform.FreyaClient", return_value=SimpleNamespace(base_url=STAGING, request=None)), \
                          patch("benchmarks.hosted.HostedBackend", return_value=services), \
                          patch("benchmarks.evidence.utc_now", side_effect=[original["started_at"], original["ended_at"]]), \
                          contextlib.redirect_stdout(printed):

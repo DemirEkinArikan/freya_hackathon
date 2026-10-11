@@ -12,6 +12,32 @@ No automated builder run on this version of the skill has been shown yet.
 The big builder (`builder/build.py` via `tools/final_attempts.py`) is the fallback. See
 [T18-FINAL-WINDOW.md](../docs/T18-FINAL-WINDOW.md).
 
+## The final case: one command
+
+The final case is one folder (or zip) of bank documents in Markdown, Word, PDF and Excel, with a flow drawing. Deploy
+our bank mock first (`mock/`), then run one build from a Python 3.11 environment with `claude-agent-sdk==0.2.165`,
+`python-docx`, `openpyxl` and `pypdf`:
+
+```sh
+python3 planb/build.py <case folder or .zip> <mock url>
+```
+
+`build.py` does the following:
+
+- **Case.** `tools/case_folder.py` converts every document into `out/case/` of a fresh working copy of this folder,
+  outside the repository: Markdown as it is, Word through pandoc, PDF through pdftotext, Excel as Markdown tables
+  plus CSV, images kept. `out/case/INDEX.md` lists them in reading order, `BRIEF.md` first and `README.md` second.
+- **Mock.** It reads the mock's `/_mock/health`. A bare worker URL gets the contract's base path, and the result is
+  `MOCK_URL`, the base of every tool URL. `FREYA_BANK_HOST` points `tools/run_cases.py` at the mock.
+- **Build.** Claude Opus 5.5 (effort `max`) runs the skill on the bundle with the slot `final`, so the same workflow
+  is updated on every run. It self-tests on the mock's test customers through the one workspace and its lease. The
+  run stops at 1740 s.
+- **Output.** The saved workflow is exported to `submission/final.workflow.json`. Everything printed is the official
+  trace: start and end, every model call with its model and purpose, tests, workflow id, agent id, steps, tools and
+  tool URLs. Keys are removed. The trace is also written to `traces/final.log`, and both files get a timestamped copy.
+- **Exit.** 0 only when this run saved a workflow, the export worked and every tool URL is on the mock.
+- **Keys.** They come from the environment, else from the main checkout's `.env` and `~/.freya-anthropic-key`.
+
 ## Tonight: parallel attempts
 
 Use a Python 3.10+ virtual environment with the Claude Agent SDK. Its bundled Claude Code CLI is what the
@@ -86,7 +112,6 @@ The kit files are byte-identical copies of kit v3; their SHA-256 values match `d
 | File | SHA-256 |
 |---|---|
 | `tools/run_cases.py` | `c96da9f9189d82850e46bfc551603ff5a62847025b5c50a77b923ad999f3767c` |
-| `tools/score.py` | `daf55989d47915d9a4f0387c2a4f6748580fcdf66b7d3ec61356925efb0d17d7` |
 | `tools/openapi.json` | `9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8` |
 | `docs/api.md` | `6003c0ba733f33b5981822d3418c20e042d29107fbb1045213b35dad6bf95157` |
 | `docs/tools-and-code.md` | `56be9c87fbfddf5855c25fe83d4633bafd885d7cba5677133c15d211eb21b711` |
@@ -94,7 +119,7 @@ The kit files are byte-identical copies of kit v3; their SHA-256 values match `d
 | `examples/base-agent.json` | `7eb462e9c910ab99f067c2f62dab272952c1395446247db396b4f695bde7ca68` |
 | `public-test-set.json` | `fb7f4c0082eecb724a6faab771b4339bc62655627e49251e6bb2a0cf59a72fcb` (the seed customers for self-tests) |
 
-Three files differ from the kit:
+Four files differ from the kit:
 
 - **`agent_builder.py`** is the kit's builder with these changes:
   - effort `max` and the fallback model;
@@ -108,4 +133,7 @@ Three files differ from the kit:
   - The calls per simulation are capped at 10 (official rules: no load tests).
 - **`.claude/skills/build-phone-agent/SKILL.md`** is the Plan B skill of 18:32 (`b16aa4f266f4…`, changelog
   `scratchpad/planb-kit/SKILL-CHANGELOG.md`). Its three `FREYA_SIM_CONCURRENCY=15` commands now read `=10`, under
-  the official rules.
+  the official rules. It also has a section on case folders and the mock (`MOCK_URL`, the case's test customers as
+  self-test seeds, the slot and notes file the prompt names).
+- **`tools/score.py`** counts a ledger or expected list it lacks (`promises`, `notes`, `callbacks`, `transfers`) as
+  empty, so a mock contract without one of the kit's write tools does not crash `run_cases.py`.

@@ -7,17 +7,17 @@ description: Build a Freya phone agent from a bank's brief, test it on the pract
 
 Work from the kit folder. Use only the brief files and the tool API file you were given. Never copy a rule or a value from another brief, from the practice cases, from `examples/base-agent.json` (its prompts, phrases, URLs, codes and `test_variables`) or from the examples in this skill: every rule, number, code, phrase and sentence in the agent comes from this brief, in the language its customers speak. The examples come from the kit's two English practice briefs about late payments: they show the form, never the content, and a rule there that this brief does not state does not apply. The keys are in the environment; never print them.
 
-The whole build, tests included, must end within 30 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}` first and note the start time.
+The whole build, tests included, must end within 50 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}` first and note the start time.
 
 ## Time box
 
 | By minute | Done |
 |---|---|
-| 2 | brief, tool API file and this skill read |
-| 8 | workflow generated, checked locally, saved and read back |
-| 11 | self-test cases written (only when the self-test applies) |
-| 19 | last test started. Never start a test later |
-| 28 | exported, trace notes written, final line printed |
+| 6 | brief, tool API file and this skill read |
+| 18 | workflow generated, checked locally, saved and read back |
+| 22 | self-test cases written (only when the self-test applies) |
+| 38 | last test started. Never start a test later |
+| 47 | exported, trace notes written, final line printed |
 
 At most two test-and-fix rounds: a smoke run (3 or 4 cases), a fix, the full set, a fix. A run takes about 2 minutes with `FREYA_SIM_CONCURRENCY=10` when the workspace is free and up to 11 when the platform is busy. Waiting for the workspace's simulation slot ("waiting for this workspace's simulation lease") counts against your time. Before the first test, look at the slot: when `FREYA_LEASE` is set, run `cat "${FREYA_LEASE%.lock}.json"`. If another holder is running a simulation, do the export and write the trace notes first, so a long wait cannot leave the run without them. Run `date` before every test. Run tests in the foreground and wait for them; never end your turn while a test runs, because the builder stops when you stop.
 
@@ -231,7 +231,7 @@ Speaking nodes
 Practice cases exist only for the kit's own Brief A and Brief B (the `brief` field of `public-test-set.json`). Use them unless `SELF_TEST_ONLY=1` or `MOCK_URL` is set; otherwise go to the self-test. Never read the cases' scripts, checks or expected records: build from the brief only.
 - Smoke test first: `FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent_id> --brief A --only <ids> --out results/smoke.json` (use `--brief B` for Brief B). Pick 3 or 4 ids of this brief, each from a different family, from `python3 -c "import json; [print(c['id'], c['brief'], c['family']) for c in json.load(open('public-test-set.json'))]"`. If the brief has 4 customers or fewer, run them all.
 - Then all customers of the brief: the same command without `--only`, with `--out results/full.json`.
-- If both runs are green before minute 16, run the self-test set once for robustness.
+- If both runs are green before minute 30, run the self-test set once for robustness.
 
 ### Self-test (no practice cases, `SELF_TEST_ONLY=1`, or a mock)
 

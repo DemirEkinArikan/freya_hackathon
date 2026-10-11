@@ -47,6 +47,12 @@ PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
 EXPORT_RESERVE = 300
 MAX_REPAIRS = 2
+# Policy patch repairs took 15-54 s on 11 Oct, while full re-emissions took 300-420 s. Three
+# relaxed stress builds still stopped after two repairs with 1,325-1,436 s unused. So a
+# policy is patched again while each patch is admitted (repair admission below), up to
+# this many patches. Patching stops once a patch leaves the error set of the policy it
+# patched unchanged. Full re-emissions, including the first-attempt retry, keep MAX_REPAIRS.
+MAX_PATCH_REPAIRS = 6
 POLICY_INITIAL_CAP = 900
 POLICY_REPAIR_CAP = 450
 WORKFLOW_CAP = 900
@@ -241,7 +247,7 @@ def _stage_completed(trace, deadline, durations, stage, started, **fields):
 
 
 def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt, failure, *, cap, reserve):
-    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt.
+    """Apply a model patch to the last rejected policy; None falls back to a full repair in the same attempt, if one is left.
 
     The excerpt, prompt and apply code never read the deadline, so any exception
     they raise is a patch failure: a bug there must not lose the full repair.
@@ -286,20 +292,34 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
                     repair_mode="patch", declarations="strict"):
-    repair = failure = rejected = retry = None
+    repair = failure = rejected = retry = exhausted = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     # Injected generators without the patch call keep full repairs.
     patching = repair_mode == "patch" and callable(getattr(generator, "generate_policy_patch", None))
-    for attempt in range(MAX_REPAIRS + 1):
+    patches = fulls = 0
+    stalled = False  # The last patch left the error set of the policy it patched unchanged.
+
+    def patchable():
+        return (patching and not stalled and patches < MAX_PATCH_REPAIRS
+                and rejected is not None and isinstance(rejected["policy"], dict))
+
+    for attempt in range(MAX_PATCH_REPAIRS + MAX_REPAIRS + 1):
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
         retrying = retry is not None and attempt == 1
         started = deadline.elapsed()
         policy = None
-        if patching and rejected is not None and isinstance(rejected["policy"], dict):
+        if patchable():
+            patches += 1
             policy = _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejected, attempt + 1,
                                      failure, cap=cap, reserve=reserve)
         mode = None if attempt == 0 else "patch" if policy is not None else "retry" if retrying else "full"
         if policy is None:
+            if attempt:
+                if fulls == MAX_REPAIRS:
+                    if patchable():
+                        continue  # The patch failed and no full re-emission is left: patch again.
+                    raise exhausted
+                fulls += 1
             call_reserve = EXPORT_RESERVE if retrying else reserve
             if repair:
                 _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
@@ -320,8 +340,9 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                 _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
                 trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
                            elapsed_seconds=round(deadline.elapsed() - started, 3))
-                if attempt == MAX_REPAIRS:
+                if fulls == MAX_REPAIRS and not patchable():
                     raise
+                exhausted = exc
                 failure = str(exc)
                 repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
                 continue
@@ -358,11 +379,17 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                 {"policy": policy, "validation_errors": errors}, secrets=secrets))
             trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed,
                        repair_mode=mode)
-            if attempt == MAX_REPAIRS:
-                raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
+            stalled = mode == "patch" and set(map(str, errors)) == set(map(str, rejected["errors"]))
             failure = "Policy extraction failed: " + "; ".join(errors)
             repair = {"validation_errors": errors, "previous_policy": sanitize(policy, secrets=secrets)}
             rejected = {"policy": repair["previous_policy"], "errors": errors}
+            exhausted = ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors))
+            following = "patch" if patchable() else "full" if fulls < MAX_REPAIRS else None
+            trace.emit("policy_repair_budget", attempt=attempt + 1, patch_repairs=patches, full_repairs=fulls,
+                       max_patch_repairs=MAX_PATCH_REPAIRS, max_full_repairs=MAX_REPAIRS, no_progress=stalled,
+                       next_repair=following, remaining_seconds=round(deadline.remaining(), 2))
+            if following is None:
+                raise exhausted from exc
             continue
         trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
                    selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"],
@@ -559,6 +586,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "mode": mode, "model": args.model, "reasoning_effort": args.reasoning_effort,
             "codex_executable": args.codex, "deadline_seconds": deadline.duration_seconds,
             "export_reserve_seconds": EXPORT_RESERVE, "max_repairs": MAX_REPAIRS,
+            "max_patch_repairs": MAX_PATCH_REPAIRS,
             "policy_repair_mode": args.policy_repair,
             "generation_budgets": {"policy_initial_cap_seconds": POLICY_INITIAL_CAP,
                                    "policy_repair_cap_seconds": POLICY_REPAIR_CAP,

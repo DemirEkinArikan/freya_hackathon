@@ -19,7 +19,10 @@ The runner validates ZIP paths, types, duplicate members, index keys, total
 size, inventory and hashes before extraction. No `.git`, local `.env`, auth,
 generated artifacts or evaluator holdouts enter the clean source archive.
 The child environment has an empty HOME and excludes inherited credentials,
-Python import hooks and host configuration. Source bytes must remain unchanged
+Python path overrides and user configuration. Each direct Python check uses
+`-S` to disable site startup, including system `.pth` and `sitecustomize` hooks;
+the report records that flag. Test-owned nested subprocesses retain their own
+startup controls. Source bytes must remain unchanged
 after checks, and the clean source must rebuild the same allowlisted inventory.
 The whole local rehearsal has a 1800-second deadline; timeout terminates the
 check's process group and retains its log.
@@ -29,7 +32,8 @@ check, builder CLI startup, training/validation helper and clean/raw equivalence
 checks, hosted validation dry-run, and source re-packaging. They run in the
 extraction, without its original checkout, private environment or auth files.
 Development profiles `train-2` and `validation-2` are exported into a separate
-input subtree; only policy documents and OpenAPI are exported. Their exact
+input subtree. Each export must contain a nonempty policy document and valid
+OpenAPI object; linked, partial or unexpected files fail the rehearsal. Their exact
 bytes are fingerprinted. These exercise known raw-packet and changed-schema
 contracts locally; they are not unseen-policy model trials or blind holdouts.
 No model, platform or simulation calls are made by this command.
@@ -54,11 +58,44 @@ every worktree to the canonical shared lease:
 /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.json
 ```
 
-At starting main `486ead9`, the CLI constructs a lease beneath its output
-directory. A clean live invocation therefore needs the primary-owned explicit
-shared-lease hook before running. A local completed lease record alone does
-not establish terminal server status. Do not bypass coordination with a second
-lease or manually patch generated artifacts.
+The explicit `--simulation-lease` hook is merged. Pass the canonical absolute
+lock path on every live invocation; the default remains beneath the output
+directory and is unsuitable for shared-workspace execution. A local completed
+record alone does not establish terminal server status. An unresolved creation
+intent without a simulation ID also requires actual server reconciliation.
+Do not bypass coordination with a second lease or manually patch generated artifacts.
+
+Use a new committed worktree at the accepted source commit for the live
+rehearsal, preserving the clean archive report from that same commit. Its
+runtime-source fingerprints must agree with the extraction. Copy only reviewed
+fresh brief/OpenAPI bytes into the worktree's ignored `artifacts/rehearsal-inputs/`
+and record their original hashes and brief order. Runtime credentials and the
+existing slot registry remain controller-only private configuration, provisioned
+as described in [the final-window runbook](T18-FINAL-WINDOW.md).
+
+After T16 acceptance and operator reconciliation, this is the command shape;
+replace the illustrative paths and slot with the actual approved inputs and
+verified persistent slot. Repeat `--brief` in the approved amendment order.
+
+```sh
+python3.11 builder/build.py \
+  --brief artifacts/rehearsal-inputs/approved-brief.md \
+  --tool-api artifacts/rehearsal-inputs/bank.openapi.json \
+  --output-dir artifacts/rehearsal-live \
+  --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
+  --slot "$T17_REHEARSAL_SLOT" \
+  --model "$T17_BUILDER_MODEL" --reasoning-effort "$T17_REASONING_EFFORT"
+```
+
+Record the model, reasoning effort and slot values from the actual accepted
+configuration before execution. Every invocation performs a fresh tool-free
+audit. Keep the controller's 1800-second deadline and 300-second export reserve;
+do not start a run unless its maximum duration fits the current work window.
+The command above has no hosted test set. Coordinate S06's critical cases and
+three repetitions against the exported published version, with evaluation-only
+inputs kept outside generation. Any tests supplied through `--test-cases` belong
+to the same builder deadline. Absence of scored evidence leaves hosted behavior
+unverified. Do not use this illustrative command as a completion record.
 
 Retain each attempt and failure. Successful live evidence must bind the clean
 archive inventory and commit to `builder-source.json`, resolved config/model,
@@ -70,6 +107,14 @@ Record critical scored conversation cases passing **all three repetitions**,
 with original call, simulation and iteration IDs, deployment pins, ledgers and
 conversation evidence. A mock, dry-run, historical failed generation or source
 availability cannot replace this evidence.
+
+Hand T18 and the independent bundle verifier the exact checked/pushed source
+commit and merged PR, clean report/archive hashes, original run directory and
+selected attempt, resolved configuration, publication/export bindings and
+three-repeat verdicts. Keep raw events, transcripts, credentials and internal
+operator metadata in protected local evidence; issue checkpoints contain only
+reviewed summaries and exact missing acceptance gates. Every later source or
+configuration change requires the relevant checks and fresh attribution.
 
 ## Freeze and completion
 

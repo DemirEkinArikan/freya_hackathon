@@ -35,6 +35,20 @@ class ProductCountBounds(TypedDict, total=False):
     max: int
 
 
+class EffectiveDateBranch(TypedDict):
+    date: str
+    rule: str
+
+
+class EffectiveDateSelection(TypedDict):
+    before_rule: str
+    on_or_after: EffectiveDateBranch
+
+
+class ScopedDateValue(TypedDict):
+    effective_date: EffectiveDateSelection
+
+
 class PolicyError(ValueError):
     pass
 
@@ -70,11 +84,11 @@ _SHAPE_GUIDANCE = {
     "policy_applicability": 'exactly {products: "single"} or {products: "multiple"}; scope must be supplied by the policy source. A sourced single-product scope may omit product_order and resolve_all_products; do not invent either rule to satisfy multiple-product dependencies. Independently supplied rules remain operative',
     "product_count_bounds": "a nonempty object containing only optional min and max, each a nonnegative integer (not a boolean); min <= max when both are supplied. Encode explicit source-backed account product-count bounds here, not only in descriptive extensions. No count default; min applies after account loading. This does not supply ordering or replace policy_applicability",
     "identity_fields": "a nonempty array of unique nonempty strings in factor order",
-    "identity_wrong_limit": "a positive integer; booleans are not integers",
+    "identity_wrong_limit": "a positive integer (booleans are not integers), or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. The wrapper retains both sourced values and explicitly overrides its referenced leaves; no assumed clock or unconditional after-date replacement. Selector typing is inspection only until protected reference retention and runtime selection are implemented; guarded compilation rejects it meanwhile",
     "holidays": "an array of ISO YYYY-MM-DD strings; an empty array is allowed",
     "business_weekdays": "a nonempty array of integers from 0 through 6",
     "band_ranges": "a nonempty array of objects with nonempty name and integer min/max; min <= max, names unique, intervals nonoverlapping",
-    "deadline_days": "a nonempty object mapping band names to nonnegative integers",
+    "deadline_days": "a nonempty object mapping band names to nonnegative integers, or exactly {effective_date: {before_rule: primitive same-kind rule ID, on_or_after: {date: source ISO YYYY-MM-DD, rule: primitive same-kind rule ID}}}. Preserve both dated source values and their provenance, not just the current value. Selector typing is inspection only until protected reference retention and runtime selection are implemented; guarded compilation rejects it meanwhile",
     "floor_fields": "an object mapping nonempty product-type names to nonempty field names",
     "callback_window": "an object with start/end local HH:MM strings, start <= end; optional allow_today is boolean and next_business_days is a nonnegative integer",
     "note_reasons": "a nonempty array of unique nonempty strings",
@@ -168,7 +182,40 @@ def _structured_error(kind: str, value: Any, domain: str) -> str:
     return message
 
 
+def _scoped_value_errors(kind: str, value: Any) -> list[str] | None:
+    """Inspect closed selector syntax; never resolve references or a clock.
+
+    None identifies the unchanged primitive form. Valid selector syntax grants
+    no execution support: source/reference validation and protected consumers
+    are separate, and the current guarded compiler explicitly refuses it.
+    """
+    def text(item: Any) -> bool:
+        return isinstance(item, str) and bool(item.strip())
+
+    if (kind in {"identity_wrong_limit", "deadline_days"} and isinstance(value, dict)
+            and "effective_date" in value
+            and (kind == "identity_wrong_limit" or isinstance(value["effective_date"], dict))):
+        selection = value["effective_date"]
+        valid = (set(value) == {"effective_date"} and isinstance(selection, dict)
+                 and set(selection) == {"before_rule", "on_or_after"}
+                 and text(selection["before_rule"]) and isinstance(selection["on_or_after"], dict))
+        if valid:
+            branch = selection["on_or_after"]
+            valid = set(branch) == {"date", "rule"} and text(branch["rule"]) and text(branch["date"])
+            if valid:
+                try:
+                    valid = date.fromisoformat(branch["date"]).isoformat() == branch["date"]
+                except ValueError:
+                    valid = False
+    else:
+        return None
+    return [] if valid else [_structured_error(kind, value, "scoped execution")]
+
+
 def _profile_errors(kind: str, value: Any) -> list[str]:
+    scoped = _scoped_value_errors(kind, value)
+    if scoped is not None:
+        return scoped
     def strings(item: Any, *, empty: bool = False) -> bool:
         return isinstance(item, list) and (empty or bool(item)) and all(isinstance(x, str) and x for x in item)
     valid = True
@@ -243,6 +290,9 @@ def _profile_errors(kind: str, value: Any) -> list[str]:
 
 def _execution_errors(kind: str, value: Any) -> list[str]:
     """Additional guard inputs are typed here; legacy extension IR remains data."""
+    scoped = _scoped_value_errors(kind, value)
+    if scoped is not None:
+        return scoped
     if kind not in _EXECUTION_ONLY_KINDS:
         return _profile_errors(kind, value)
     def text(item: Any) -> bool:
@@ -772,6 +822,10 @@ def compile_execution_policy(policy: Mapping[str, Any], bindings: dict | None = 
     if "band_ranges" in profile:
         bands = {band["name"] for band in profile["band_ranges"]}
         for kind in ("deadline_days", "persuasion_limits"):
+            if kind == "deadline_days" and kind in profile and _scoped_value_errors(kind, profile[kind]) == []:
+                # A selector carries references, not band keys. Each retained
+                # leaf needs consumer validation before executable approval.
+                continue
             if kind in profile and set(profile[kind]) != bands:
                 raise PolicyError(kind + " must cover exactly the declared bands")
     out = {"version": 1, "policy_sha256": digest(policy), "profile": profile}

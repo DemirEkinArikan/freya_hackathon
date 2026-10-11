@@ -10,7 +10,7 @@ import copy
 import re
 from typing import Any, Mapping
 
-from .policy import _profile_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
+from .policy import _profile_errors, _scoped_value_errors, _PROFILE_KINDS, _EXECUTION_ONLY_KINDS
 from .contract import _operation_catalogue
 from .safety import canonical_json, digest
 from .toolbindings import derive_tools
@@ -275,6 +275,9 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         if not isinstance(active, dict) or canonical_json(value) != canonical_json(active.get("value")):
             errors.append("execution profile does not match active frozen rule: " + kind)
         errors.extend(_profile_errors(kind, value))
+        if _scoped_value_errors(kind, value) is not None:
+            errors.append("scoped execution rules lack protected runtime selection")
+            continue
         if kind == "record_notes" and type(value) is not bool:
             errors.append(kind + " must be boolean")
         elif kind == "confirmation_scope" and value not in {"each", "batch"}:

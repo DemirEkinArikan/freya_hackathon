@@ -20,6 +20,9 @@ from .call_variables import CallVariablesError, declared_call_variables
 from .policy import _EXECUTION_ONLY_KINDS, _PROFILE_KINDS, execution_rule_guidance
 
 DECLARATION_CATEGORIES = ("dialogue_only", "controller_stricter", "protected_unenforceable", "source_ambiguous")
+# relaxed is for last-resort build attempts only: a declaration that strict mode rejects, unless it is
+# uncategorised or malformed, becomes a dialogue rule that no controller check enforces.
+DECLARATION_MODES = ("strict", "relaxed")
 _TYPED_KINDS = _PROFILE_KINDS | _EXECUTION_ONLY_KINDS | {"execution_actions", "conditional_conflicts"}
 _DECLARATION_KEYS = {"category", "requirement", "rule_ids", "justification", "controller_effect", "fallback_rule"}
 _DECLARATION_REPAIR = (
@@ -240,15 +243,19 @@ def _same_statement(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool
     return a["quote"] in b["quote"] or b["quote"] in a["quote"]
 
 
-def _declarations(policy: Mapping[str, Any], openapi: Any) -> tuple[list[str], list[dict[str, Any]]]:
-    """Return data-free errors for fatal declarations and the non-fatal ones to freeze.
+def _declarations(policy: Mapping[str, Any], openapi: Any, relaxed: bool = False
+                  ) -> tuple[list[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return data-free errors for fatal declarations, the non-fatal ones to freeze and,
+    in relaxed mode, the prompt-enforced ones with their cited active source quotes.
 
     Only protected_unenforceable, unresolved source_ambiguous, uncategorised (legacy
-    string) and malformed or kernel-contradicting entries are fatal.
+    string) and malformed or kernel-contradicting entries are fatal. Relaxed mode keeps
+    uncategorised and malformed entries fatal; any other entry that strict mode rejects
+    becomes a prompt-enforced dialogue rule, which no kernel check relies on.
     """
     entries = policy.get("unsupported_constraints", [])
     if not isinstance(entries, list) or not entries:
-        return [], []
+        return [], [], []
     from .guards import execution_action_catalogue  # guards imports this module
     actions = execution_action_catalogue()
     listed = policy.get("rules") if isinstance(policy.get("rules"), list) else []
@@ -266,7 +273,7 @@ def _declarations(policy: Mapping[str, Any], openapi: Any) -> tuple[list[str], l
     # Identifier-shaped names only: plain words such as "amount" also occur in dialogue prose.
     protected = {name for name in names if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) and re.search(r"[_0-9]", name)}
 
-    errors, limitations = [], []
+    errors, limitations, prompt_enforced = [], [], []
     for index, entry in enumerate(entries):
         path = f"policy.unsupported_constraints[{index}]"
         category = entry.get("category") if isinstance(entry, dict) else None
@@ -274,9 +281,10 @@ def _declarations(policy: Mapping[str, Any], openapi: Any) -> tuple[list[str], l
             errors.append(path + " has no declaration category and rejects the build")
             continue
         ids = entry.get("rule_ids")
-        if (set(entry) - _DECLARATION_KEYS
-                or any(not isinstance(entry.get(key), str) or not entry[key].strip() for key in ("requirement", "justification"))
-                or not isinstance(ids, list) or not ids or any(not isinstance(ident, str) or ident not in rules for ident in ids)):
+        malformed = bool(set(entry) - _DECLARATION_KEYS
+                         or any(not isinstance(entry.get(key), str) or not entry[key].strip() for key in ("requirement", "justification"))
+                         or not isinstance(ids, list) or not ids or any(not isinstance(ident, str) or ident not in rules for ident in ids))
+        if malformed:
             problem = "needs only category, requirement, justification and rule_ids naming existing policy rules"
         elif category == "dialogue_only" and (
                 protected & set(re.findall(r"[A-Za-z][A-Za-z0-9_]*", entry["requirement"]))
@@ -299,13 +307,21 @@ def _declarations(policy: Mapping[str, Any], openapi: Any) -> tuple[list[str], l
         else:
             limitations.append(copy.deepcopy(entry))
             continue
+        if relaxed and not malformed:
+            # Superseded rules stay out: their quotes would restate replaced values.
+            cited = [(ident, rules[ident].get("source")) for ident in ids if ident in active_ids]
+            prompt_enforced.append(dict(copy.deepcopy(entry), sources=[
+                {"rule_id": ident, "id": source.get("id"), "quote": source.get("quote")}
+                for ident, source in cited if isinstance(source, dict)]))
+            continue
         errors.append(f"{path} ({category}) {problem} and rejects the build")
     if errors:
         errors += ["policy contains unsupported constraints", _DECLARATION_REPAIR]
-    return errors, limitations
+    return errors, limitations, prompt_enforced
 
 
-def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditional_mode: str = "reject") -> dict[str, Any]:
+def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditional_mode: str = "reject",
+                            declarations: str = "strict") -> dict[str, Any]:
     """Return a deep-copied, deterministic contract or raise PolicyContractError.
 
     No rule has implicit precedence from source or array order. Conflicting active
@@ -314,15 +330,20 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
     unresolved requirement explicitly rather than silently erasing a constraint.
     Conditional inspection validates partial scope without granting runtime
     enforcement. Default compilation rejects those conditions until integrated.
+    Relaxed declarations freeze protected or unresolved declarations as
+    prompt_enforced_limitations instead of rejecting; strict output is unchanged.
     """
     if type(conditional_mode) is not str or conditional_mode not in {"reject", "inspect"}:
         raise PolicyContractError(["conditional conflict mode must be reject or inspect"])
+    if type(declarations) is not str or declarations not in DECLARATION_MODES:
+        raise PolicyContractError(["declaration mode must be strict or relaxed"])
     manifest, documents, errors = _source_inventory(sources)
     errors.extend(validate_policy(policy, documents, strict=True))
     limitations: list[dict[str, Any]] = []
+    prompt_enforced: list[dict[str, Any]] = []
     if isinstance(policy, dict):
         errors.extend(_source_binding_errors(policy, manifest))
-        declaration_errors, limitations = _declarations(policy, openapi)
+        declaration_errors, limitations, prompt_enforced = _declarations(policy, openapi, declarations == "relaxed")
         errors.extend(declaration_errors)
     if errors:
         raise PolicyContractError(errors)
@@ -361,6 +382,9 @@ def compile_policy_contract(policy: Any, sources: Any, openapi: Any, *, conditio
                 "semantic_correctness_verified": False}
     if limitations:
         contract["declared_limitations"] = limitations
+    if declarations == "relaxed":
+        contract["declaration_mode"] = "relaxed"
+        contract["prompt_enforced_limitations"] = prompt_enforced
     try:
         conditional = compile_conditional_conflicts(active, manifest)
     except ConditionalConflictError as exc:

@@ -1,15 +1,21 @@
 """Lifecycle boundaries using tiny invented source files and policy packets."""
 import contextlib
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from benchmarks.export_inputs import export_profile
 from benchmarks.freeze import consume, freeze_candidate
+from benchmarks.generate import KIT
+from benchmarks.hosted import main as hosted_main, run_builder_tests
 from benchmarks.offline import main as offline_main
+from benchmarks.paths import PROJECT
+from builder.safety import digest
 
 
 class HoldoutConsumerTests(unittest.TestCase):
@@ -26,6 +32,7 @@ class HoldoutConsumerTests(unittest.TestCase):
                  "split": "train" if i < 36 else "validation" if i < 60 else "holdout",
                  "status": "materialized" if i == 119 else "reserved_until_candidate_freeze"}
                 for i in range(120)]
+        rows[119]["expected"] = {"outcome": "synthetic-close", "promises": []}
         self.manifest = {"kind": "offline", "cases": rows,
                          "split_counts": {"train": 36, "validation": 24, "holdout": 60},
                          "profiles": [{"profile_id": self.profile,
@@ -47,10 +54,18 @@ class HoldoutConsumerTests(unittest.TestCase):
     def save(self):
         self.path.write_text(json.dumps(self.manifest))
 
+    def lineage(self, frozen, expected):
+        return {"authored_at": (datetime.fromisoformat(frozen["created_at"]) + timedelta(microseconds=1)).isoformat(),
+                "author": "synthetic-independent-author", "candidate_sha256": frozen["candidate_sha256"],
+                "oracle_sha256": digest(expected),
+                "isolation": {"outside_generator_inputs": True, "candidate_outputs_consulted": False}}
+
     def freeze(self):
         value = freeze_candidate(self.candidate, self.record)
         self.manifest["freeze"] = {"record": str(self.record), "candidate_sha256": value["candidate_sha256"]}
+        self.manifest["cases"][119]["lineage"] = self.lineage(value, self.manifest["cases"][119]["expected"])
         self.save()
+        return value
 
     def offline(self, *arguments):
         self.save()
@@ -118,3 +133,65 @@ class HoldoutConsumerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "response schema"):
             export_profile(self.path, self.profile, self.root / "inputs", workspace_root=self.root)
         self.assertFalse((self.root / "inputs").exists())
+
+    def test_missing_or_false_lineage_blocks_both_consumers_before_use(self):
+        frozen = self.freeze()
+        created = datetime.fromisoformat(frozen["created_at"])
+        variants = {
+            "missing": lambda lineage, row: row.pop("lineage"),
+            "authored before freeze": lambda lineage, row: lineage.update(authored_at=(created - timedelta(seconds=1)).isoformat()),
+            "authored in future": lambda lineage, row: lineage.update(authored_at=(datetime.now(timezone.utc) + timedelta(days=1)).isoformat()),
+            "naive timestamp": lambda lineage, row: lineage.update(authored_at="2099-01-01T00:00:00"),
+            "blank author": lambda lineage, row: lineage.update(author=" "),
+            "other freeze": lambda lineage, row: lineage.update(candidate_sha256="0" * 64),
+            "oracle edited after authoring": lambda lineage, row: row["expected"].update(outcome="changed"),
+            "missing oracle": lambda lineage, row: row.pop("expected"),
+            "integer isolation flags": lambda lineage, row: lineage.update(
+                isolation={"outside_generator_inputs": 1, "candidate_outputs_consulted": 0}),
+            "candidate outputs consulted": lambda lineage, row: lineage["isolation"].update(candidate_outputs_consulted=True),
+            "extra field": lambda lineage, row: lineage.update(payload="synthetic"),
+        }
+        original = deepcopy(self.manifest["cases"][119])
+        for index, (label, mutate) in enumerate(variants.items()):
+            row = self.manifest["cases"][119] = deepcopy(original)
+            mutate(row["lineage"], row)
+            output = self.root / f"lineage-inputs-{index}"
+            with self.subTest(label=label):
+                with patch("benchmarks.offline.compare_contract", side_effect=AssertionError("candidate reached")):
+                    with self.assertRaisesRegex(ValueError, "authored holdout"):
+                        self.offline("--split", "train", "--profile", self.profile,
+                                     "--candidate-contract", str(self.contract))
+                with self.assertRaisesRegex(ValueError, "authored holdout"):
+                    export_profile(self.path, self.profile, output, workspace_root=self.root)
+                self.assertFalse(output.exists())
+
+    def test_hosted_holdout_gates_require_lineage_before_any_client(self):
+        config = self.root / "runtime.json"
+        config.write_text(json.dumps({"model": "synthetic-model", "reasoning_effort": "high"}))
+        frozen = freeze_candidate(self.candidate, self.record, config)
+        seed = json.loads((KIT / "public-test-set.json").read_text())[0]
+        row = {"fixture_id": "synthetic-hosted-holdout", "bank_case_id": seed["id"], "brief": seed["brief"],
+               "split": "holdout", "status": "materialized_after_freeze", "style": "plain",
+               "case": {**seed, "id": "synthetic-hosted-holdout"}}
+        cases = self.root / "hosted.json"
+        never = PROJECT / "artifacts" / "t16-synthetic-lineage-never-written"
+        deployment = {"agent_id": "synthetic-agent", "brief": seed["brief"],
+                      "model": "synthetic-model", "reasoning_effort": "high"}
+        cli = ["--execute", "--cases", str(cases), "--split", "holdout", "--agent-id", "synthetic-agent",
+               "--simulation-lease", str(self.root / "synthetic.lock"),
+               "--out", str(never / "results.json"), "--evidence-dir", str(never / "evidence")]
+        for lineage in (None, self.lineage(frozen, seed["expected"])):
+            authored = {**row, "lineage": lineage} if lineage else row
+            cases.write_text(json.dumps({"kind": "hosted", "cases": [authored], "freeze": {
+                "record": str(self.record), "candidate_sha256": frozen["candidate_sha256"]}}))
+            with self.subTest(lineage=bool(lineage)), \
+                    patch("benchmarks.hosted.HostedBackend", side_effect=RuntimeError("backend reached")), \
+                    patch("builder.platform.FreyaClient", side_effect=AssertionError("client created")):
+                expected = (ValueError, "authored holdout") if lineage is None else (RuntimeError, "backend reached")
+                with self.assertRaisesRegex(*expected):
+                    run_builder_tests(Mock(), deployment, cases, never, Mock())
+                # Without lineage the CLI stops at the gate; with it, at the next deployment requirement.
+                expected = "authored holdout" if lineage is None else "deployment-manifest"
+                with self.assertRaisesRegex(ValueError, expected):
+                    hosted_main(cli)
+        self.assertFalse(never.exists())

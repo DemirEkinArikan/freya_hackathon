@@ -1,0 +1,57 @@
+{
+  "lane": "S04",
+  "issue": 8,
+  "kind": "independent_input_peer_review",
+  "author": "Codex S04 (rapid/s04-20261011 worktree, untracked development/account-information-s04, last write 09:00:03 Istanbul)",
+  "reviewer": "Claude S04 lane agent",
+  "reviewed_against_builder": "4ef4e6275ee7cb4cb4fd010a3cf1e12f71b9b38b",
+  "input_sha256": {
+    "bank.openapi.json": "5693d3053739d05efe0a7451dec6829b5ecd7bd907e6c88917641ad6d13196a1",
+    "base-policy.md": "df0f1ea1aa4588207f50625ea96309e4eee2bcfdd56c660069c6fa87cb19361c",
+    "current-policy.md": "e4fce4a0106283c1f903275f29c23da288c37571a9fd15ce4a4eed231f960ca4",
+    "operations-email.txt": "9d0a57e86e5070d1fa8d93175b4d2c8f8bb4dd811fc2f0ba310c30b025e4b796",
+    "privacy-memo.txt": "c1339694d3a19bcc3403ff100297fce9fde33995b6cbd78560a791794ab783a9"
+  },
+  "raw_build_order": [
+    "base-policy.md",
+    "operations-email.txt",
+    "privacy-memo.txt"
+  ],
+  "raw_build_tool_api": "bank.openapi.json",
+  "clean_source_not_given_to_raw_build": "current-policy.md",
+  "verdict": "APPROVED_FOR_ONE_UNSUPPORTED_CAPABILITY_PROBE_ONLY; NOT_APPROVED_AS_FULL_WORKFLOW_ACCEPTANCE_INPUT until B1-B3 are fixed and a generic information-outcome capability exists",
+  "pass": [
+    "actions: only verify_identity, get_account, close_call; OpenAPI has exactly three paths; no promise/note/callback/transfer operation",
+    "clean_raw_equivalence: current-policy.md differs from base-policy.md only by the authority paragraph, O-17 limit 3->2 and P-29 typed disclosure with deposit balance withheld (sentence diff)",
+    "precedence: explicit order base->email->memo; each amendment names exactly the rule it replaces; ordering alone overrides nothing; no effective date",
+    "typed_disclosure: common label_text/kind_tag/currency_tag; K11 balance_minor+tail_digits; K12 balance_minor+installment_minor; K13 yield_bps only; foreign-type and internal fields never disclosed",
+    "opaque_bindings: request/response/product aliases and C81-C85/R14-R19 tables match the OpenAPI enums; detail_tag absent only for C81",
+    "permissions_counter_calendar: three operations; cumulative wrong limit 2 shared by F21/F22, no exemptions, stricter-of remaining, max 4 submissions; every day/hour, weekdays 0-6, empty holidays, no date logic",
+    "unsupported_vs_default: sources require reporting an unsupported constraint instead of a guessed default or silent omission",
+    "schemas: complete request/response/ErrorResult for 400/403/503, additionalProperties false, security [], reserved .invalid server",
+    "independence: no S04 wire code or field occurs in S03 inputs, the reserved callback input directory or holdout material; the only main hit is the generic field rename completion_tag in tests/test_policy_bindings.py"
+  ],
+  "blocking_for_full_workflow_evaluation": {
+    "B1": "Pre-verification refusal/withdrawal: 'Caller refusal/withdrawal before verification gets C82/R15' (mandatory) conflicts with 'incomplete=C82/R17' plus 'explicit refusal permits the additional C82/R15 choice' (optional, and withdrawal is not explicit refusal).",
+    "B2": "Wrong number: 'permits C83/R16' leaves R16 optional vs required; a wrong-number statement after a submitted factor has no defined end state.",
+    "B3": "Defects inside an accepted=true account result (missing typed field, duplicate holding_ref, count outside 1..2, unknown kind/currency, wrong scalar type, negative amount) are called 'technical failures' (close path by the identity analogy, C85/R19 for account) and also 'malformed/contradictory/unrecognized' (quarantine, no close). One end state per defect class is needed."
+  },
+  "non_blocking": {
+    "N1": "OpenAPI close_call requires 'the source-required goodbye' but no source defines one.",
+    "N2": "'invite the caller to repeat or correct what they heard': correction is undefined.",
+    "N3": "'Conditional fields must be present ... only on their matching product type' can be read as forbidding foreign-type presence; later text allows it.",
+    "N4": "Initial-input failure rationale ('subject is unavailable') is wrong for a malformed now/title with a valid customer_id; the no-request rule itself is unambiguous.",
+    "N5": "Builder vocabulary leaks into the sources (identity_wrong_limit, account_disclosure_fields, product_count_bounds, product_order mode, resolve_all_products, record_notes, identity_hint_exemptions, fixed identity close table, recorded_callback, canonical alias names). Results from these inputs must not be cited as raw natural-language adaptation.",
+    "N6": "Memo 'Do not request tail_digits on a loan' should read 'require'."
+  },
+  "generic_capability_gap": {
+    "outcome_semantics": "builder/action_bindings.py:21 at 4ef4e62 allows only promise, paid, transferred, no_promise, not_verified, not_reached; no semantic exists for C81 informed, C84 information_incomplete or C85 service_failure",
+    "post_account_close": "builder/guards.py guard_close raises 'closing lacks protected evidence' for verified identity plus loaded account without collections evidence (reproduced by the Codex S04 no-model probe; S03 records the identity-side analogue)",
+    "consequence": "A faithful full workflow is not expected on 4ef4e62. Per the sources the correct builder result is an explicit unsupported-constraint failure, never C81/C84/C85 rebound to a collections semantic. A full workflow needs a narrowly scoped, checked generic source PR first."
+  },
+  "preregistered_probe_expectation_evaluator_only": {
+    "pass_iff": "no accepted/exported workflow; the run ends with an explicit unsupported or compile rejection of the information outcomes or the post-account close; no Freya client; no request to the .invalid host",
+    "fail_if": "a workflow compiles that binds any of C81/C84/C85 to a collections semantic, drops C84/C85 paths, discloses a deposit balance or keeps limit 3",
+    "if_faithful_workflow_compiles": "freeze it, then run evaluator-only readback/privacy/alias/clean-raw-equivalence/denied-identity tests before any claim"
+  }
+}

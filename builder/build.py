@@ -42,7 +42,7 @@ from .source_provenance import capture_source_provenance, verify_source_unchange
 from .repair_diagnostics import repair_test_summary as _repair_test_summary
 from .repair_diagnostics import test_infrastructure_failed as _test_infrastructure_failed
 from .policy_patch import apply_policy_patch, repair_excerpt
-from .policy_demotion import PolicyDemotionError, demote_policy
+from .policy_demotion import demote_policy
 
 PROJECT = Path(__file__).resolve().parents[1]
 KIT = PROJECT / "build-the-builder"
@@ -300,13 +300,13 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
         original = f"{type(exc).__name__}: {exc}"
         try:
             policy, steps = demote_policy(last["policy"], sources, openapi)
-        except PolicyDemotionError as failure:
-            trace.emit("policy_demotion", passed=False, attempt=last["attempt"], steps=failure.demotions,
-                       errors=list(failure.errors))
+        except Exception as failure:  # a malformed policy that crashes demotion is a failed demotion too
+            errors = list(getattr(failure, "errors", None) or [f"{type(failure).__name__}: {failure}"])
+            trace.emit("policy_demotion", passed=False, attempt=last["attempt"], steps=getattr(failure, "demotions", []),
+                       errors=errors)
             if not isinstance(exc, ValueError):
                 raise exc from failure  # a deadline or generation failure keeps its own type
-            raise ValueError(f"{exc}; relaxed demotion could not compile the policy: "
-                             + "; ".join(failure.errors)) from exc
+            raise ValueError(f"{exc}; relaxed demotion could not compile the policy: " + "; ".join(errors)) from exc
     compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
     requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
     _write_json(run_dir / "policy.demoted.json", sanitize({"policy": policy, "demotions": steps}, secrets=secrets))

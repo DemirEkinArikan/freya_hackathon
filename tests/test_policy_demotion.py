@@ -79,6 +79,7 @@ class DemotionTests(unittest.TestCase):
         contract = compile_policy_contract(demoted, sources, api, declarations="relaxed")
         entry = contract["prompt_enforced_limitations"][-1]
         self.assertEqual((entry["category"], entry["rule_ids"]), ("protected_unenforceable", ["choices"]))
+        self.assertTrue(entry["requirement"].startswith("Close only with a closing choice the close step accepts"))
         self.assertTrue(entry["justification"].endswith(CHOICE_ERROR))
         self.assertEqual(entry["sources"][0]["quote"], policy["rules"][0]["source"]["quote"])
         self.assertTrue(compile_execution_requirements(demoted, sources, api, declarations="relaxed")["actions"])
@@ -141,17 +142,21 @@ class DemotionBuildTests(unittest.TestCase):
         self.assertIn("Policy extraction failed after bounded repairs", event["original_failure"])
 
     def test_a_relaxed_policy_demotion_cannot_compile_reports_both_failures(self):
-        policy, sources, api = declared()
-        policy["rules"] = [r for r in policy["rules"] if r["kind"] != "identity_fields"]
-        with tempfile.TemporaryDirectory() as directory:
-            run_dir = Path(directory)
-            with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs: .*; relaxed demotion "
-                                                    "could not compile the policy: .*identity_fields"):
-                _extract_policy(Generator([copy.deepcopy(policy) for _ in range(3)]), sources, api, run_dir,
-                                Trace(run_dir / "trace.jsonl"), Deadline(1800), (), workflow_pending=False,
-                                declarations="relaxed")
-            events = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
-        self.assertFalse(next(e for e in events if e.get("event") == "policy_demotion")["passed"])
+        missing, sources, api = declared()
+        missing["rules"] = [r for r in missing["rules"] if r["kind"] != "identity_fields"]
+        crashing = declared()[0]  # a malformed alias map crashes demotion itself: still a failed demotion
+        crashing["rules"].append({"id": "aliases", "kind": "tool_aliases", "value": {"get_account": ["get_account"]},
+                                  "source": copy.deepcopy(crashing["rules"][0]["source"])})
+        for policy, cause in ((missing, "identity_fields"), (crashing, "TypeError: unhashable")):
+            with self.subTest(cause=cause), tempfile.TemporaryDirectory() as directory:
+                run_dir = Path(directory)
+                with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs: .*; relaxed demotion "
+                                                        "could not compile the policy: .*" + cause):
+                    _extract_policy(Generator([copy.deepcopy(policy) for _ in range(3)]), sources, api, run_dir,
+                                    Trace(run_dir / "trace.jsonl"), Deadline(1800), (), workflow_pending=False,
+                                    declarations="relaxed")
+                events = [json.loads(line) for line in (run_dir / "trace.jsonl").read_text().splitlines()]
+                self.assertFalse(next(e for e in events if e.get("event") == "policy_demotion")["passed"])
 
     def test_strict_extraction_is_unchanged(self):
         with self.assertRaisesRegex(ValueError, "Policy extraction failed after bounded repairs: " + CHOICE_ERROR + "$"):

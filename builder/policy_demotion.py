@@ -38,6 +38,8 @@ STEPS = {"get_account": "look up the customer's accounts", "create_promise": "re
          "transfer_to_agent": "transfer the call to a person"}
 PREFIX = "prompt_enforced_"
 RULE_REQUIREMENT = "Follow this bank rule yourself in the conversation; no system check enforces it."
+CHOICE_REQUIREMENT = ("Close only with a closing choice the close step accepts; the other closing choices this bank rule "
+                      "describes are not available to this agent.")
 
 
 class PolicyDemotionError(ValueError):
@@ -115,7 +117,7 @@ def _identity_choices(policy: dict, error: str) -> dict | None:
     for rule in policy["rules"]:
         if rule.get("id") == rules[0]["id"]:
             rule["value"] = value
-    _declare(policy, [rules[0]["id"]], RULE_REQUIREMENT, error)
+    _declare(policy, [rules[0]["id"]], CHOICE_REQUIREMENT, error)  # the kept choices stay enforced
     return {"step": "demote_entries", "kind": "identity_close_choices", "rule_ids": [rules[0]["id"]], "entries": dropped}
 
 

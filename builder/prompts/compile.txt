@@ -98,15 +98,11 @@ defines that concept. They are interface names, not predetermined banking rules:
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"} for
   goals without promise, note or transfer roles: sourced close pairs after identity
   succeeds without account evidence, after positive account evidence, or after a
-  definite negative account receipt (exact declared non-2xx response, success
-  flag false, fields valid for that status). account_failed is final; with it
-  declared, other negative account receipts quarantine. Never use
+  definite negative account receipt (see its rule shape). Never use
   promise, paid, transferred or no_promise meanings. Each pair appears once per
   phase. With schedule_callback every close code is a bound wire_codes meaning,
   and after a recorded callback only recorded_callback rows apply. One row is
-  fixed; several rows need a matching closing proposal. A condition resting only
-  on what is said in the conversation is such a row in each phase where it can
-  occur, established by the workflow; it is not unsupported.
+  fixed; several rows need a matching closing proposal.
 
 - identity_close_choices: optional unreached/incomplete arrays of
   {outcome,reason?,requires:"none"|"recorded_callback"|"no_recorded_callback"}.

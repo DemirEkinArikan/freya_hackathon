@@ -26,11 +26,11 @@ def respond(session, action, data, status):
 
 
 def declare_failure(api):
-    # 503 is a definite failure shape; 409's flag can never be false, so it is not.
-    for status, flag in (("503", False), ("409", True)):
+    # 503 is a definite failure shape; the flags of 409 and 422 can never be false, so they are not.
+    for status, flag in (("503", {"enum": [False]}), ("409", {"enum": [True]}), ("422", {"const": True})):
         api["paths"]["/get_account"]["post"]["responses"][status] = {"description": "Invented service response.",
             "content": {"application/json": {"schema": {"type": "object", "required": ["ok", "error"], "properties": {
-                "ok": {"type": "boolean", "enum": [flag]}, "error": {"type": "string", "minLength": 1}}}}}}
+                "ok": dict(flag, type="boolean"), "error": {"type": "string", "minLength": 1}}}}}}
 
 
 def extend_enum(api, field, *codes):
@@ -195,6 +195,7 @@ class GoalTerminalCloseTests(unittest.TestCase):
                  "success status": (200, {"ok": False, "error": "invented outage"}),
                  "undeclared status": (502, {"ok": False, "error": "invented outage"}),
                  "status whose flag cannot be false": (409, {"ok": False, "error": "invented outage"}),
+                 "status whose constant flag is true": (422, {"ok": False, "error": "invented outage"}),
                  "no transport status": (None, {"ok": False, "error": "invented outage"}),
                  "no body": (503, {}),
                  "positive flag": (503, {"ok": True, "error": "invented outage"})}
@@ -227,10 +228,14 @@ class GoalTerminalCloseTests(unittest.TestCase):
         guidance = execution_rule_guidance()["goal_close"]
         self.assertIn("account_failed", guidance)
         self.assertIn("is not an unsupported constraint", guidance)
-        policy, sources, api = self.failed_values()
-        del api["paths"]["/get_account"]["post"]["responses"]["503"]  # no definite failure shape remains
-        with self.assertRaisesRegex(ExecutionRequirementsError, "account_failed needs get_account"):
-            compile_execution_requirements(policy, sources, api)  # reported to policy repair, before any plan
+        for renamed in (None, "4²9"):  # no definite failure shape remains; a non-ASCII digit status is none either
+            policy, sources, api = self.failed_values()
+            responses = api["paths"]["/get_account"]["post"]["responses"]
+            response = responses.pop("503")
+            if renamed:
+                responses[renamed] = response
+            with self.subTest(renamed=renamed), self.assertRaisesRegex(ExecutionRequirementsError, "account_failed needs get_account"):
+                compile_execution_requirements(policy, sources, api)  # reported to policy repair, before any plan
         policy, sources, api = self.failed_values()
         rule(policy, "goal_close")["value"]["account_missing"] = rule(policy, "goal_close")["value"].pop("account_failed")
         witness(policy, sources)

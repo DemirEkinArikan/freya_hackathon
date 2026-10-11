@@ -652,8 +652,9 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 schema = next((s for s in media.values() if isinstance(s, dict) and "properties" in s), {})
                 properties = schema.get("properties", {})
                 flag = properties.get(results["ok"], {})
-                if (status.isdigit() and 400 <= int(status) <= 599 and flag.get("type") in ("boolean", "string")
-                        and any(v is False or v in ("false", "False") for v in flag.get("enum", [False]))):
+                falsy = lambda v: v is False or v in ("false", "False")  # const is a one-value enum
+                if (re.fullmatch(r"[45][0-9]{2}", status) and flag.get("type") in ("boolean", "string")
+                        and any(map(falsy, flag.get("enum", [False]))) and falsy(flag.get("const", False))):
                     roles = {s: a for s, a in results.items() if a in properties}
                     receipts[status] = {"fields": dict(roles, _http_status="_http_status"), "request_schema": {
                         "properties": dict({a: {} if s == "ok" else copy.deepcopy(properties[a]) for s, a in roles.items()},

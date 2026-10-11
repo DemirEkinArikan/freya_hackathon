@@ -61,7 +61,15 @@ deterministic conditions (variable checks and always) before the routing model:
 in each node, list every ordinary deterministic route before every matches_intent
 route and add no always fallback after intent routes. An unmatched caller turn
 already stays in its node; when unmatched answers must move elsewhere, end with a
-matches_intent catch-all route instead. For a state-only decision on declared
+matches_intent catch-all route instead. The hosted routing model can return no
+match, or match an ordinary answer to the first listed intent route (or to every
+route, where list order picks the first). List the ordinary expected answer's
+intent route first, described specifically rather than as a catch-all, rare
+terminal or irreversible exits after it and a catch-all last; a route that can
+only end the call is never the first intent route or the catch-all, and a
+routing_prompt does not tell the router to prioritize such exits. When a caller answer can lead to more than three outcomes, prefer one
+catch-all matches_intent route into a nonspeaking LLM-entry decision step
+(described below) whose completions choose the outcome. For a state-only decision on declared
 public variables that needs no new answer, set node-level passthrough:true, a
 public passthrough_default_transition, deterministic routes and an ordinary final
 always fallback without a tool-call flag; a passthrough node never uses

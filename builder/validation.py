@@ -938,6 +938,26 @@ def validate_workflow(workflow: Any, openapi: Mapping[str, Any], policy: Mapping
         can_end.update(added)
     for name in reachable - can_end:
         errors.append("node." + name + ": no graph path to a call-ending handler")
+    # Hosted readiness (public-A, 11 Oct): the routing model returned no match on
+    # most turns of an eight-intent node, then matched ordinary answers to the
+    # first intent row, or to every row, where list order picks the first.
+    # The first intent row must not be an exit that can only end the call.
+    must_end = set(terminals)
+    while True:
+        added = {name for name, targets in graph.items() if targets and targets <= must_end} - must_end
+        if not added:
+            break
+        must_end.update(added)
+    for name, node in all_nodes.items():
+        rows = [(i, t["target_node"]) for i, t in enumerate(_obj(node).get("transitions") or [])
+                if isinstance(t, dict) and t.get("is_tool_call") is not True
+                and isinstance(t.get("target_node"), str) and _router_judged(t.get("condition"))]
+        if rows and rows[0][1] in must_end and any(target not in must_end for _, target in rows):
+            errors.append(f"node.{name}.transitions[{rows[0][0]}]: the first matches_intent route targets a call-ending "
+                          "exit (every path from it ends the call) while later intent routes continue; the hosted "
+                          "router can select the first listed intent when its evaluation is empty or degraded. List "
+                          "the ordinary expected answer first and rare call-ending exits last, or send every caller "
+                          "answer through one catch-all intent into a nonspeaking decision step whose completions choose")
     for name in automatic:
         cursor, seen = name, set()
         while cursor in automatic:

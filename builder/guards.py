@@ -506,6 +506,14 @@ def _profile(contract: dict, execution_policy: dict, plan: dict, bindings: dict 
         raise GuardCompileError(["transfer prerequisite queues must belong to permitted transfer queues"])
     if set(result.get("close_precedence", [])) - {"transferred", "promise", "paid", "no_promise"}:
         raise GuardCompileError(["close_precedence requires supported semantic outcomes or explicit wire bindings"])
+    # A protected outcome is a recorded fact; no sourced identity row stands in
+    # for it. Rows are decoded above, so a code bound to that meaning counts.
+    identity_rows = [*result.get("identity_close", {}).values(),
+                     *(row for rows in result.get("identity_close_choices", {}).values() for row in rows)]
+    if any(row["outcome"] in {"transferred", "promise", "paid", "no_promise"} for row in identity_rows):
+        raise GuardCompileError(["identity closing rows cannot use a protected-fact outcome (promise, paid, transferred, "
+                                 "no_promise or a code bound to one): only its recorded fact closes with it; a source "
+                                 "requiring otherwise is an unsupported constraint"])
     for scope, proposal in result.get("identity_close", {}).items():
         allowed = result.get("close_reasons", {}).get(proposal["outcome"])
         if allowed and "reason" not in proposal:
@@ -1069,6 +1077,9 @@ def guard_close(state, proposed, profile, maps):
         raise ValueError('callback-success closing requires a recorded callback')
     if proposal.get('reason') == 'no_callback' and state['callbacks']:
         raise ValueError('no_callback closing cannot hide a recorded callback')
+    # Whatever row selected it, a protected outcome closes only as its recorded fact.
+    if proposal['outcome'] in ('transferred', 'promise', 'paid', 'no_promise') and facts.get(proposal['outcome']) != proposal:
+        raise ValueError('protected closing outcome lacks its recorded fact')
     return proposal
 
 def guard_known_counts(state):

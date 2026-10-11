@@ -150,10 +150,14 @@ class LocalDispositionCoverageTests(unittest.TestCase):
 
     def test_preidentity_only_paid_close_scope_has_no_local_account_obligation(self):
         policy, sources, api = invented_packet(actions=["close_call"])
-        identity = next(rule for rule in policy["rules"] if rule["kind"] == "identity_close")
-        identity["value"]["unreached"] = {"outcome": "END_SETTLED_Q"}
         descriptor = compile_execution_requirements(policy, sources, api)
         self.assertEqual(descriptor["actions"], ["close_call"])
+        # A pre-identity row cannot stand in for the paid fact; the refusal is
+        # that protected-fact rule, never a local account marker obligation.
+        identity = next(rule for rule in policy["rules"] if rule["kind"] == "identity_close")
+        identity["value"]["unreached"] = {"outcome": "END_SETTLED_Q"}
+        with self.assertRaisesRegex(ExecutionRequirementsError, "cannot use a protected-fact outcome"):
+            compile_execution_requirements(policy, sources, api)
 
     def test_no_supported_paid_outcome_requires_no_paid_local_marker(self):
         policy, sources, api = invented_packet(paid_outcome=False)

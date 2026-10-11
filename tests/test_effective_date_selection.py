@@ -28,7 +28,7 @@ PRODUCTS = [{"product_id": "stable-a", "type": "revolving", "days_late": 8, "pas
             {"product_id": "stable-b", "type": "fixed", "days_late": 28, "past_due": 600, "instalment_due": 82.10}]
 
 
-def packet(api_budget=None, mutate=None):
+def packet(api_budget=None, mutate=None, limits=None):
     base = fixture()
     profile = base["execution_policy"]["profile"]
     api = copy.deepcopy(base["openapi"])
@@ -39,7 +39,7 @@ def packet(api_budget=None, mutate=None):
     source = {"id": "source", "quote": text}
     rules = [{"id": kind, "kind": kind, "value": copy.deepcopy(value), "source": source}
              for kind, value in profile.items() if kind not in ("identity_wrong_limit", "deadline_days")]
-    for kind, (old, new) in (("identity_wrong_limit", LIMITS), ("deadline_days", DEADLINES)):
+    for kind, (old, new) in (("identity_wrong_limit", limits or LIMITS), ("deadline_days", DEADLINES)):
         rules += [{"id": "old-" + kind, "kind": kind, "value": copy.deepcopy(old), "source": source},
                   {"id": "new-" + kind, "kind": kind, "value": copy.deepcopy(new), "source": source},
                   {"id": "dated-" + kind, "kind": kind, "source": source, "overrides": ["old-" + kind, "new-" + kind],
@@ -245,12 +245,32 @@ class EffectiveDateSelectionTests(unittest.TestCase):
         above = Call(context, "2031-05-06")
         above.answer("postal_code", True, LIMITS[1] + 1)
         self.assertTrue(above.state["quarantined"])
-        # A declared maximum at or above the selected limit keeps the policy-relative counter.
-        loose = Call(compiled(packet(api_budget=9)), "2031-05-06")
-        loose.answer("postal_code", False, LIMITS[0] - 1)
-        self.assertEqual(loose.state["wrong_answers"], 1)
-        loose.answer("postal_code", True, LIMITS[0] + 1)
-        self.assertTrue(loose.state["quarantined"])
+
+    def test_api_budget_above_the_selected_limit_never_undercounts_on_either_side_of_the_boundary(self):
+        # One declared maximum serves both dated limits, so it exceeds the selected one on one side.
+        for limits, now in (((2, 3), "2031-05-06"), ((4, 2), DAY)):
+            with self.subTest(limits=limits, now=now):
+                call = Call(compiled(packet(api_budget=3, limits=limits)), now)
+                self.assertEqual(call.facts()["identity"]["wrong_answers_left"], 2)
+                call.answer("postal_code", False, 2)
+                self.assertEqual((call.state["wrong_answers"], call.state["identity_status"]), (1, "pending"))
+                self.assertEqual(call.facts()["identity"]["wrong_answers_left"], 1)
+                call.answer("postal_code", False, 1)
+                self.assertEqual((call.state["wrong_answers"], call.state["identity_status"]), (2, "failed"))
+                for action, inputs in (("verify_identity", {"field": "postal_code", "answer": "again"}), ("get_account", None)):
+                    with self.assertRaises(ValueError):
+                        call.step("prepare", action, inputs)
+        # A maximum well above the limit neither quarantines a correct first answer nor hides wrong answers.
+        call = Call(compiled(packet(api_budget=5, limits=(2, 3))), "2031-05-06")
+        call.answer("postal_code", True, 5)
+        self.assertEqual((call.state["wrong_answers"], call.state["identity_status"], call.state["quarantined"]),
+                         (0, "pending", False))
+        call.answer("memorable_word", False, 1)
+        self.assertEqual((call.state["wrong_answers"], call.state["identity_status"]), (2, "failed"))
+        self.assertEqual(call.facts()["identity"]["wrong_answers_left"], 0)
+        above = Call(compiled(packet(api_budget=5, limits=(2, 3))), "2031-05-06")
+        above.answer("postal_code", True, 6)
+        self.assertTrue(above.state["quarantined"])
 
     def test_pure_identity_helper_uses_the_same_budget_rule(self):
         policy = {"identity_fields": ["factor_a", "factor_b"], "identity_wrong_limit": 3}
@@ -262,6 +282,11 @@ class EffectiveDateSelectionTests(unittest.TestCase):
         out = identity_record(out, "factor_b", {"ok": True, "verified": False, "wrong_answers_left": 0}, policy,
                               wrong_answer_budget=2)
         self.assertEqual((out["wrong_answers"], out["identity_status"]), (2, "failed"))
+        wrong = {"ok": True, "verified": False, "wrong_answers_left": 3}
+        out = identity_record(state, "factor_a", wrong, policy, wrong_answer_budget=5)
+        self.assertEqual((out["wrong_answers"], out["identity_status"]), (2, "pending"))
+        out = identity_record(out, "factor_a", {**wrong, "wrong_answers_left": 2}, policy, wrong_answer_budget=5)
+        self.assertEqual((out["wrong_answers"], out["identity_status"]), (3, "failed"))
         for budget in (0, True, "2"):
             with self.subTest(budget=budget), self.assertRaises(PolicyError):
                 identity_record(state, "factor_a", verified, policy, wrong_answer_budget=budget)

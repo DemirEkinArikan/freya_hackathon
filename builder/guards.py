@@ -68,7 +68,7 @@ _REQUIRED = {
 _CONTROLLER_STATE_EFFECTS = {
     "verify_identity": {
         "accepted_staging": ["Keeps the requested factor pending; sending an answer does not verify it."],
-        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, budget - returned wrong_answers_left), where budget is the call-date-selected identity_wrong_limit or the API's declared wrong_answers_left maximum when that is smaller; reaching the limit, or zero remaining, exhausts identity; ok=true alone does not verify a factor.",
+        "positive_recording": ["Validated ok=true identity results update cumulative wrong answers to max(existing wrong_answers, budget - returned wrong_answers_left), capped at the call-date-selected identity_wrong_limit, where budget is the API's declared wrong_answers_left maximum when declared, otherwise that limit; reaching the limit, or zero remaining, exhausts identity; ok=true alone does not verify a factor.",
                                "Only a validated verified=true result advances the submitted factor; verified=false leaves passed factors unchanged."]},
     "get_account": {
         "accepted_staging": ["Sending the account request does not establish loaded products."],
@@ -1557,9 +1557,9 @@ def guard_result(state, data, profile, catalog, expected_action):
             if isinstance(remaining, str) and remaining.isdigit():
                 remaining = int(remaining)
             limit = guard_dated(state, profile, 'identity_wrong_limit')
-            # The API counter runs against its own declared budget when that is
-            # smaller than the policy limit; then zero remaining also exhausts.
-            budget = min(limit, catalog['verify_identity'].get('wrong_answers_budget', limit))
+            # A declared API maximum is the counter's own budget, above or below
+            # the policy limit; zero remaining also exhausts identity.
+            budget = catalog['verify_identity'].get('wrong_answers_budget', limit)
             if not (type(verified) is bool or type(verified) is str and verified in ('true', 'false', 'True', 'False')) or type(remaining) is not int or not 0 <= remaining <= budget:
                 state['quarantined'] = True
                 return state, 'failure', dict(), ''
@@ -1568,7 +1568,7 @@ def guard_result(state, data, profile, catalog, expected_action):
             # Use the engine counter, not guessed answer/hint interpretation.
             # It includes errors on all factors and excludes API-qualified
             # noncounting retries such as unreadable answers or hints.
-            state['wrong_answers'] = max(state['wrong_answers'], budget - remaining)
+            state['wrong_answers'] = min(limit, max(state['wrong_answers'], budget - remaining))
             state['identity_status'] = 'failed' if state['wrong_answers'] >= limit or remaining == 0 else 'verified' if all(f in state['verified_fields'] for f in profile['identity_fields']) else 'pending'
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':

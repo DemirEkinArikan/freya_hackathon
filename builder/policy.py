@@ -859,8 +859,8 @@ def identity_record(state: Mapping[str, Any], field: str, result: Mapping[str, A
         raise PolicyError("identity policy is missing or invalid")
     if wrong_answer_budget is not None and (type(wrong_answer_budget) is not int or wrong_answer_budget < 1):
         raise PolicyError("API wrong-answer budget must be a positive integer")
-    # The API counter runs against its own declared budget when that is smaller.
-    budget = limit if wrong_answer_budget is None else min(limit, wrong_answer_budget)
+    # A declared API maximum is the counter's own budget, above or below the limit.
+    budget = limit if wrong_answer_budget is None else wrong_answer_budget
     verified = state.get("verified_fields", [])
     wrong = state.get("wrong_answers", 0)
     if (not isinstance(verified, list) or verified != fields[:len(verified)]

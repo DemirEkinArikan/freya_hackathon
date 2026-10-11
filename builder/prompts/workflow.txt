@@ -56,11 +56,20 @@ must have a graph path to a call-ending handler; any required routing references
 must name valid nodes already participating in that path.
 
 Entry speech and a graph edge are not themselves routing triggers. A silent
-conversation waits for the caller unless it declares passthrough. For a state-only
-decision that needs no new answer, set node-level passthrough:true, a public
-passthrough_default_transition, and an ordinary final always fallback without a
-tool-call flag. Put approved runtime
-context in routing_prompt; task_message alone cannot direct the routing model.
+conversation waits for the caller unless it declares passthrough. The kit checks
+deterministic conditions (variable checks and always) before the routing model:
+in each node, list every ordinary deterministic route before every matches_intent
+route and add no always fallback after intent routes; an unmatched caller turn
+already stays in its node. For a state-only decision on declared public variables
+that needs no new answer, set node-level passthrough:true, a public
+passthrough_default_transition, deterministic routes and an ordinary final always
+fallback without a tool-call flag; a passthrough node never uses matches_intent.
+A state-only decision judged from the bg_facts view is instead an LLM-entry step
+whose task_message reads that view and directs the dialogue model, without waiting
+for the caller, to take the one engine-offered completion transition
+(is_tool_call:true, described below) whose description matches the current state.
+Put approved runtime context for caller-answer intent routes in routing_prompt;
+task_message alone cannot direct the routing model.
 Capture needed public action proposals in the preceding caller-answer step; an
 immediate state router cannot obtain a new answer by declaring extraction fields.
 Do not make a caller-answer node passthrough or skip the fresh answer it requires.

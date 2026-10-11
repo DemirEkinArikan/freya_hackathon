@@ -166,6 +166,8 @@ class GuardedReplayTests(unittest.TestCase):
             "condition": {"logic": "or", "conditions": [
                 {"variable": "amount", "operator": "equals", "operand": 20},
                 {"variable": "answer_text", "operator": "contains", "operand": "BANK"}]}})
+        # Keep same-target routes together: the kit merges them at an undocumented position.
+        node["transitions"].sort(key=lambda row: row["target_node"] != "close")
         workflow = compile_guarded_workflow(openapi=api, **context)["workflow"]
         for values in ({"amount": "20"}, {"answer_text": "bank"}):
             script = {"version": 1, "initial_inputs": {"customer_id": "synthetic-session", "now": "2031-05-02"},

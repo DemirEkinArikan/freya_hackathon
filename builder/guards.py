@@ -87,7 +87,7 @@ _CONTROLLER_STATE_EFFECTS = {
         "rejections": ["An already recorded promise or recorded note for that product prevents staging.",
                        "Under a resolve_all_products overdue scope, a product outside that scope cannot be staged."]},
     "finalize_notes": {
-        "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise.",
+        "accepted_staging": ["Requires every product in the sealed resolve_all_products set (every loaded product for the boolean forms) resolved by a recorded promise or staged disposition, with no pending promise; an empty set with no staged disposition is refused.",
                              "Seals the disposition phase. When record_notes is false, dispositions remain local and no note API is called."],
         "positive_recording": ["When record_notes is true, each validated positive note result adds that product's recorded note; partial successes remain recorded."]},
     "stage_transfer": {
@@ -1242,7 +1242,10 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
                     items.append(dict(customer_id=state['customer_id'], product_id=pid, amount=amount, date=item['date']))
             operation = 'create_promise'
         elif action == 'finalize_notes':
-            if state['pending_promises'] or not state['products'] or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['pending_notes'] for p in guard_resolve_all_products(state, profile, True)):
+            # An empty required set with nothing staged has nothing to finalize;
+            # sealing it would leave no closing fact and no way to add one.
+            required = guard_resolve_all_products(state, profile, True)
+            if state['pending_promises'] or not state['products'] or not required and not state['pending_notes'] or any(p['product_id'] not in state['recorded_promises'] and p['product_id'] not in state['pending_notes'] for p in required):
                 raise ValueError('all products need resolved promises or staged dispositions')
             state['notes_finalized'] = True
             if not profile['record_notes']:

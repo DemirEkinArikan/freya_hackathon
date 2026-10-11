@@ -197,6 +197,18 @@ class ScopedResolutionTests(unittest.TestCase):
         call.code("close")
         self.assertEqual(json.loads(call.variables["bg_body"]), {"customer_id": "independent-customer", "outcome": "no_promise", "reason": "refused"})
 
+    def test_empty_scope_with_nothing_staged_does_not_seal_the_call(self):
+        for rule, products, values in ((scoped(), (ONE, TWO), {SELECTOR: PARTIAL}), (OVERDUE, (CURRENT,), None)):
+            with self.subTest(rule=rule):
+                call = loaded(authored(resolve_all_products=rule), products, values)
+                self.assertEqual(finish(call), "blocked")
+                self.assertFalse(call.state["notes_finalized"])
+        call = loaded(authored(resolve_all_products=scoped()), values={SELECTOR: PARTIAL})
+        finish(call)
+        call.promise()
+        call.code("close")
+        self.assertEqual(json.loads(call.variables["bg_body"])["outcome"], "promise")
+
     def test_overdue_scope_never_fabricates_an_every_product_paid_close(self):
         call = loaded(authored(resolve_all_products=OVERDUE, promise_readback=DISTINCT), (CURRENT, ONE, TWO))
         note(call, "asset-one", "paid")

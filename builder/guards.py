@@ -1009,10 +1009,11 @@ def guard_close(state, proposed, profile, maps):
             unreached = (state['identity_status'] == 'pending' and not state['verified_fields']
                          and state['wrong_answers'] == 0)
             # Without a recorded callback, each scope a proposal could still
-            # reach keeps its rows needing no evidence but that absence. If all
-            # leave the same single disposition, dialogue cannot change it.
-            rows = [[dict((key, value) for key, value in row.items() if key != 'requires')
-                     for row in profile.get('identity_close_choices', dict()).get(scope, [table[scope]])
+            # reach keeps its rows needing no evidence but that absence (a
+            # fixed row is phase evidence). If all leave the same single row
+            # that the absent callback decides, dialogue cannot change it; a
+            # `none` row stays language-derived and needs its proposal.
+            rows = [[row for row in profile.get('identity_close_choices', dict()).get(scope, [dict(table[scope], requires='no_recorded_callback')])
                      if row.get('requires', 'none') in ('none', 'no_recorded_callback')]
                     for scope in ('unreached', 'incomplete')[bool(state['verified_fields']):]]
             if state['callbacks']:
@@ -1028,8 +1029,8 @@ def guard_close(state, proposed, profile, maps):
                 if len(matching) != 1:
                     raise ValueError('recorded callback lacks one declared closing choice for the actual identity phase')
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
-            elif all(len(item) == 1 and item == rows[0] for item in rows):
-                proposal = rows[0][0]
+            elif all(len(item) == 1 and item == rows[0] for item in rows) and rows[0][0].get('requires') == 'no_recorded_callback':
+                proposal = dict((key, value) for key, value in rows[0][0].items() if key != 'requires')
             else:
                 if not isinstance(proposed.get('outcome', ''), str):
                     raise ValueError('identity closing outcome proposal must be text')

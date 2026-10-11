@@ -251,13 +251,11 @@ class S05ReceiptMatrixTests(unittest.TestCase):
                     self.run_case("bad-record-id-" + repr(value), opaque,
                                   {"ok": True, "promise_id": value}, first_success=True)
 
-    @unittest.expectedFailure
-    def test_known_violation_non_string_record_identity_is_recorded(self):
-        # S05 violation V1 (issue #9). The API declares promise_id a string, so
+    def test_non_string_record_identity_is_unknown_persistence(self):
+        # S05 violation V1 (issue 9). The API declares promise_id a string, so
         # these receipts cannot prove persistence. The string result binding
-        # turns them into nonblank text before the kernel type check, and the
-        # promise is recorded. The expectation is unchanged; every value runs
-        # so the evidence keeps all of them. Remove this marker once fixed.
+        # turns them into nonblank text, so only the raw type the API hook
+        # records exposes them. Every value runs so the evidence keeps all.
         failed = []
         for opaque in (False, True):
             for value in (91, True, {}, []):

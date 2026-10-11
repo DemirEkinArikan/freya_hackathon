@@ -4,6 +4,12 @@ This is an execution plan and an evidence audit, not a hosted comparison result.
 The production integration starts at main `2d09c31d2f2d25a0e01466e707f560127634cad3`.
 T14 and T15 remain open until their actual acceptance and dependencies are met.
 
+The [11 October rapid checkpoint](T15-RAPID-READINESS.md) now selects an
+earlier guarded-builder baseline and a proposed structured source, with
+development-only fingerprints and current blockers. Those selections require
+fresh original live provenance; they do not accept old failed exports or
+complete the comparison. The details below preserve the earlier plan/history.
+
 ## Current evidence and prerequisites
 
 The retained public-A run `20261010T202925576290Z`, from source
@@ -131,7 +137,7 @@ either validation. Smoke evidence cannot become three-repeat comparison evidence
 python3.11 -m benchmarks.hosted --dry-run --brief A --split train
 python3.11 -m benchmarks.hosted --execute --brief A --split train \
   --agent-id AGENT_ID --deployment-manifest artifacts/SELECTED_BUILD/manifest.json \
-  --cases benchmarks/fixtures/hosted.json --reps 3 --concurrency 5 --budget-seconds 1800 \
+  --cases benchmarks/fixtures/hosted-train-A.json --reps 3 --concurrency 5 --budget-seconds 1800 \
   --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
   --evidence-dir artifacts/evaluations --out artifacts/UNIQUE_TRAIN_SUMMARY.json
 ```
@@ -159,9 +165,11 @@ python3.11 -m benchmarks.compare --baseline artifacts/BASELINE_A_BUNDLE.json \
   --structured artifacts/STRUCTURED_A_BUNDLE.json --out artifacts/UNIQUE_A_COMPARISON.json
 ```
 
-A baseline-generation algorithm/entrypoint still needs to be selected through the
-primary controller lane. The present builder has no `--baseline` switch; do not
-invent one or treat manually authored diagnostic agents as builder baselines.
+The rapid checkpoint selects source `2d09c31` as an earlier guarded-builder
+baseline, rebuilt through its existing entrypoint with equivalent conditions.
+This measures incremental builder changes, not the organizer's unstructured
+strategy. The present builder has no `--baseline` switch; do not invent one or
+treat manually authored diagnostic agents as builder baselines.
 Both algorithms need actual same authenticated model/effort and equivalent original
 isolation/source/trace evidence. Complete accepted structured generation first.
 Actual baseline/structured 360-call evaluation, failure-family corrections and T14

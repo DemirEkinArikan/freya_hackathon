@@ -37,6 +37,30 @@ A policy repair is capped at 450 seconds, so a policy whose compact JSON exceeds
 about 99,800 characters is never repaired. That day's 111 generated policies
 had 29,800 to 83,400 characters (median 45,400).
 
+Patch repair (11 Oct, evening). A long brief's first policy takes 570-760
+seconds, so a full re-emission rarely fits the repair allocation that remains.
+By default (`--policy-repair patch`) a rejected policy is first repaired by a
+structured patch. The model receives the validation errors, only the rules,
+declarations and top-level fields they reference (with JSON paths, plus the
+rules a referenced declaration cites) and an `[id, kind]` index of every rule.
+It returns add/replace/remove operations addressed by rule id or by path into
+the rejected policy (`builder/policy_patch.py`). The patch is applied
+deterministically, all or nothing, and the result goes through the same
+unchanged contract and execution-requirement checks, so a patched rule still
+needs its exact source quote. Admission sizes a patch by that excerpt instead of
+the whole policy. A malformed patch, an unappliable one, a format error or any
+exception in the excerpt, prompt or apply code falls back to a full repair in
+the same attempt, if that repair is admitted. A patched
+policy that fails validation uses a repair attempt like any other. The trace
+records `repair_admission` with `repair_mode: patch` and a `policy_patch` event
+with the patch, its size, the excerpt and prompt sizes and the elapsed time.
+`--policy-repair full` restores full re-emission only. In a no-model replay of
+the six retained rejected stress policies, every patch repair would have been
+admitted at its recorded allocation (estimates 67-195 s against full rewrites
+of 307-428 s). The prompt shrinks less, to 56-85% of a full repair, because the
+sources, API, interface and instructions stay; the rewritten part is what the
+admission estimate prices.
+
 The 1800-second limit, the 300-second export reserve and the 450-second
 first-workflow reserve are unchanged. In a replay of that day's call times, a
 larger first-workflow reserve refused policy repairs that would have succeeded.

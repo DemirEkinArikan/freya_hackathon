@@ -245,9 +245,22 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             requirements = compile_execution_requirements(policy, sources, openapi)
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
+            layers = {}
+            declared = policy.get("unsupported_constraints") if isinstance(policy, dict) else None
+            if isinstance(exc, PolicyContractError) and isinstance(declared, list) and declared:
+                # Fatal declarations stop the contract before its later layers run; a declaration-free
+                # copy, never frozen or returned, shows those layers in this same repair.
+                layers["hidden_layer_errors"] = []
+                try:
+                    compile_execution_requirements(dict(copy.deepcopy(policy), unsupported_constraints=[]), sources, openapi)
+                except (PolicyContractError, ValueError) as hidden:
+                    layers["hidden_layer_errors"] = [error for error in getattr(hidden, "errors", None) or [str(hidden)]
+                                                     if error not in errors]
+                errors = [*errors, *layers["hidden_layer_errors"]]
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
-                {"policy": policy, "validation_errors": errors}, secrets=secrets))
-            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed)
+                {"policy": policy, "validation_errors": errors, **layers}, secrets=secrets))
+            trace.emit("policy_validation", passed=False, errors=errors, attempt=attempt + 1, elapsed_seconds=elapsed,
+                       **layers)
             if attempt == MAX_REPAIRS:
                 raise ValueError("Policy extraction failed after bounded repairs: " + "; ".join(errors)) from exc
             failure = "Policy extraction failed: " + "; ".join(errors)

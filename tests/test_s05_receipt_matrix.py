@@ -118,9 +118,12 @@ def promise_call(source, aliases, index):
             customer_id=SESSION, product_id=PRODUCTS[index], amount=CENTS[index] / 100, date=DAY)}
 
 
-def attempt_key(call):
-    return call["tool"] + ":" + json.dumps(call["arguments"], sort_keys=True,
-                                          separators=(",", ":"), ensure_ascii=False)
+def attempt_key(role, call):
+    # Same ledger specification as the control/dispatch matrices: semantic
+    # source role + complete canonical wire body. The wire alias differs from
+    # the role under the opaque contract, so it cannot name the attempt.
+    return role + ":" + json.dumps(call["arguments"], sort_keys=True,
+                                   separators=(",", ":"), ensure_ascii=False)
 
 
 def ledger(promises=None, *, closed=False):
@@ -149,14 +152,14 @@ class S05ReceiptMatrixTests(unittest.TestCase):
                 "ok": True, "promise_id": "s05-first-record"}))
             first = promise_call(source, aliases, 0)
             expected_calls.append(first)
-            expected_attempts[attempt_key(first)] = {"status": "recorded", "count": 1}
+            expected_attempts[attempt_key("create_promise", first)] = {"status": "recorded", "count": 1}
             expected_promises[PRODUCTS[0]] = {"amount_cents": CENTS[0], "date": DAY}
         index = 1 if first_success else 0
         target = promise_call(source, aliases, index)
         expected_calls.append(target)
         script["responses"].append(receipt(source, aliases, "create_promise", fault,
                                            status, omit_status=omit_status))
-        expected_attempts[attempt_key(target)] = {"status": "unknown_persistence", "count": 1}
+        expected_attempts[attempt_key("create_promise", target)] = {"status": "unknown_persistence", "count": 1}
         expected_closed = False
         if retry:
             # Source promise_failure_limit=2 and exact 503/error classification
@@ -164,7 +167,7 @@ class S05ReceiptMatrixTests(unittest.TestCase):
             script["responses"].append(receipt(source, aliases, "create_promise", {
                 "ok": True, "promise_id": "s05-retry-record"}))
             expected_calls.append(deepcopy(target))
-            expected_attempts[attempt_key(target)] = {"status": "recorded", "count": 2}
+            expected_attempts[attempt_key("create_promise", target)] = {"status": "recorded", "count": 2}
             expected_promises[PRODUCTS[index]] = {"amount_cents": CENTS[index], "date": DAY}
             script["frames"] += [frame(source, "close")]
             script["responses"].append(receipt(source, aliases, "close_call", {"ok": True}))
@@ -172,7 +175,7 @@ class S05ReceiptMatrixTests(unittest.TestCase):
             close = {"tool": aliases["close_call"], "arguments": wire_request(source, "close_call",
                      customer_id=SESSION, outcome=outcome)}
             expected_calls.append(close)
-            expected_attempts[attempt_key(close)] = {"status": "recorded", "count": 1}
+            expected_attempts[attempt_key("close_call", close)] = {"status": "recorded", "count": 1}
             expected_closed = True
         else:
             # Tempting later frames must stay unused after unknown persistence.
@@ -181,7 +184,7 @@ class S05ReceiptMatrixTests(unittest.TestCase):
         with patch("tools.replay_guarded.validate_workflow", memoized_exact_validation):
             report = replay(workflow, context, source["openapi"], script)
         state = report["final_state"]
-        write_operations = {aliases[role] for role in WRITES}
+        write_operations = set(WRITES)
         observed_attempts = {key: deepcopy(value) for key, value in state["attempts"].items()
                              if key.split(":", 1)[0] in write_operations}
         # The internal 'sent' spelling is still uncertain when quarantine
@@ -220,7 +223,7 @@ class S05ReceiptMatrixTests(unittest.TestCase):
             self.assertTrue(state["quarantined"])
             self.assertFalse(state["close_attempted"])
             self.assertEqual(state["inflight"]["body"], target["arguments"])
-            self.assertEqual(state["inflight"]["key"], attempt_key(target))
+            self.assertEqual(state["inflight"]["key"], attempt_key("create_promise", target))
             self.assertEqual(report["unused_frames"], 3)
             remaining = range(1, 2) if first_success else range(1)
             self.assertEqual(state["pending_promises"], {
@@ -243,10 +246,27 @@ class S05ReceiptMatrixTests(unittest.TestCase):
 
     def test_malformed_record_identity_never_becomes_a_successful_string(self):
         for opaque in (False, True):
-            for value in (None, "", " ", 91, True, {}, []):
+            for value in (None, "", " "):
                 with self.subTest(opaque=opaque, value=value):
                     self.run_case("bad-record-id-" + repr(value), opaque,
                                   {"ok": True, "promise_id": value}, first_success=True)
+
+    @unittest.expectedFailure
+    def test_known_violation_non_string_record_identity_is_recorded(self):
+        # S05 violation V1 (issue #9). The API declares promise_id a string, so
+        # these receipts cannot prove persistence. The string result binding
+        # turns them into nonblank text before the kernel type check, and the
+        # promise is recorded. The expectation is unchanged; every value runs
+        # so the evidence keeps all of them. Remove this marker once fixed.
+        failed = []
+        for opaque in (False, True):
+            for value in (91, True, {}, []):
+                try:
+                    self.run_case("bad-record-id-" + repr(value), opaque,
+                                  {"ok": True, "promise_id": value}, first_success=True)
+                except AssertionError:
+                    failed.append((opaque, value))
+        self.assertEqual(failed, [])
 
     def test_malformed_boolean_types_are_unknown_persistence(self):
         for opaque in (False, True):

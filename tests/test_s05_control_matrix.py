@@ -9,6 +9,7 @@ from functools import lru_cache
 import json
 import unittest
 
+from builder.contract import compile_policy_contract
 from builder.guards import (CONTROLLED_ENTRY_LIMIT, compile_guarded_workflow,
                             validate_guarded_workflow)
 from builder.safety import digest
@@ -371,4 +372,3 @@ class S05ControlMatrixTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-from builder.contract import compile_policy_contract

@@ -58,7 +58,8 @@ must name valid nodes already participating in that path.
 Entry speech and a graph edge are not themselves routing triggers. A silent
 conversation waits for the caller unless it declares passthrough. For a state-only
 decision that needs no new answer, set node-level passthrough:true, a public
-passthrough_default_transition, and a final always fallback. Put approved runtime
+passthrough_default_transition, and an ordinary final always fallback without a
+tool-call flag. Put approved runtime
 context in routing_prompt; task_message alone cannot direct the routing model.
 Capture needed public action proposals in the preceding caller-answer step; an
 immediate state router cannot obtain a new answer by declaring extraction fields.

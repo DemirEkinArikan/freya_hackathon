@@ -27,7 +27,7 @@ conditions. Every conversation fallback and failure route targets a public node.
 Entry scheduling follows the kit, not just graph reachability:
 - on_enter:{type:silent} alone waits for the user. A state-only decision that
   needs no new input uses passthrough:true, passthrough_default_transition and a
-  final always fallback. Immediate routing may inspect only approved context in
+  final ordinary always fallback (is_tool_call absent or false). Immediate routing may inspect only approved context in
   routing_prompt/transitions; it does not extract a new caller answer.
   Capture required public proposals in the preceding caller-answer node.
 - A node collecting a new answer must wait for that input. Do not make it

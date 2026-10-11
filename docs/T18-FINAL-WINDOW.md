@@ -118,13 +118,13 @@ workflow or self-tests.
 
 ```sh
 AGENT=$($PY -c "import json; print(json.load(open('submission/final.workflow.json'))['agent_id'])")
-( export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < ~/.freya-anthropic-key)"
+( read -r ANTHROPIC_API_KEY < ~/.freya-anthropic-key; export ANTHROPIC_API_KEY
   $CPY tools/independent_check.py rules $F/bundle --out $F/check
   $CPY tools/independent_check.py cases $F/bundle --out $F/check )
 # read $F/check/rules.md and $F/check/cases.md by hand
 ( freya_env; FREYA_LEASE=$M/artifacts/.simulation.lock FREYA_SIM_CONCURRENCY=10 FREYA_BANK_HOST=$MOCK \
   $PY build-the-builder/tools/run_cases.py $AGENT --cases $F/check/cases.json --out $F/check/run.json )
-( export ANTHROPIC_API_KEY="$(tr -d '\n\r ' < ~/.freya-anthropic-key)"
+( read -r ANTHROPIC_API_KEY < ~/.freya-anthropic-key; export ANTHROPIC_API_KEY
   $CPY tools/independent_check.py grade $F/bundle --out $F/check --run $F/check/run.json --mock-url $MOCK \
     --cases $F/check/cases.json --env-file $M/.env )   # writes $F/check/report.md and report.json
 ```

@@ -17,6 +17,9 @@ from .toolbindings import derive_tools
 from .call_variables import declared_call_variables
 
 PREFIX = "bg_"
+# Controller resource bounds, independent of every bank's business counters.
+CONTROLLED_ENTRY_LIMIT = 2048
+DEFAULT_CONVERSATION_TURNS = 10
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _INPUTS = {
     "verify_identity": {"field", "answer"}, "get_account": set(),
@@ -212,7 +215,8 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
                     errors.append(name + ": unknown " + field)
         elif kind == "conversation":
             allowed = {"name", "node_type", "task_message", "routing_prompt", "on_enter", "on_enter_first_entry_only",
-                       "extraction_schema", "transitions", "max_node_turns", "max_turn_transition"}
+                       "extraction_schema", "transitions", "max_node_turns", "max_turn_transition",
+                       "passthrough", "passthrough_default_transition"}
             if set(node) - allowed:
                 errors.append(name + ": dialogue nodes cannot contain executable or unsupported fields")
             if not isinstance(node.get("task_message", ""), str):
@@ -224,6 +228,21 @@ def _plan_errors(plan: Any, operation_names: tuple[str, ...] | list[str] = (),
             if not isinstance(extraction, list) or not isinstance(transitions, list):
                 errors.append(name + ": extraction_schema and transitions must be arrays")
                 continue
+            if "passthrough" in node and type(node["passthrough"]) is not bool:
+                errors.append(name + ": passthrough must be boolean")
+            if "passthrough_default_transition" in node:
+                default = node["passthrough_default_transition"]
+                if not isinstance(default, str) or default not in nodes:
+                    errors.append(name + ": passthrough default must target a declared public node")
+            if node.get("passthrough") is True:
+                default = node.get("passthrough_default_transition")
+                fallback = transitions[-1] if transitions and isinstance(transitions[-1], dict) else {}
+                # Entry routing is explicit. The default and unconditional
+                # fallback must agree before the compiler seals public targets.
+                if (not isinstance(default, str) or default not in nodes
+                        or fallback.get("condition") != {"operator": "always"}
+                        or fallback.get("target_node") != default):
+                    errors.append(name + ": passthrough requires a public default and matching final always fallback")
             for entry in extraction:
                 if not isinstance(entry, dict) or not variable(entry.get("name")):
                     errors.append(name + ": extraction cannot write protected or engine variables")
@@ -1549,23 +1568,39 @@ def _code(phase: str, action: str, inputs: dict, profile: dict, catalog: dict,
     tail = "\nvars['bg_route'] = 'blocked'\nvars['bg_body'] = ''\nvars['bg_readback'] = ''\nvars['bg_facts'] = ''\nvars['bg_quarantined'] = ''\n"
     tail += "try:\n    spec = json.loads(" + _literal(spec) + ")\n"
     if phase == "init":
+        tail += "    vars['bg_control_entries'] = '0'\n"
         tail += "    previous_state = None\n    call_inputs = dict()\n    for name in spec['profile'].get('call_variables', list()):\n        if name not in vars or vars[name] is None or type(vars[name]) is str and vars[name] == '':\n            raise ValueError('required call input is absent')\n        call_inputs[name] = vars[name]\n    state = guard_new(vars.get('customer_id'), vars.get('now'), call_inputs)\n    vars['bg_state'] = guard_json(state)\n    guard_call_inputs(state, spec['profile'])\n    route, body, readback = 'done', dict(), ''\n"
     else:
         tail += "    vars['bg_quarantined'] = 'yes'\n    state = json.loads(str(vars.get('bg_state') or ''))\n    expected = guard_new(state.get('customer_id'), state.get('now'))\n    if set(state) != set(expected) or any(type(state[key]) is not type(value) for key, value in expected.items()):\n        raise ValueError('protected state shape is malformed')\n    guard_call_inputs(state, spec['profile'])\n    vars['bg_quarantined'] = ''\n    previous_state = state\n"
+        tail += "    entry_count = vars.get('bg_control_entries')\n"
+        if phase == "result":
+            # A bookkeeping fault cannot erase an already-dispatched receipt.
+            tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        entry_count = " + str(CONTROLLED_ENTRY_LIMIT + 1) + "\n    else:\n        entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
+        else:
+            tail += "    if not isinstance(entry_count, str) or not entry_count.isascii() or not entry_count.isdigit() or len(entry_count) > 7:\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry count is unavailable')\n    entry_count = int(entry_count) + 1\n    vars['bg_control_entries'] = str(entry_count)\n"
+        if phase != "result":
+            tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        vars['bg_quarantined'] = 'yes'\n        raise ValueError('controller entry budget exhausted')\n"
         if phase == "prepare":
             tail += "    if state['inflight']:\n        state['quarantined'] = True\n        vars['bg_state'] = guard_json(state)\n"
             tail += "    if not state.get('inflight'):\n        state['batch'] = dict()\n        state['consent'] = ''\n        vars['bg_state'] = guard_json(state)\n    inputs = dict((key, vars.get(name, '')) for key, name in spec['inputs'].items())\n    state, route, body, readback = guard_prepare(state, spec['action'], inputs, spec['profile'], spec['catalog'], spec['maps'])\n"
         elif phase == "confirm":
             tail += "    state, route, body, readback = guard_confirm(state, vars.get('bg_consent'), spec['catalog'], spec['action'])\n"
         else:
+            # Reconciliation may otherwise prepare the next batch member or
+            # qualified retry internally. Stop that preparation before it
+            # marks an unsent request as inflight or increments bank counters.
+            tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n        def guard_continue(reconciled_state, reconciled_catalog):\n            return guard_projection_quarantine(reconciled_state), 'blocked', dict(), ''\n"
             tail += "    data = dict((key, vars.get(name, '')) for key, name in spec['result_vars'].items())\n    state, route, body, readback = guard_result(state, data, spec['profile'], spec['catalog'], spec['action'])\n"
+            # Reconcile a dispatched request before administrative termination.
+            # Known recorded successes and uncertain persistence survive it.
+            tail += "    if entry_count > " + str(CONTROLLED_ENTRY_LIMIT) + " and state.get('closed') is not True:\n        state = guard_projection_quarantine(state)\n        route, body, readback = 'blocked', dict(), ''\n"
     tail += "    try:\n        facts = guard_facts(state, spec['phase'], spec['action'], route, data if spec['phase'] == 'result' else dict(), spec['profile'], spec['catalog'], previous_state)\n    except Exception:\n        state = guard_projection_quarantine(state)\n        route = 'closed' if state.get('close_attempted') is True else 'blocked'\n        body, readback = dict(), ''\n        facts = guard_failed_facts(state, spec['action'], route)\n    if state.get('quarantined') is True:\n        body, readback = dict(), ''\n        vars['bg_quarantined'] = 'yes'\n    vars['bg_state'] = guard_json(state)\n    vars['bg_route'] = route\n    vars['bg_body'] = guard_json(body) if body else ''\n    vars['bg_readback'] = readback\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = guard_json(facts)\n"
     body_fields = sorted({key for op in catalog.values() for key in op['request_schema'].get('properties', {})})
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = body.get(" + repr(name) + ", '')\n"
     for name in sorted(result_vars.values()):
         tail += "    vars[" + repr(name) + "] = ''\n"
-    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
+    tail += "except Exception:\n    vars['bg_route'] = 'blocked'\n    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n    vars['bg_consent'] = ''\n    vars['bg_facts'] = json.dumps(dict(version=1, route='blocked', call_status='unavailable', latest_action=dict(action=" + repr(action) + ", status='blocked_or_malformed')))\n"
     for name in body_fields:
         tail += "    vars[" + repr("bg_arg_" + name) + "] = ''\n"
     if phase != "prepare":
@@ -1599,6 +1634,67 @@ def _terminal() -> dict:
             "disable_inactivity_monitor": True, "terminal": {"type": "function", "function": {
                 "name": "end_call", "handler": "__function__:end_call", "parameters": {"type": "object", "properties": {
                     "message_mode": {"type": "string", "default": "none"}}}}}, "transitions": []}
+
+
+def _entry_budget_code(*, abort: bool = False) -> str:
+    """Small controller-only gate; never changes a permitted bank action."""
+    source = ("import json\nvars['bg_budget_route'] = 'stop'\ntry:\n"
+              "    count = vars.get('bg_control_entries')\n"
+              "    if not isinstance(count, str) or not count.isascii() or not count.isdigit() or len(count) > 7:\n"
+              "        raise ValueError('controller entry count is unavailable')\n"
+              "    count = int(count) + 1\n"
+              "    vars['bg_control_entries'] = str(count)\n")
+    source += ("    raise ValueError('conversation turn budget exhausted')\n" if abort else
+               "    if count > " + str(CONTROLLED_ENTRY_LIMIT) + ":\n"
+               "        raise ValueError('controller entry budget exhausted')\n"
+               "    vars['bg_budget_route'] = 'continue'\n")
+    source += ("except Exception:\n"
+               "    vars['bg_budget_route'] = 'stop'\n"
+               "    vars['bg_control_entries'] = str(vars.get('bg_control_entries') or '')\n"
+               "    vars['bg_budget_exhausted'] = 'yes'\n"
+               "    vars['bg_quarantined'] = 'yes'\n"
+               "    vars['bg_body'] = ''\n    vars['bg_readback'] = ''\n"
+               "    vars['bg_consent'] = ''\n"
+               "    try:\n"
+               "        state = json.loads(str(vars.get('bg_state') or ''))\n"
+               "        state['quarantined'] = True\n"
+               "        vars['bg_state'] = json.dumps(state, allow_nan=False)\n"
+               "    except Exception:\n"
+               "        pass\n")
+    return source
+
+
+def _bound_entries(nodes: dict, public_names: list[str]) -> None:
+    """Bound both unattended-node waits and cycles through multiple nodes."""
+    gates = {name: PREFIX + "gate_" + str(index)
+             for index, name in enumerate(sorted(public_names))}
+    needs_turn_stop = False
+    for node in nodes.values():
+        for transition in node.get("transitions", []):
+            target = transition.get("target_node")
+            if target in gates:
+                transition["target_node"] = gates[target]
+        for field in ("passthrough_default_transition", "max_turn_transition"):
+            if node.get(field) in gates:
+                node[field] = gates[node[field]]
+        if node.get("node_type") == "conversation":
+            if "max_node_turns" not in node:
+                node["max_node_turns"] = DEFAULT_CONVERSATION_TURNS
+            # Omitted source caps use the kit's documented default, with a
+            # definite abort rather than the engine's unbounded normal route.
+            if not node.get("max_turn_transition"):
+                node["max_turn_transition"] = "bg_turn_budget_stop"
+                needs_turn_stop = True
+    if needs_turn_stop:
+        nodes["bg_turn_budget_stop"] = _code_node(
+            "bg_turn_budget_stop", _entry_budget_code(abort=True), [_transition("bg_terminal")])
+    for name, gate in gates.items():
+        if gate in nodes:
+            raise GuardCompileError(["controller entry-gate name collision"])
+        continue_route = {"target_node": name, "description": "within controller budget",
+                          "condition": {"logic": "or", "conditions": [
+                              {"variable": "bg_budget_route", "operator": "equals", "operand": "continue"}]}}
+        nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition("bg_terminal")])
 
 
 def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, execution_policy: dict,
@@ -1714,6 +1810,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
             ([_transition("bg_terminal")] if action == "close_call" else
              [copy.deepcopy(quarantine_route), _transition("bg_terminal", "closed"), _transition(api, "allow"), _transition(success, "done"),
               _transition(failure, "failure"), _transition(failure)]))
+    _bound_entries(nodes, list(plan["nodes"]))
     workflow = {"initial_node": "bg_init", "nodes": nodes}
     if "system_prompt" in plan:
         workflow["system_prompt"] = copy.deepcopy(plan["system_prompt"])
@@ -1722,6 +1819,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
                 "bindings_sha256": (bindings or {}).get("sha256", ""), "workflow_sha256": digest(workflow),
                 "public_action_entries": entries, "protected_variable_prefix": PREFIX,
                 "protected_fact_variable": "bg_facts", "fact_schema_version": 1,
+                "controller_entry_limit": CONTROLLED_ENTRY_LIMIT,
+                "default_conversation_turn_limit": DEFAULT_CONVERSATION_TURNS,
                 "host_behavior_verified": False, "conversation_compliance_proven": False}
     manifest["sha256"] = digest(manifest)
     return {"workflow": workflow, "guard_manifest": manifest}

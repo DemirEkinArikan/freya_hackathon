@@ -206,15 +206,21 @@ class GuardedReplayTests(unittest.TestCase):
         with self.assertRaisesRegex(ReplayError, "actual next API operation"):
             replay(workflow, context, api, script)
 
-    def test_absorbing_automatic_loop_is_detected_despite_structural_terminal_path(self):
+    def test_automatic_loop_terminates_at_controller_bound_without_a_bank_call(self):
         workflow, context, api, aliases = authored()
         node = context["plan"]["nodes"]["talk"]
         node["transitions"].insert(0, {"target_node": "talk", "description": "loop while call clock exists",
             "condition": {"logic": "or", "conditions": [{"variable": "now", "operator": "is_set"}]}})
-        workflow = compile_guarded_workflow(openapi=api, **context)["workflow"]
         script = {"version": 1, "initial_inputs": {"customer_id": "synthetic-session", "now": "2031-05-02"}, "frames": [], "responses": []}
-        report = replay(workflow, context, api, script)
-        self.assertEqual(report["status"], "absorbing_loop")
+        # Reduce only the controller resource limit for this executable-cycle
+        # proof; the same trusted recompilation must remain in force at replay.
+        with patch("builder.guards.CONTROLLED_ENTRY_LIMIT", 8):
+            workflow = compile_guarded_workflow(openapi=api, **context)["workflow"]
+            report = replay(workflow, context, api, script)
+        self.assertEqual(report["status"], "terminated")
+        self.assertTrue(report["final_state"]["quarantined"])
+        self.assertFalse(report["final_state"]["closed"])
+        self.assertLess(len(report["steps"]), 30)
         self.assertFalse(report["calls"])
 
     def test_step_limit_and_missing_evidence_are_not_terminal_success(self):

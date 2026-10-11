@@ -10,7 +10,8 @@ passthrough is a boolean; its default target names a public plan node.
 on_enter is {type:llm}, {type:tts,text:...}
 or {type:silent}. Transitions may target public plan nodes only.
 Extraction entries: name,type,description,min_confidence, optional enum_values,
-validation_pattern,max_retries,extraction_prompt. Types are string,integer,float,
+validation_pattern,max_retries,extraction_prompt. Every extraction entry carries an
+explicit numeric min_confidence within 0..1. Types are string,integer,float,
 boolean,date,datetime,name,phone_number. Write only public proposed-input variables.
 Custom extraction_prompt must include the kit's extractor.speech,
 extractor.conversation.last-10,extractor.type_preamble,extractor.variables_list

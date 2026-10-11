@@ -62,6 +62,10 @@ FIRST_WORKFLOW_RESERVE = 450
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9
+PROMPT_ENFORCED_GUIDANCE = ("No sealed controller check enforces these source rules. The compiler adds them to system_prompt "
+                            "and to nodes that route into the actions they concern. Also state each rule in the "
+                            "task_message of every other node where it applies, and plan the dialogue so that the "
+                            "agent follows it before it proposes any affected action.")
 FORMAT_REPAIR_GUIDANCE = ("Return only the exact required outer JSON object. Serialize each inner object "
                          "as a valid JSON string; escape quotes, backslashes and control characters once "
                          "for each JSON layer. Do not return commentary, duplicate keys or nonfinite numbers.")
@@ -97,6 +101,9 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--policy-repair", choices=("patch", "full"), default="patch",
                      help="Repair a rejected policy by a structured patch first (falls back to a full re-emission), or only by full re-emission")
     out.add_argument("--codex", default="codex", help="Existing Codex CLI executable")
+    out.add_argument("--declarations", choices=("strict", "relaxed"), default="strict",
+                     help="relaxed is for last-resort attempts: protected_unenforceable and unresolved source_ambiguous "
+                          "declarations become prompt-enforced dialogue rules instead of rejecting the policy")
     return out
 
 
@@ -186,6 +193,10 @@ def make_workflow_prompt(contract: dict, openapi: dict, repair: dict | None = No
                "runtime_reference": reference}
     if execution_requirements is not None:
         payload["execution_requirements"] = copy.deepcopy(execution_requirements)
+    if contract.get("prompt_enforced_limitations"):
+        payload["prompt_enforced_rules"] = {"guidance": PROMPT_ENFORCED_GUIDANCE, "rules": [
+            {"requirement": entry["requirement"], "source_quotes": [source["quote"] for source in entry["sources"]]}
+            for entry in contract["prompt_enforced_limitations"]]}
     if repair:
         payload["repair"] = repair
     assert_no_secrets(payload, forbidden_values=_known_secrets())
@@ -259,7 +270,7 @@ def _patched_policy(generator, sources, openapi, trace, deadline, secrets, rejec
 
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True,
-                    repair_mode="patch"):
+                    repair_mode="patch", declarations="strict"):
     repair = failure = rejected = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     # Injected generators without the patch call keep full repairs.
@@ -306,10 +317,10 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
             policy, changes = normalise_policy(policy, {source["id"]: source["text"] for source in sources})
             if changes:
                 trace.emit("policy_normalisation", attempt=attempt + 1, changes=changes)
-            compiled = compile_policy_contract(policy, sources, openapi)
+            compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
             # Execution-shape errors belong to bounded extraction repairs,
             # before the policy is frozen; plans cannot repair bank rules.
-            requirements = compile_execution_requirements(policy, sources, openapi)
+            requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
         except (PolicyContractError, ValueError) as exc:
             errors = getattr(exc, "errors", [str(exc)])
             _write_json(run_dir / f"policy.rejected-{attempt + 1}.json", sanitize(
@@ -340,7 +351,8 @@ def _candidate(path: Path, policy_path: Path | None) -> dict:
     return {"workflow": workflow, "policy": policy}
 
 
-def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, require_policy: bool) -> list[str]:
+def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, require_policy: bool,
+                     declarations: str = "strict") -> list[str]:
     errors = []
     try:
         assert_no_secrets(candidate, forbidden_values=_known_secrets())
@@ -352,7 +364,7 @@ def candidate_errors(candidate: dict, sources: list[dict], openapi: dict, requir
             errors.append("Generated candidates require a provenance policy")
     else:
         try:
-            compile_policy_contract(policy, sources, openapi)
+            compile_policy_contract(policy, sources, openapi, declarations=declarations)
         except PolicyContractError as exc:
             errors.extend(getattr(exc, "errors", [str(exc)]))
     errors.extend(validate_workflow(candidate.get("workflow", {}), openapi, policy if isinstance(policy, dict) else None))
@@ -445,11 +457,12 @@ def _attempt_status(directory: Path, record: dict, secrets: tuple[str, ...], **c
     _attempt_snapshot(directory, "attempt.json", record, secrets)
 
 
-def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace) -> str | None:
+def _write_policy_artifacts(run_dir: Path, candidate: dict, sources: list[dict], openapi: dict, trace: Trace,
+                            declarations: str = "strict") -> str | None:
     policy = candidate.get("policy")
     if policy is None:
         return None
-    contract = compile_policy_contract(policy, sources, openapi)
+    contract = compile_policy_contract(policy, sources, openapi, declarations=declarations)
     _write_json(run_dir / "policy.json", policy)
     _write_json(run_dir / "policy.contract.json", contract)
     trace.emit("policy_contract", sha256=contract["sha256"], sources=len(contract["sources"]),
@@ -485,6 +498,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     source_record = None
     evaluator_input = None
     stage_durations = {}
+    declarations = getattr(args, "declarations", "strict")
+    relaxed_record = {"declaration_mode": "relaxed"} if declarations == "relaxed" else {}
     try:
         if sum(bool(value) for value in (args.offline, args.validate_only, args.generate_only, args.extract_policy_only)) > 1:
             raise ValueError("offline, validate-only, generate-only and extract-policy-only modes are mutually exclusive")
@@ -523,6 +538,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                         "fraction": REPAIR_ADMISSION_FRACTION}},
             "controller_dependency_injection": generator is not None or client_factory is not FreyaClient or test_runner is not None,
             "evaluator_input": evaluator_input,
+            **({"declaration_mode": "relaxed"} if declarations == "relaxed" else {}),
         })
         _write_json(run_dir / "builder-source.json", source_record)
         trace.emit("builder_source_snapshot", builder_source_sha256=source_record["builder_source_sha256"],
@@ -530,17 +546,18 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                    resolved_config=source_record["resolved_config"])
         if mode in {"offline-fixture", "validate-only"}:
             candidate = _candidate(args.workflow_file, args.policy_file)
-            errors = candidate_errors(candidate, sources, openapi, require_policy=False)
+            errors = candidate_errors(candidate, sources, openapi, require_policy=False, declarations=declarations)
             if errors:
                 raise ValueError("Candidate validation failed: " + "; ".join(errors))
             _write_json(run_dir / "workflow.json", candidate["workflow"])
-            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace)
+            contract_sha256 = _write_policy_artifacts(run_dir, candidate, sources, openapi, trace, declarations)
             manifest = {"mode": mode, "status": "validated", "sources": source_manifest,
                         "tool_api_sha256": digest(openapi), "workflow_sha256": digest(candidate["workflow"]),
                         "policy_provenance_checked": candidate.get("policy") is not None,
                         "policy_contract_sha256": contract_sha256,
                         "action_guard_compilation_verified": False,
-                        "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT))}
+                        "hosted_behavior_verified": False, "run_directory": str(run_dir.relative_to(PROJECT)),
+                        **relaxed_record}
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="validated", hosted_behavior_verified=False)
 
@@ -551,8 +568,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         if args.policy_file:
             policy = read_json(_model_input_path(args.policy_file))
             assert_no_secrets(policy, forbidden_values=secret_values)
-            compiled = compile_policy_contract(policy, sources, openapi)
-            requirements = compile_execution_requirements(policy, sources, openapi)
+            compiled = compile_policy_contract(policy, sources, openapi, declarations=declarations)
+            requirements = compile_execution_requirements(policy, sources, openapi, declarations=declarations)
             trace.emit("policy_execution_requirements", passed=True, sha256=requirements["sha256"],
                        selected_actions=requirements["actions"], required_kinds=requirements["required_kinds"])
             policy_repairs = 0
@@ -560,16 +577,26 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         else:
             policy, compiled, requirements, policy_repairs = _extract_policy(
                 generator, sources, openapi, run_dir, trace, deadline, secret_values,
-                workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair)
+                workflow_pending=mode != "extract-policy-only", repair_mode=args.policy_repair,
+                declarations=declarations)
             policy_origin = "extracted"
         _stage_completed(trace, deadline, stage_durations, "policy", stage_started,
                          repairs=policy_repairs, origin=policy_origin)
         frozen_policy = copy.deepcopy(policy)
         policy_sha256 = digest(frozen_policy)
-        contract_sha256 = _write_policy_artifacts(run_dir, {"policy": frozen_policy}, sources, openapi, trace)
+        contract_sha256 = _write_policy_artifacts(run_dir, {"policy": frozen_policy}, sources, openapi, trace, declarations)
         _write_json(run_dir / "execution-requirements.json", requirements)
         trace.emit("policy_frozen", policy_sha256=policy_sha256, contract_sha256=contract_sha256,
                    execution_requirements_sha256=requirements["sha256"])
+        if declarations == "relaxed":
+            # Listed, never claimed as controller enforcement: these hold only as dialogue rules.
+            unguarded = compile_action_bindings(frozen_policy, openapi, declarations=declarations)
+            relaxed_record.update({"prompt_enforced_limitations": [
+                {"category": entry["category"], "rule_ids": entry["rule_ids"], "enforced_by": "dialogue_prompt"}
+                for entry in compiled["prompt_enforced_limitations"]],
+                "unguarded_close_codes": {category: data["unbound_codes"] for category, data in unguarded["categories"].items()
+                                          if "unbound_codes" in data and unguarded.get("declaration_mode") == "relaxed"}})
+            trace.emit("relaxed_declarations", **relaxed_record)
         if mode == "extract-policy-only":
             deadline.require()
             manifest = {"mode": mode, "status": "policy_extracted", "sources": source_manifest,
@@ -578,7 +605,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                         "execution_requirements_sha256": requirements["sha256"],
                         "policy_provenance_checked": True, "workflow_created": False, "hosted_behavior_verified": False,
                         "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
-                        "run_directory": str(run_dir.relative_to(PROJECT))}
+                        "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="policy_extracted", remaining_seconds=deadline.remaining())
         client = None
@@ -628,7 +655,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             _attempt_status(attempt_dir, attempt_record, secret_values, phase="validation")
             _stage_completed(trace, deadline, stage_durations, "workflow", stage_started, attempt=workflow_repairs + 1)
             stage_started = deadline.elapsed()
-            if digest(frozen_policy) != policy_sha256 or compile_policy_contract(frozen_policy, sources, openapi)["sha256"] != contract_sha256:
+            if (digest(frozen_policy) != policy_sha256 or compile_policy_contract(
+                    frozen_policy, sources, openapi, declarations=declarations)["sha256"] != contract_sha256):
                 raise ValueError("Frozen policy contract changed during workflow generation")
             if not isinstance(generated, dict) or set(generated) != {"plan", "contract_sha256"} or generated.get("contract_sha256") != contract_sha256:
                 raise ValueError("Plan output must match the frozen contract and cannot replace policy")
@@ -637,11 +665,12 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             guard_context = None
             try:
                 assert_no_secrets(plan, forbidden_values=secret_values)
-                coverage_errors = validate_plan_execution(plan, requirements, frozen_policy, sources, openapi)
+                coverage_errors = validate_plan_execution(plan, requirements, frozen_policy, sources, openapi,
+                                                          declarations=declarations)
                 if coverage_errors:
                     raise GuardCompileError(coverage_errors)
                 _attempt_snapshot(attempt_dir, "execution-requirements.json", requirements, secret_values)
-                bindings = compile_action_bindings(frozen_policy, openapi)
+                bindings = compile_action_bindings(frozen_policy, openapi, declarations=declarations)
                 _attempt_snapshot(attempt_dir, "action-bindings.json", bindings, secret_values)
                 execution_policy = compile_execution_policy(
                     frozen_policy, bindings, required_kinds=required_execution_kinds(plan))
@@ -704,7 +733,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                             "policy_origin": policy_origin, "policy_repairs": policy_repairs, "workflow_repairs": workflow_repairs,
                             "selected_attempt": attempt_number, "selected_attempt_directory": attempt_record["directory"],
                             "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
-                            "run_directory": str(run_dir.relative_to(PROJECT))}
+                            "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
                 return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                      status="generated_validated", remaining_seconds=deadline.remaining())
             deadline.require(seconds=1, reserve=EXPORT_RESERVE)
@@ -807,7 +836,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                     "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
                     "hosted_behavior_verified": tests is not None, "tests": sanitize(tests, secrets=secret_values),
                     "evaluator_input": evaluator_input,
-                    "run_directory": str(run_dir.relative_to(PROJECT))}
+                    "run_directory": str(run_dir.relative_to(PROJECT)), **relaxed_record}
         return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                              status="exported", export_sha256=manifest["export_sha256"], remaining_seconds=deadline.remaining())
     except Exception as exc:
@@ -824,7 +853,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                                                          "last_attempt": attempt_number or None,
                                                          "last_attempt_directory": attempt_record["directory"] if attempt_record else None,
                                                          "evaluator_input": evaluator_input,
-                                                         "run_directory": str(run_dir.relative_to(PROJECT))}, secrets=secret_values))
+                                                         "run_directory": str(run_dir.relative_to(PROJECT)),
+                                                         **relaxed_record}, secrets=secret_values))
         trace.emit("end", status="failed", error=str(exc), remaining_seconds=deadline.remaining(),
                    stage_durations=stage_durations)
         raise

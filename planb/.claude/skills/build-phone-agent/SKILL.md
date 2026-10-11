@@ -7,17 +7,17 @@ description: Build a Freya phone agent from a bank's brief, test it on the pract
 
 Work from the kit folder. Use only the brief files and the tool API file you were given. Never copy a rule or a value from another brief, from the practice cases, from `examples/base-agent.json` (its prompts, phrases, URLs, codes and `test_variables`) or from the examples in this skill: every rule, number, code, phrase and sentence in the agent comes from this brief, in the language its customers speak. The examples come from the kit's two English practice briefs about late payments: they show the form, never the content, and a rule there that this brief does not state does not apply. The keys are in the environment; never print them.
 
-The whole build, tests included, must end within 50 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}` first and note the start time.
+The whole build, tests included, must end within 35 minutes. Run `date; echo SELF_TEST_ONLY=${SELF_TEST_ONLY:-0} MOCK_URL=${MOCK_URL:-}` first and note the start time.
 
 ## Time box
 
 | By minute | Done |
 |---|---|
-| 6 | brief, tool API file and this skill read |
-| 18 | workflow generated, checked locally, saved and read back |
-| 22 | self-test cases written (only when the self-test applies) |
-| 38 | last test started. Never start a test later |
-| 47 | exported, trace notes written, final line printed |
+| 5 | brief, tool API file and this skill read |
+| 14 | workflow generated, checked locally, saved and read back |
+| 17 | self-test cases written (only when the self-test applies) |
+| 27 | last test started. Never start a test later |
+| 33 | exported, trace notes written, final line printed |
 
 At most two test-and-fix rounds: a smoke run (3 or 4 cases), a fix, the full set, a fix. A run takes about 2 minutes with `FREYA_SIM_CONCURRENCY=10` when the workspace is free and up to 11 when the platform is busy. Waiting for the workspace's simulation slot ("waiting for this workspace's simulation lease") counts against your time. Before the first test, look at the slot: when `FREYA_LEASE` is set, run `cat "${FREYA_LEASE%.lock}.json"`. If another holder is running a simulation, do the export and write the trace notes first, so a long wait cannot leave the run without them. Run `date` before every test. Run tests in the foreground and wait for them; never end your turn while a test runs, because the builder stops when you stop.
 
@@ -231,17 +231,17 @@ Speaking nodes
 Practice cases exist only for the kit's own Brief A and Brief B (the `brief` field of `public-test-set.json`). Use them unless `SELF_TEST_ONLY=1` or `MOCK_URL` is set; otherwise go to the self-test. Never read the cases' scripts, checks or expected records: build from the brief only.
 - Smoke test first: `FREYA_SIM_CONCURRENCY=10 python3 tools/run_cases.py <agent_id> --brief A --only <ids> --out results/smoke.json` (use `--brief B` for Brief B). Pick 3 or 4 ids of this brief, each from a different family, from `python3 -c "import json; [print(c['id'], c['brief'], c['family']) for c in json.load(open('public-test-set.json'))]"`. If the brief has 4 customers or fewer, run them all.
 - Then all customers of the brief: the same command without `--only`, with `--out results/full.json`.
-- If both runs are green before minute 30, run the self-test set once for robustness.
+- If both runs are green before minute 21, run the self-test set once for robustness.
 
 ### Self-test (no practice cases, `SELF_TEST_ONLY=1`, or a mock)
 
 The practice bank knows only the seed customers listed in `public-test-set.json` (the command below prints their ids); any other id gets "unknown practice case". A seed fixes the customer on the bank side: the session variables (name, title, clock), the identity answers, the products and any injected faults. A seed with `faults` fails that tool the first n times, whatever the script says. Your cases reuse the seeds; from this brief, you write what the caller does and what the records must show.
 
-With `MOCK_URL` set, the seeds are the case's test customers, from which the mock was built, not `public-test-set.json`. A seed's id is the customer id in the test-customer document, and its facts (session variables, identity answers, products, injected faults) come from that document. `curl -s $FREYA_BANK_HOST/_mock/health` lists the mock's operations and its number of customers. `python3 -c "import json,sys; sys.path.insert(0,'tools'); from score import http; print(json.dumps(http('/v1/practice/sessions', dict(case=sys.argv[1]))))" <id>` shows the session variables the mock gives one customer ("unknown case" means a wrong id). In your cases, `variables` holds those variables plus `first_name` and `last_name` (`run_cases.py` names the simulated caller with them), and `identity` maps each identity field of the contract to the customer's answer. Write each script in the language the case's customers speak. The mock serves this case's own contract, so step 5 applies only to the practice bank. `score.py` compares the ledger's `promises`, `notes` and `callbacks`, its `transfers` when `expected` has them, and its `outcome`, `reason` and closing `close_call` only when `expected` has `outcome`: leave `outcome` out when the contract has no closing operation, and write `"identity": {}` when it has no identity questions. Any other key of `expected` names one of the contract's write operations and lists the arguments each required call carries, like `"<operation>": [{"<argument>": "<value>"}]`; `[]` means the operation must not be called.
+With `MOCK_URL` set, the seeds are the case's test customers, from which the mock was built, not `public-test-set.json`. A seed's id is the customer id in the test-customer document, and its facts (session variables, identity answers, products, injected faults) come from that document. `curl -s $FREYA_BANK_HOST/_mock/health` lists the mock's operations and its number of customers. With a mock, a case's `variables.now` is the call's date and time: `run_cases.py` sends it to the session. Every rule that depends on the call's date (a day of the month, a due date, before or after a deadline) needs cases at the dates that rule tells apart, with `now` set to them; the seed's own clock tests only one of them. `python3 -c "import json,sys; sys.path.insert(0,'tools'); from score import http; print(json.dumps(http('/v1/practice/sessions', dict(case=sys.argv[1]))))" <id>` shows the session variables the mock gives one customer ("unknown case" means a wrong id). In your cases, `variables` holds those variables plus `first_name` and `last_name` (`run_cases.py` names the simulated caller with them), and `identity` maps each identity field of the contract to the customer's answer. Write each script in the language the case's customers speak. The mock serves this case's own contract, so step 5 applies only to the practice bank. `score.py` compares the ledger's `promises`, `notes` and `callbacks`, its `transfers` when `expected` has them, and its `outcome`, `reason` and closing `close_call` only when `expected` has `outcome`: leave `outcome` out when the contract has no closing operation, and write `"identity": {}` when it has no identity questions. Any other key of `expected` names one of the contract's write operations and lists the arguments each required call carries, like `"<operation>": [{"<argument>": "<value>"}]`; `[]` means the operation must not be called.
 
 1. Print the seed facts, never their scripts, checks or expected records:
    `python3 -c "import json; [print(json.dumps({k: c[k] for k in ('id', 'variables', 'identity', 'products', 'faults') if k in c})) for c in json.load(open('public-test-set.json'))]"`
-2. Write 6 to 10 cases to `results/selftest.json` as a JSON list, each on a different seed: `run_cases.py` keys everything by `id`, so an id may appear only once per file. Copy `id`, `variables`, `identity`, `products` and `faults` from the seed unchanged, and write the rest yourself:
+2. Write 6 to 10 cases to `results/selftest.json` as a JSON list, each on a different seed: `run_cases.py` keys everything by `id`, so an id may appear only once per file. Copy `id`, `variables`, `identity`, `products` and `faults` from the seed unchanged (with a mock, `variables.now` may be set to test a date rule), and write the rest yourself:
 
 ```json
 {"id": "<seed id>", "brief": "S", "level": "hard", "family": "<family>", "title": "<short title>",

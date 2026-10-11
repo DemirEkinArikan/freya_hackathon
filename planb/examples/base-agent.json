@@ -81,7 +81,7 @@
         },
         "interruptible": {
          "type": "boolean",
-         "default": true
+         "default": false
         },
         "trigger_pattern": {
          "type": "string",
@@ -278,7 +278,7 @@
         },
         "interruptible": {
          "type": "boolean",
-         "default": true
+         "default": false
         },
         "trigger_pattern": {
          "type": "string",

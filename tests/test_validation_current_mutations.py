@@ -19,6 +19,11 @@ class CurrentCompilerMutationTests(unittest.TestCase):
         talk = cls.context["plan"]["nodes"]["talk"]
         talk.update(on_enter={"type": "silent"}, passthrough=True,
                     passthrough_default_transition="close")
+        # Passthrough routes read a variable; an intent would follow nothing but
+        # the always fallback that deterministic-first hosts check before it.
+        for row in talk["transitions"]:
+            row["condition"] = {"logic": "or", "conditions": [
+                {"variable": "answer_text", "operator": "equals", "operand": row["target_node"]}]}
         talk["transitions"].append({"target_node": "close", "condition": {"operator": "always"}})
         # Exercise the newly inserted administrative turn-stop path as well as
         # the source-authored passthrough route in one current compiled control.

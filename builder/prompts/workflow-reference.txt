@@ -23,13 +23,22 @@ Variable comparisons use outer {logic:or,conditions:[...]}; nested and/or groups
 are permitted. Operators: equals,not_equals,greater_than,less_than,contains,
 is_set,is_not_set. Avoid duplicate routes to the same target with incompatible
 conditions. Every conversation fallback and failure route targets a public node.
+The host evaluates deterministic conditions (variable checks, always) before
+matches_intent and merges same-target routes, so list every ordinary
+deterministic route before every intent route and never follow intent routes
+with an ordinary always. An unmatched caller turn stays in its node anyway; a
+catch-all that must move elsewhere is itself a final matches_intent route.
 
 Entry scheduling follows the kit, not just graph reachability:
-- on_enter:{type:silent} alone waits for the user. A state-only decision that
-  needs no new input uses passthrough:true, passthrough_default_transition and a
-  final ordinary always fallback (is_tool_call absent or false). Immediate routing may inspect only approved context in
-  routing_prompt/transitions; it does not extract a new caller answer.
-  Capture required public proposals in the preceding caller-answer node.
+- on_enter:{type:silent} alone waits for the user. A state-only decision on
+  declared public variables that needs no new input uses passthrough:true,
+  passthrough_default_transition, deterministic routes and a final ordinary
+  always fallback (is_tool_call absent or false). That fallback is checked before
+  any intent, so a passthrough node never uses matches_intent. A state decision
+  judged from {{bg_facts}} is an LLM-entry step whose dialogue model takes the
+  matching is_tool_call completion transition. Immediate routing does not extract
+  a new caller answer. Capture required public proposals in the preceding
+  caller-answer node.
 - A node collecting a new answer must wait for that input. Do not make it
   passthrough merely because its entry is silent or its graph has an always edge.
 - Short fixed TTS entry speech may complete through passthrough. An LLM speaking

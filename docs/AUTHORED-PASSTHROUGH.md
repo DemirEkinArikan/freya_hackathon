@@ -9,8 +9,14 @@ input when the flag is absent or false.
 An immediate route must declare a public default target and finish its
 transitions with an ordinary `always` fallback to that same target. The fallback
 cannot be an agent-invoked `is_tool_call` transition: the kit does not evaluate
-that transition as a router branch. Waiting speaking nodes may still use the
-documented agent completion tool. Boolean flags are
+that transition as a router branch. Its other routes must be deterministic: the
+kit evaluates deterministic conditions, this fallback included, before its
+routing model, so a `matches_intent` route there would be reachable only on a
+host that reads the list strictly in order. Validation rejects any deterministic
+or `always` route listed after an intent route of another target, counting
+same-target routes the kit merges. A state decision judged from `{{bg_facts}}`
+uses an LLM-entry step and the dialogue model's tool transition instead.
+Waiting speaking nodes may still use the documented agent completion tool. Boolean flags are
 strict booleans. An explicitly supplied default must be a nonempty declared
 public node name; nulls, malformed values, unknown targets and private API
 targets are rejected. These fields do not permit authored API/code nodes or

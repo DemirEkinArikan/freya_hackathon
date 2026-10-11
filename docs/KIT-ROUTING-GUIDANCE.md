@@ -3,7 +3,11 @@
 The phone-plan prompts distinguish an entry event from a new caller answer.
 The pinned kit states that silent entry waits unless a node is passthrough.
 State-only decisions can declare `passthrough: true`, a public default target and
-a matching final `always` fallback. Caller-answer nodes retain their waiting
+a matching final `always` fallback, with only deterministic routes before it. A
+decision judged from `{{bg_facts}}` is an LLM-entry step that takes the matching
+tool transition, because the kit checks deterministic conditions, `always`
+included, before intents. In every node, deterministic routes precede intent
+routes and no `always` follows them. Caller-answer nodes retain their waiting
 declaration; the generator must not turn every silent node into an immediate
 route or reuse an older answer as fresh input.
 

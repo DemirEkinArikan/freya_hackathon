@@ -285,6 +285,10 @@ class SyntheticFinalConsistencyTests(unittest.TestCase):
 
     def setUp(self):
         IndependentBundleTests.setUp(self)
+        # Runtime provenance requires both directories after reconstruction.
+        # ZIPs retain files, so an empty benchmarks directory would vanish and
+        # prevent every synthetic final from reaching its semantic checks.
+        (self.root / 'benchmarks/evidence.py').write_text('# Synthetic retained runtime source\n')
         try:
             import test_package_submission as package_tests
         except ModuleNotFoundError:

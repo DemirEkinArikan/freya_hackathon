@@ -760,5 +760,451 @@
       "holdout_inputs_used": false,
       "generated_outputs_edited": false
     }
+  },
+  "round4_candidate_acceptance": {
+    "as_of_utc": "2026-10-11T12:47:00Z",
+    "issue_comments_covered": "11:05Z to 12:47Z",
+    "driver_sha256": "02a5c242103f358c0836e900e4e26445520d28b6fca29660dc22a65b828d7fa8",
+    "replay_sha256": "ac06c07fc6e40937302320f51ad59fcd732fce34b6a9a827a51a6f6f9bb0cbfa",
+    "driver_identical_at_sources": true,
+    "candidates": [
+      {
+        "run_id": "20261011T113924574303Z",
+        "source_commit": "42b1749d71082b776914f464bdafe3e29a1baa69",
+        "builder_source_sha256": "86d24631296361cf0613c7b919100283256f886857e56b824d04ec2936152589",
+        "status": "generated_validated",
+        "start_utc": "2026-10-11T11:39:24Z",
+        "end_utc": "2026-10-11T11:59:34Z",
+        "elapsed_seconds": 1210.014,
+        "stage_seconds": {
+          "policy": 456.501,
+          "workflow": 750.969
+        },
+        "policy_repairs": 0,
+        "workflow_repairs": 0,
+        "selected_attempt": "attempts/plan-001",
+        "isolation_audit": {
+          "canary_exposure": [],
+          "failures": [],
+          "status": "pass"
+        },
+        "audit_before_generation": true,
+        "input_sha256": {
+          "brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8"
+        },
+        "trace_input_digests": {
+          "sources": [
+            {
+              "id": "brief-1",
+              "file": "brief-a.md",
+              "sha256": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+            }
+          ],
+          "tool_api_sha256": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+        },
+        "artifact_sha256": {
+          "workflow.json": "4eaac8f57bc5bc5abf619ba925d5cca01f73ff548d4bc8f162a8e1a0da3dd9c0",
+          "plan.json": "6379c670ff0133a44d4ec9950076bb2c078307e29c20cf8a49c8d3e3865f308a",
+          "policy.json": "e037a35778f06b1807eadf147657da318bfd20fb0c51a0ce4d99ab74f7e3c36b",
+          "policy.contract.json": "c7ea5fbfe0f375272826a339eb78fddb585f69f49cb993419e6d37b424367251",
+          "manifest.json": "9b50585cabf1482f59254bae86108a1892312bf38a12eb3a61d08054711fc8e3",
+          "trace.jsonl": "22ad5421ad0dbc9bac7088736fe963cf9c85ccac86a259bcaaeded3bf9cb0a8e",
+          "build-provenance.json": "f9187bc1e561f67e949e68c43e523a2a46e85fc9689400b6fcb3031b57343a99",
+          "builder-source.json": "56666f7324971d43e8708b1e9113c4590855b69d65c6d31a6f5f84f2b6eb32f3",
+          "selected_guard_context": "601970b962a31e4dbd5908e432597bbfba9841cd52da5217588008be900a8152"
+        },
+        "manifest_canonical_workflow_sha256": "cac04fd6fbfda7654c054402ca9e3a7c098c7127d961c1bf32b14cbe7b6844e6",
+        "active_rules": 54,
+        "permitted_operations": [
+          "close_call",
+          "create_promise",
+          "get_account",
+          "schedule_callback",
+          "transfer_to_agent",
+          "verify_identity"
+        ],
+        "declarations_carried_into_export": [
+          {
+            "category": "controller_stricter",
+            "controller_effect": "Uncertain verification evidence, or an identity_failure_classes fault or failed exact repeat, ends verification: only the identity_close_choices row requiring that evidence can close, otherwise the call is quarantined.",
+            "justification": "The brief supplies no closing disposition for uncertain verification. Its language-derived identity choices cannot substitute for the controller's required protected-evidence choice, so that case quarantines without a close attempt.",
+            "requirement": "Every call must end with exactly one close_call, including calls that encounter uncertain verification evidence.",
+            "rule_ids": [
+              "closing-duty"
+            ]
+          }
+        ],
+        "frozen_ledger": {
+          "file": "public-a-source-ledger.json",
+          "sha256": "35df8b45b15fd109e2ba2f341ff9b21eba82408d2916404955d230fd2a1ebf8e",
+          "last_written_utc": "2026-10-11T11:45:14Z",
+          "read_only": true,
+          "cases": 35,
+          "sources": {
+            "brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+            "openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8"
+          }
+        },
+        "policy_frozen_utc": "2026-10-11T11:47:01Z",
+        "workflow_written_utc": "2026-10-11T11:59:34Z",
+        "independent_recheck": {
+          "recheck_checkout": "42b1749 (clean, detached)",
+          "source_provenance_verified": true,
+          "source_is_ancestor_of_main": true,
+          "run_file_list": {
+            "sha256": "16735451776cb49c01d34f4960890eaacf441deeee943577da34467468b74adb",
+            "files": 21,
+            "changed": []
+          },
+          "root_equals_selected_attempt": true,
+          "expectations": 43,
+          "guard_probes": 8,
+          "expectations_copy_ledger_exactly": true,
+          "bindings_equal_original_inputs": true,
+          "official_driver_pass": "43/43",
+          "results_equal_lane_results_except": [
+            "timing"
+          ],
+          "close_outcome_reason_pairs_exercised": [
+            "\"no_promise\"/\"dispute\"",
+            "\"no_promise\"/\"hardship\"",
+            "\"no_promise\"/\"refused\"",
+            "\"no_promise\"/\"service_error\"",
+            "\"not_reached\"/\"callback\"",
+            "\"not_reached\"/\"deceased\"",
+            "\"not_reached\"/\"no_callback\"",
+            "\"not_reached\"/\"unclear\"",
+            "\"not_reached\"/\"wrong_number\"",
+            "\"not_verified\"/\"declined\"",
+            "\"not_verified\"/\"failed\"",
+            "\"paid\"/null",
+            "\"promise\"/null",
+            "\"transferred\"/\"human\"",
+            "\"transferred\"/\"restructuring\"",
+            "\"transferred\"/\"support\""
+          ],
+          "openapi_binding": {
+            "api_nodes": 7,
+            "issues": []
+          },
+          "shortcut_identifiers_checked": 53,
+          "shortcut_hits": [],
+          "structure": {
+            "by_type": {
+              "api_request": 7,
+              "code": 63,
+              "conversation": 32,
+              "end_call": 2
+            },
+            "cannot_reach_end": [],
+            "conversation_without_turn_cap": [],
+            "nodes": 104,
+            "unreachable": []
+          },
+          "proof_flags": {
+            "all_path_safety_proven": false,
+            "hosted_behavior_proven": false,
+            "source_interpretation_proven": false,
+            "speech_behavior_proven": false,
+            "t07_acceptance_proven": false
+          }
+        },
+        "goal": "payment collection, one product (kit brief A, kit OpenAPI)",
+        "lane_comments": [
+          6108635783,
+          6108794222,
+          6108917218
+        ],
+        "frame_enum_fidelity": {
+          "finding": "the replay checks extraction names but not enum values; 30 caller values in 22 lane scripts set payment_answer.proposed_response_kind outside its enum",
+          "off_enum_counts": {
+            "acceptance": 19,
+            "flat_refusal": 8,
+            "refuses_to_talk": 2,
+            "full_amount_too_much": 1
+          },
+          "mapping_to_node_enum": {
+            "acceptance": "terms",
+            "full_amount_too_much": "full_too_much",
+            "flat_refusal": "refusal",
+            "refuses_to_talk": "refusal"
+          },
+          "v2_result": "43/43 pass",
+          "v2_same_calls_state_terminal_and_node_path": true,
+          "field_use": "dialogue context in payment_decision's task message only; no code node or deterministic route reads it",
+          "caller_values_checked_v2": 363,
+          "remaining_violations": []
+        },
+        "policy_adaptation_executable": "pass",
+        "source_review_questions": [
+          "promise_readback is product_type, so the protected read-back names the product by type only; rule 34 says read the product and rule 17 names it with the card ending; public-B r4 encoded rule 17 as product_fields [type, card_last4], so this is a model choice",
+          "a refused close_call routes to the silent bg_terminal (builder/guards.py:2094 at 42b1749, :2137 on main 2162f64); an in-memory probe with a wrong early-exit reason (PA29, PA32, PA34 callback; PA29 hardship) ends with no request, closed=false, quarantined=false: fail-closed, but rule 46 is unmet on that non-ideal path",
+          "declared controller_stricter limitation: uncertain verification evidence quarantines without a close",
+          "not covered (brief silent): failure receipts for transfer_to_agent, schedule_callback, get_account and close_call"
+        ],
+        "operative_source_review": "none exists (unowned)",
+        "caller_wording_robustness": "not tested (ideal extraction)",
+        "decision": "executable behaviour accepted; banking acceptance not established (no operative source review; read-back question open)"
+      },
+      {
+        "run_id": "20261011T120037352826Z",
+        "source_commit": "eea245ebf95f39210e144d259a8921231db86105",
+        "builder_source_sha256": "2967795b52fc26b62d3f8e49b6320c80873bd18e2fa14784701df885aaca3cf6",
+        "status": "generated_validated",
+        "start_utc": "2026-10-11T12:00:37Z",
+        "end_utc": "2026-10-11T12:19:16Z",
+        "elapsed_seconds": 1119.568,
+        "stage_seconds": {
+          "policy": 623.487,
+          "workflow": 493.071
+        },
+        "policy_repairs": 0,
+        "workflow_repairs": 0,
+        "selected_attempt": "attempts/plan-001",
+        "isolation_audit": {
+          "canary_exposure": [],
+          "failures": [],
+          "status": "pass"
+        },
+        "audit_before_generation": true,
+        "input_sha256": {
+          "brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+          "brief-b.md": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+          "openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8"
+        },
+        "trace_input_digests": {
+          "sources": [
+            {
+              "id": "brief-1",
+              "file": "brief-a.md",
+              "sha256": "8389c0096a228b56f5abb35a608c755717becd5c26b85e7ac53e57b0dd0900e3"
+            },
+            {
+              "id": "brief-2",
+              "file": "brief-b.md",
+              "sha256": "7eeb6464eabd2e57aff916488f3bba1e2c1c35077c29fd6dac7b764385fce123"
+            }
+          ],
+          "tool_api_sha256": "dc55f04983d65296214560231c33e64acfdeb64f0fa21f75da2bf6d4aaaa9c7e"
+        },
+        "artifact_sha256": {
+          "workflow.json": "3c1e5fb0974af42dffcb31dc98a61a748157e7c37761c9b475510003affb89a7",
+          "plan.json": "fa4db201b9edf5fbba5a540c4aa92eb65acc0b535ff3b539fcc5936ed6ed826d",
+          "policy.json": "529d880c7bcd5ddef12ab224fff27da9e255c2d17dcc43dbc0bbf6afca8c7802",
+          "policy.contract.json": "e8a54c956c0821680441a48a826db65d5c035e79f741c0fb7c8bfe5da202b93c",
+          "manifest.json": "a31a564e582b30cb885f5153ceda67baf36da52e305ab888c5aaa2b187c064ca",
+          "trace.jsonl": "2e2fb2b43e889129912a3015cac8be818b2eac88838b93285cac85c27001937c",
+          "build-provenance.json": "5eb00f43a39fdaa60b455ede6be0287fa40dc35b38c01a81f21f13515cc68afc",
+          "builder-source.json": "f4e99a30abcded0750a6ea652f1e41128497b7cca161658e9bd914d9ece03c44",
+          "selected_guard_context": "b8acfde81b7a0b9e6af259cba33f739f024cf94223b1ed7d397109ff7f4c6d19"
+        },
+        "manifest_canonical_workflow_sha256": "0cbcb3bd8d058fd92d3f4f3bb0135b09e20404bc20b8b33e1a7bb60c1b6fd6b0",
+        "active_rules": 72,
+        "permitted_operations": [
+          "add_note",
+          "close_call",
+          "create_promise",
+          "get_account",
+          "schedule_callback",
+          "transfer_to_agent",
+          "verify_identity"
+        ],
+        "declarations_carried_into_export": [],
+        "frozen_ledger": {
+          "file": "t15b-source-ledger.json",
+          "sha256": "647e019294c2662393f1a309a4b7997b2b137bb4b3616c007e4abbcb46d0a92a",
+          "last_written_utc": "2026-10-11T07:06:36Z",
+          "read_only": false,
+          "cases": 3,
+          "sources": {
+            "brief-a.md": "d57c049c89aec4615f5b939c5a96ee9bd194142d17045bc4036615cfbdf0f1c7",
+            "brief-b.md": "c59c70099148b91c13e9c5e40246a63b58638f09469d735f8eb65771bb63d550",
+            "openapi.json": "9a8410b12e5c82b6c6a30e9ed7030574d6f919cafdb1e035cef7bd876b0badb8"
+          }
+        },
+        "policy_frozen_utc": "2026-10-11T12:11:00Z",
+        "workflow_written_utc": "2026-10-11T12:19:16Z",
+        "independent_recheck": {
+          "recheck_checkout": "eea245e (clean, detached)",
+          "source_provenance_verified": true,
+          "source_is_ancestor_of_main": true,
+          "run_file_list": {
+            "sha256": "082baf5bc4ff93d349e9b083fec6a54e12df56381b14ee297d92c8d1cc8859d2",
+            "files": 22,
+            "changed": []
+          },
+          "root_equals_selected_attempt": true,
+          "expectations": 3,
+          "guard_probes": 0,
+          "expectations_copy_ledger_exactly": true,
+          "bindings_equal_original_inputs": true,
+          "official_driver_pass": "3/3",
+          "results_equal_lane_results_except": [
+            "timing"
+          ],
+          "close_outcome_reason_pairs_exercised": [
+            "\"paid\"/null",
+            "\"promise\"/null",
+            "\"transferred\"/\"restructuring\""
+          ],
+          "openapi_binding": {
+            "api_nodes": 8,
+            "issues": []
+          },
+          "shortcut_identifiers_checked": 19,
+          "shortcut_hits": [],
+          "structure": {
+            "by_type": {
+              "api_request": 8,
+              "code": 51,
+              "conversation": 11,
+              "end_call": 2
+            },
+            "cannot_reach_end": [],
+            "conversation_without_turn_cap": [],
+            "nodes": 72,
+            "unreachable": []
+          },
+          "proof_flags": {
+            "all_path_safety_proven": false,
+            "hosted_behavior_proven": false,
+            "source_interpretation_proven": false,
+            "speech_behavior_proven": false,
+            "t07_acceptance_proven": false
+          }
+        },
+        "goal": "payment collection, several products (kit briefs A and B, kit OpenAPI)",
+        "lane_comments": [
+          6108806263,
+          6109015044
+        ],
+        "second_goal_gate_comment": 6109086561,
+        "frame_enum_fidelity": {
+          "caller_values_checked": 36,
+          "violations": []
+        },
+        "coverage_limits": "3 cases; no identity failure, refusal, partial promise, write failure, retry or guard probe",
+        "policy_adaptation_executable": "pass (narrow)",
+        "operative_source_review": "none exists",
+        "caller_wording_robustness": "not tested (ideal extraction)",
+        "decision": "executable behaviour accepted on a narrow ledger; banking acceptance not established"
+      },
+      {
+        "goal": "callback scheduling (approved development input, own OpenAPI)",
+        "run_id": "20261011T104109500476Z",
+        "source_commit": "6fac1dd61dfa9622eaf8dec44182e361dc779ef2",
+        "recheck": {
+          "run_file_list_sha256": "a5657bd4a4958080256b6ee07588034ec08b854f633eb1e2e6e6db39ebe23311",
+          "run_files": 37,
+          "evaluator_file_list_sha256": "b81aec0a33c79e79b850e2c43e1d61008de40600e6877e047bcbe7ae4a235033",
+          "evaluator_files": 80,
+          "rehashed_unchanged": true,
+          "caller_values_checked": 75,
+          "enum_violations": 0,
+          "openapi_binding": {
+            "api_nodes": 2,
+            "issues": []
+          },
+          "shortcut_hits": []
+        },
+        "fixes_merged_since_round3": {
+          "F-01": [
+            "PR 184 f6d64d2fdd4b9527edcbee290ac0766ce93dbfc3",
+            "PR 185 9ce340fe83cc4640f767081969800bb9b0372eba"
+          ],
+          "F-03": [
+            "PR 182 2162f64c05f041216cd79b76bbdd749da75872c5"
+          ],
+          "F-02": "recorded limitation (coordinator decision, issue 8 comment 6108651390)"
+        },
+        "decision": "executable behaviour accepted (PR 171); banking acceptance withheld until the callback evidence rebuild on main 2162f64 or later passes"
+      },
+      {
+        "goal": "train-1 (synthetic, three goals)",
+        "run_id": "20261011T113935467134Z",
+        "source_commit": "42b1749",
+        "status": "generated_validated",
+        "declarations_carried_into_export": "3 controller_stricter (r36 callback/transfer retry, r36 close retry, r40 volunteered amount range)",
+        "result": "16/18 ledger cases; C06 no close after identity exhaustion (no identity_close); C46 close refused while required products stay undiscussed",
+        "my_rerun": {
+          "C06": "fail (4 verify_identity, no close)",
+          "C46": "fail (promise, no close)",
+          "C01": "pass",
+          "C26": "pass"
+        },
+        "comment": 6108943402,
+        "decision": "not accepted"
+      },
+      {
+        "goal": "S03 identity only",
+        "run_id": "20261011T113940961549Z",
+        "source_commit": "42b1749",
+        "status": "generated_validated",
+        "declarations_carried_into_export": "none",
+        "result": "NC1 fails: no asking node can propose no_contact, so the call ends without a close",
+        "my_rerun": {
+          "NC1 frozen-v2": "fail (no request, no close)",
+          "NC1 amended-v2": "fail",
+          "P1": "pass"
+        },
+        "comment": 6108827099,
+        "decision": "not accepted"
+      },
+      {
+        "goal": "train-2 (synthetic)",
+        "run_id": "20261011T113940523871Z",
+        "source_commit": "42b1749",
+        "status": "failed",
+        "reason": "one fatal protected_unenforceable declaration (callback strictly later than now, which the kernel already refuses); repair timed out",
+        "comment": 6108789626,
+        "decision": "no candidate"
+      },
+      {
+        "goal": "S04 account information",
+        "run_id": "20261011T120850752055Z",
+        "source_commit": "f5afe45",
+        "status": "failed",
+        "reason": "fatal declaration about wrong-answer units; duplicate decoded identity reason behind it",
+        "comment": 6109028446,
+        "decision": "no candidate"
+      },
+      {
+        "goal": "S03 identity only",
+        "run_id": "20261011T110443538449Z",
+        "source_commit": "0861c80",
+        "status": "generated_validated",
+        "decision": "no acceptance posted"
+      }
+    ],
+    "all_path_termination": {
+      "structural": "every node reachable and able to reach an end_call, every conversation node turn-capped, for callback r3, public-A and public-B r4",
+      "proven": false,
+      "generic_behaviour": "a refused or unavailable close ends silently at bg_terminal (no fabricated close): unmet close rule under ideal extraction in train-1 C06/C46 and S03 NC1, and after one wrong proposal in public-A"
+    },
+    "finish_condition": {
+      "generate_routes_extraction_dialogue_code": "met by callback r3, public-A, public-B r4",
+      "openapi_fields_enums_no_case_id_shortcuts": "met by the same three",
+      "different_supported_goals": "callback scheduling and payment collection have executable acceptance; whether kit collections counts as the second goal is a coordinator decision (the round-3 decision looked to S03 or S04)",
+      "every_executable_path_terminates_safely": "structural evidence only; fail-closed silent end leaves the close rule unmet on the listed paths",
+      "banking_acceptance": "none: callback r3 withheld pending its evidence rebuild; public-A and public-B have no operative source review",
+      "met": false
+    },
+    "remaining": [
+      "Callback evidence rebuild on main 2162f64 or later, official driver against callback-source-ledger.json 6f028d09, S01 re-check of F-01 and F-03",
+      "Operative source review of public-A (or public-B), unowned; settle the product read-back question. A public-B evidence run (two attempts) started on 2162f64 at 12:49Z (comment 6109209600) and would need the same review",
+      "Coordinator ruling on kit collections as the second goal; otherwise S03 or S04 must pass: S04 gaps 1 and 2 are owned since 12:52-12:53Z (comments 6109223647, 6109216713), train-2 callback refusal text by the kernel-refusal-text lane (6109222905); no owner found for proposable requires-none closing rows (S03 NC1) or identity-exhaustion close binding (train-1 C06)",
+      "Coordinator ruling on the fail-closed silent end: recorded limitation or a fix lane",
+      "Caller wording robustness and hosted behaviour (T14)"
+    ],
+    "claims": {
+      "issue_closed": false,
+      "cowork_complete_run": false,
+      "model_jobs_launched": 0,
+      "simulation_calls": 0,
+      "holdout_inputs_used": false,
+      "generated_outputs_edited": false,
+      "ledgers_edited": false
+    }
   }
 }

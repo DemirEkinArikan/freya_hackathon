@@ -10,7 +10,7 @@ import copy
 import json
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any, Mapping, NotRequired, TypedDict
+from typing import Any, Mapping, TypedDict
 
 from .safety import canonical_json, digest
 from .call_variables import CallVariablesError, check_call_variables
@@ -46,18 +46,6 @@ class EffectiveDateSelection(TypedDict):
 
 class ScopedDateValue(TypedDict):
     effective_date: EffectiveDateSelection
-
-
-class CallGoalSelection(TypedDict):
-    selector: str
-    wire_codes_rule: str
-    applies_to: list[str]
-    rule: str
-    default: NotRequired[str]
-
-
-class ScopedGoalValue(TypedDict):
-    call_goal: CallGoalSelection
 
 
 class PolicyError(ValueError):
@@ -128,7 +116,7 @@ _SHAPE_GUIDANCE = {
     "identity_close_choices": 'a nonempty object with only unreached/incomplete scopes; each scope is a nonempty array of objects containing outcome (nonempty string), optional reason (nonempty string), and requires ("none"/"recorded_callback"/"no_recorded_callback"). Every choice must retain identity_close[scope].outcome and any reason must belong to its sourced close_reasons vocabulary. Successful protected transfer evidence is handled separately; do not invent an identity choice or outcome to stand in for a transfer',
     "promise_failure_disposition": "an object containing exactly reason (nonempty string) and clear_pending (boolean). For selected commit_promises, encode any supplied supported exhaustion consequence here with its sourced note_reasons vocabulary; descriptive extensions alone are not executable. If no consequence is supplied, omit this optional rule rather than invent a disposition; absence remains conservative",
     "record_notes": "a boolean, not a string or integer",
-    "resolve_all_products": "a boolean, or exactly {call_goal: {selector: ordinary declared read-only call input name, wire_codes_rule: source code-map rule ID, applies_to: unique nonempty source-code array (at most 64), rule: primitive same-kind rule ID, default: optional explicitly sourced input fallback code}}. An inactive goal supplies no resolution constraint, not an invented frozen false. A default build objective cannot repair a missing mandatory selector. Selector typing is inspection only until protected reference retention and runtime selection are implemented; guarded compilation rejects it meanwhile",
+    "resolve_all_products": "a boolean, not a string or integer",
     "transfer_prerequisites": 'a nonempty object mapping queue names to "none", "identity", or "account"',
     "promise_readback": "an object with a nonempty unique product_fields string array excluding customer_id/product_id, and optional value_labels mapping selected fields to string-to-string label maps",
     "account_disclosure_fields": "an array of unique nonempty actual API scalar field names required on every product (empty allowed), or exactly {common: such a field array, by_product_type: a nonempty object mapping supplied product-type codes to such arrays}. Common fields are required on every product; conditional fields only on their selected supplied type. Exclude customer_id/product_id and their aliases. Preserve source conditions instead of requiring type-specific fields globally; no invented defaults. Keys use exact API type codes or source semantic names explicitly mapped by frozen wire_codes.product_types",
@@ -214,24 +202,6 @@ def _scoped_value_errors(kind: str, value: Any) -> list[str] | None:
                 try:
                     valid = date.fromisoformat(branch["date"]).isoformat() == branch["date"]
                 except ValueError:
-                    valid = False
-    elif kind == "resolve_all_products" and isinstance(value, dict) and "call_goal" in value:
-        selection = value["call_goal"]
-        valid = (set(value) == {"call_goal"} and isinstance(selection, dict)
-                 and set(selection) in ({"selector", "wire_codes_rule", "applies_to", "rule"},
-                                        {"selector", "wire_codes_rule", "applies_to", "rule", "default"}))
-        if valid:
-            codes = selection["applies_to"]
-            valid = (text(selection["wire_codes_rule"]) and text(selection["rule"])
-                     and isinstance(codes, list) and 0 < len(codes) <= 64
-                     and all(text(code) for code in codes) and len(set(codes)) == len(codes)
-                     and ("default" not in selection or text(selection["default"]))
-                     and text(selection["selector"])
-                     and selection["selector"] not in {"customer_id", "now"})
-            if valid:
-                try:
-                    check_call_variables([selection["selector"]])
-                except CallVariablesError:
                     valid = False
     else:
         return None

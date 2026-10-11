@@ -54,16 +54,11 @@ success claim. This fallback does not satisfy an explicit source requirement
 to record a bank close. Supplied tables remain exact and fully typed; explicit
 empty or partial tables and choices without matching fixed scopes still reject.
 
-Source date and goal selectors have a closed inspection format inside the
+Source date selectors have a closed inspection format inside the
 existing rule value. `identity_wrong_limit` and `deadline_days` may reference
 primitive same-kind rules through
 `{effective_date: {before_rule: ID, on_or_after: {date: ISO_DATE, rule: ID}}}`.
-`resolve_all_products` may reference a source boolean through
-`{call_goal: {selector: NAME, wire_codes_rule: ID, applies_to: [CODES], rule: ID}}`,
-with an optional explicitly sourced input fallback. Goal codes are unique and
-bounded to 64 entries; the selector is an ordinary read-only input name, never
-`customer_id`, `now` or a credential/controller namespace. Existing primitive
-forms remain unchanged, including a deadline band literally named
+Existing primitive forms remain unchanged, including a deadline band literally named
 `effective_date` with an integer value.
 
 These forms validate syntax only. The guarded compiler and prefreeze requirements
@@ -72,11 +67,10 @@ are implemented. Typed metadata is not executable support. The future consumer
 must retain referenced primitive values, IDs, provenance and hashes before
 ancestor pruning; reject unknown, cross-kind, recursive or unsourced references;
 and validate every finite variant against its actual frozen API/schema. It must
-select from supplied local `now` and a declared, read-only goal snapshot, with
-safe refusal for unknown or malformed context. A default build objective is not
-permission to repair a missing mandatory selector. Inactive goal resolution is
-absence of that constraint, not an invented frozen `false`. No existing generated
-policy is rewritten or retroactively given date/goal enforcement.
+select from supplied local `now`, with safe refusal for unknown or malformed
+context. No existing generated policy is rewritten or retroactively given date
+enforcement. Goal-scoped product resolution uses the separately implemented
+protected initial-input selector rather than this date-reference format.
 
 An optional source-backed `product_count_bounds` rule retains explicit account
 cardinality separately: a nonempty object with `min`, `max`, or both, containing

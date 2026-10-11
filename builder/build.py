@@ -25,8 +25,8 @@ if __package__ in (None, ""):
 
 from .platform import FreyaClient, PlatformError
 from .contract import compile_policy_contract, PolicyContractError
-from .runtime import (CodexGenerator, Deadline, DeadlineExceeded, GenerationError, GenerationFormatError,
-                      GenerationStalled, GenerationTimeout, Trace)
+from .runtime import (CLAUDE_EFFORT, CLAUDE_MODEL, ClaudeGenerator, CodexGenerator, Deadline, DeadlineExceeded,
+                      GenerationError, GenerationFormatError, GenerationStalled, GenerationTimeout, Trace)
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
@@ -75,7 +75,7 @@ REPAIR_ADMISSION_FRACTION = 0.9
 # reasoning tokens at 0.0384 s each; medium about 1k), so a high or xhigh attempt is
 # retried at medium. With no policy yet there is no workflow to reserve time for,
 # so the retry keeps only the export reserve.
-RETRY_REASONING_EFFORT = {"high": "medium", "xhigh": "medium"}
+RETRY_REASONING_EFFORT = {"high": "medium", "xhigh": "medium", "max": "medium"}
 # A deterministic fallback plan compiles in about 3 s and a deployment plus export
 # took about 10 s on 11 Oct. It starts only with this much time left, and deploys
 # with its own smaller reserve because a timed-out plan call leaves about 300 s.
@@ -115,8 +115,12 @@ def parser() -> argparse.ArgumentParser:
     out.add_argument("--policy-file", type=Path, help="Provenance policy for offline validation, or explicitly resume generation from a policy matching all brief/API inputs")
     out.add_argument("--test-cases", type=Path, help="Optional evaluator-only cases; never included in model context")
     out.add_argument("--test-brief", choices=("A", "B"), help="Evaluator-only selection when supplied cases mix practice briefs")
-    out.add_argument("--model", default=os.environ.get("FREYA_BUILDER_MODEL") or os.environ.get("BUILDER_MODEL") or "gpt-6.1-sol")
-    out.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh"), default="high")
+    out.add_argument("--provider", choices=("claude", "codex"), default="claude",
+                     help="claude: Anthropic Messages API (needs ANTHROPIC_API_KEY); codex: the existing Codex CLI")
+    out.add_argument("--model", help="Defaults to " + CLAUDE_MODEL + " for claude; FREYA_BUILDER_MODEL, BUILDER_MODEL "
+                                     "or gpt-6.1-sol for codex")
+    out.add_argument("--reasoning-effort", choices=("low", "medium", "high", "xhigh", "max"),
+                     help="Defaults to " + CLAUDE_EFFORT + " for claude and high for codex; max is claude only")
     out.add_argument("--policy-repair", choices=("patch", "full"), default="patch",
                      help="Repair a rejected policy by a structured patch first (falls back to a full re-emission), or only by full re-emission")
     out.add_argument("--codex", default="codex", help="Existing Codex CLI executable")
@@ -537,9 +541,24 @@ def _known_secrets() -> tuple[str, ...]:
 
 
 
+def _resolve_provider(args) -> str:
+    """Fill provider-specific model and effort defaults; the trace records the resolved values."""
+    provider = getattr(args, "provider", None) or "codex"
+    if getattr(args, "model", None) is None:
+        args.model = CLAUDE_MODEL if provider == "claude" else (
+            os.environ.get("FREYA_BUILDER_MODEL") or os.environ.get("BUILDER_MODEL") or "gpt-6.1-sol")
+    if getattr(args, "reasoning_effort", None) is None:
+        args.reasoning_effort = CLAUDE_EFFORT if provider == "claude" else "high"
+    if provider == "codex" and args.reasoning_effort == "max":
+        raise ValueError("--reasoning-effort max requires --provider claude")
+    return provider
+
+
 def execute(args, *, generator=None, client_factory: Callable = FreyaClient, test_runner: Callable | None = None,
             deadline: Deadline | None = None) -> dict:
     deadline = deadline or Deadline(1800)
+    provider = _resolve_provider(args)
+    claude_record = {"provider": "claude"} if provider == "claude" else {}
     output_dir = _within_project(args.output_dir, must_exist=False)
     output_dir.mkdir(parents=True, exist_ok=True)
     run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
@@ -548,7 +567,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
     secret_values = _known_secrets()
     trace = Trace(run_dir / "trace.jsonl", secrets=secret_values)
     mode = "extract-policy-only" if args.extract_policy_only else "validate-only" if args.validate_only else "offline-fixture" if args.offline else "generate-only" if args.generate_only else "live"
-    trace.emit("start", mode=mode, model=args.model if mode in {"live", "generate-only", "extract-policy-only"} else None)
+    trace.emit("start", mode=mode, model=args.model if mode in {"live", "generate-only", "extract-policy-only"} else None,
+               **({**claude_record, "reasoning_effort": args.reasoning_effort} if claude_record else {}))
     attempt_dir = None
     attempt_record = None
     attempt_open = False
@@ -599,6 +619,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             "plan_fallback": getattr(args, "plan_fallback", True),
             "evaluator_input": evaluator_input,
             **({"declaration_mode": "relaxed"} if declarations == "relaxed" else {}),
+            **claude_record,
         })
         _write_json(run_dir / "builder-source.json", source_record)
         trace.emit("builder_source_snapshot", builder_source_sha256=source_record["builder_source_sha256"],
@@ -621,6 +642,8 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             return _complete_run(run_dir, manifest, trace, source_record, secret_values, deadline,
                                  status="validated", hosted_behavior_verified=False)
 
+        if generator is None and provider == "claude":
+            generator = ClaudeGenerator(run_dir, trace, deadline, model=args.model, reasoning_effort=args.reasoning_effort)
         generator = generator or CodexGenerator(run_dir, trace, deadline, executable=args.codex, model=args.model,
                                                 reasoning_effort=args.reasoning_effort)
         trace.emit("stage_started", stage="policy")
@@ -663,7 +686,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
             deadline.require()
             manifest = {"mode": mode, "status": "policy_extracted", "sources": source_manifest,
                         "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
-                        "repairs": policy_repairs, "policy_contract_sha256": contract_sha256,
+                        **claude_record, "repairs": policy_repairs, "policy_contract_sha256": contract_sha256,
                         "execution_requirements_sha256": requirements["sha256"],
                         "policy_provenance_checked": True, "workflow_created": False, "hosted_behavior_verified": False,
                         "stage_durations": stage_durations, "elapsed_seconds": round(deadline.elapsed(), 3),
@@ -833,7 +856,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
                 _attempt_status(attempt_dir, attempt_record, secret_values, status="generated_validated", phase="complete")
                 manifest = {"mode": mode, "status": "generated_validated", "sources": source_manifest,
                             "tool_api_sha256": digest(openapi), "model": args.model, "reasoning_effort": args.reasoning_effort,
-                            "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
+                            **claude_record, "repairs": repairs, "workflow_sha256": digest(candidate["workflow"]),
                             "policy_provenance_checked": True, "hosted_behavior_verified": False,
                             "action_guard_compilation_verified": True, "plan_sha256": digest(plan),
                             "guard_manifest_sha256": digest(guard_bundle["guard_manifest"]),
@@ -935,7 +958,7 @@ def execute(args, *, generator=None, client_factory: Callable = FreyaClient, tes
         _attempt_status(attempt_dir, attempt_record, secret_values, status="exported", phase="complete",
                         export_sha256=digest(exported))
         manifest = {"mode": mode, "status": "exported", "sources": source_manifest, "tool_api_sha256": digest(openapi),
-                    "model": args.model, "reasoning_effort": args.reasoning_effort, "repairs": repairs,
+                    "model": args.model, "reasoning_effort": args.reasoning_effort, **claude_record, "repairs": repairs,
                     "deployment": {k: v for k, v in deployment.items() if k != "workflow"},
                     "authored_workflow_sha256": digest(candidate["workflow"]), "export_sha256": digest(exported),
                     "action_guard_compilation_verified": True, "plan_sha256": digest(plan),
@@ -977,6 +1000,7 @@ def main(argv: list[str] | None = None) -> int:
         from .config import load_local_environment
         load_local_environment(PROJECT / ".env")
         args = parser().parse_args(argv)
+        _resolve_provider(args)
         print(json.dumps(sanitize(execute(args)), ensure_ascii=False))
         return 0
     except Exception as exc:

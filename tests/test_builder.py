@@ -220,7 +220,7 @@ class BuilderTests(unittest.TestCase):
         result = execute(self.args(), generator=generator, client_factory=FakeClient,
                          test_runner=lambda *args: self.fail("implicit hosted test"))
         self.assertEqual(result["status"], "exported")
-        self.assertEqual(result["model"], "gpt-6.1-sol")
+        self.assertEqual(result["model"], "claude-opus-5-5")
         self.assertFalse(result["hosted_behavior_verified"])
         self.assertTrue((PROJECT / result["run_directory"] / "submission.workflow.json").exists())
 
@@ -314,7 +314,8 @@ class BuilderTests(unittest.TestCase):
         def load(path):
             self.assertEqual(path, PROJECT / ".env")
             os.environ["FREYA_BUILDER_MODEL"] = "explicit-local-model"
-        base = ["--brief", str(self.directory / "brief.md"), "--tool-api", str(self.directory / "api.json"), "--generate-only"]
+        base = ["--brief", str(self.directory / "brief.md"), "--tool-api", str(self.directory / "api.json"), "--generate-only",
+                "--provider", "codex"]  # Local model variables select Codex models; Claude defaults to claude-opus-5-5.
         for extra, expected in (([], "explicit-local-model"), (["--model", "explicit-cli-model"], "explicit-cli-model")):
             with self.subTest(extra=extra), patch.dict("os.environ", {"FREYA_BUILDER_MODEL": "", "BUILDER_MODEL": ""}), \
                     patch("builder.config.load_local_environment", side_effect=load), \

@@ -159,7 +159,7 @@ class FirstPolicyRetryTests(unittest.TestCase):
     def test_stalled_first_attempt_is_killed_and_retried_once(self):
         run, calls = scripted_run((630, None), (0, POLICY_WIRE), (0, "plan"))
         with self.real_generator(run):
-            result = execute(self.args("--generate-only", "--reasoning-effort", "medium"))
+            result = execute(self.args("--generate-only", "--provider", "codex", "--reasoning-effort", "medium"))
         self.assertEqual((result["status"], result["policy_repairs"]), ("generated_validated", 1))
         self.assertEqual([call["effort"] for call in calls], ['model_reasoning_effort="medium"'] * 3)
         self.assertEqual(calls[1]["timeout"], 450)
@@ -181,7 +181,7 @@ class FirstPolicyRetryTests(unittest.TestCase):
     def test_timed_out_high_attempt_is_retried_at_medium_then_plans_at_high(self):
         run, calls = scripted_run((870, None), (0, POLICY_WIRE), (0, "plan"))
         with self.real_generator(run):
-            result = execute(self.args("--generate-only"))
+            result = execute(self.args("--generate-only", "--provider", "codex"))
         self.assertEqual(result["status"], "generated_validated")
         self.assertEqual([call["effort"].split("=")[1] for call in calls], ['"high"', '"medium"', '"high"'])
         rows = self.run_events()

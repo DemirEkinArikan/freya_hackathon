@@ -13,11 +13,15 @@ claiming that the builder is ready for competition.
 
 ## Setup
 
-Use Python **3.11** on macOS/Linux (or WSL), `gh`, and an authenticated
-Codex CLI. Python dependencies are standard-library only. Codex must support the
-isolation controls checked by the runtime; unsupported versions fail closed.
-The current default builder model is the locally configured `gpt-6.1-sol`, with
-high reasoning. Pin a model you can access using `--model` or `BUILDER_MODEL`.
+Use Python **3.11** on macOS/Linux (or WSL) and `gh`. The default builder provider
+is Claude: `--provider claude` calls `claude-opus-5-5` at `max` effort through the
+Anthropic Messages API, so install the `anthropic` Python SDK (`pip install anthropic`)
+and set `ANTHROPIC_API_KEY` in the environment or `.env`. The trace records the
+provider, model and effort of every call, never the key. `--provider codex` keeps the
+earlier Codex path (an authenticated Codex CLI, default model `gpt-6.1-sol` at high
+reasoning, or `--model`/`BUILDER_MODEL`); Codex must support the isolation controls
+checked by the runtime; unsupported versions fail closed. The unit tests need only
+the standard library.
 
 ```sh
 python3.11 --version

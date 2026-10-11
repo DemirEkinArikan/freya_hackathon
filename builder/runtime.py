@@ -13,6 +13,7 @@ import re
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from typing import Any, Callable
 
@@ -237,10 +238,15 @@ def run_bounded(argv: list[str], *, input: str | None = None, text: bool = True,
     return result
 
 
-def generation_environment(environ: dict[str, str] | None = None) -> dict[str, str]:
-    """Retain runtime/login locations, never bank or API secrets or shell state."""
+def generation_environment(environ: dict[str, str] | None = None, *, provider: str = "codex") -> dict[str, str]:
+    """Retain runtime/login locations, never bank secrets or shell state.
+
+    Only the Claude provider receives its own API key; Codex processes never do.
+    """
     source = os.environ if environ is None else environ
     allowed = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "TERM", "SHELL", "CODEX_HOME"}
+    if provider == "claude":
+        allowed = allowed | {"ANTHROPIC_API_KEY"}
     return {k: v for k, v in source.items() if k in allowed}
 
 
@@ -600,50 +606,362 @@ class CodexGenerator:
             raise GenerationError("Codex returned no final completed agent message; see sanitized trace")
         # Earlier commentary, started/updated items and cached candidates cannot
         # stand in for the final completed message of this invocation.
-        text = messages[-1].strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        return _decode_output(messages[-1], plan_contract_sha256=plan_contract_sha256, patch=patch)
+
+
+def _decode_output(text: str, *, plan_contract_sha256: str | None = None, patch: bool = False) -> dict:
+    """Apply the strict wire rules shared by every provider to one final model message."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    try:
+        value = _strict_json(text)
+    except (json.JSONDecodeError, ValueError):
+        raise GenerationFormatError("outer_json") from None
+    if plan_contract_sha256:
+        if (isinstance(value, dict) and "contract_sha256" in value
+                and value["contract_sha256"] != plan_contract_sha256):
+            raise GenerationError("Plan output does not match the frozen policy contract")
+        if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
+            raise GenerationFormatError("wire_shape")
+        if not isinstance(value["plan_json"], str):
+            raise GenerationFormatError("wire_shape")
         try:
-            value = _strict_json(text)
+            plan = _strict_json(value["plan_json"])
         except (json.JSONDecodeError, ValueError):
-            raise GenerationFormatError("outer_json") from None
-        if plan_contract_sha256:
-            if (isinstance(value, dict) and "contract_sha256" in value
-                    and value["contract_sha256"] != plan_contract_sha256):
-                raise GenerationError("Plan output does not match the frozen policy contract")
-            if not isinstance(value, dict) or set(value) != {"plan_json", "contract_sha256"}:
-                raise GenerationFormatError("wire_shape")
-            if not isinstance(value["plan_json"], str):
-                raise GenerationFormatError("wire_shape")
+            raise GenerationFormatError("inner_json") from None
+        if not isinstance(plan, dict):
+            raise GenerationFormatError("inner_shape")
+        return {"plan": plan, "contract_sha256": plan_contract_sha256}
+    if patch:
+        if not isinstance(value, dict) or set(value) != {"patch_json"} or not isinstance(value["patch_json"], str):
+            raise GenerationFormatError("wire_shape")
+        try:
+            value = _strict_json(value["patch_json"])
+        except (json.JSONDecodeError, ValueError):
+            raise GenerationFormatError("inner_json") from None
+        if not isinstance(value, dict):
+            raise GenerationFormatError("inner_shape")
+        return {"patch": value}
+    if isinstance(value, dict) and ("policy_json" in value or "workflow_json" in value):
+        if set(value) != {"policy_json", "workflow_json"}:
+            raise GenerationFormatError("wire_shape")
+        if not all(isinstance(value[key], str) for key in ("policy_json", "workflow_json")):
+            raise GenerationFormatError("wire_shape")
+        try:
+            value = {"policy": _strict_json(value["policy_json"]),
+                     "workflow": _strict_json(value["workflow_json"])}
+        except (json.JSONDecodeError, ValueError):
+            raise GenerationFormatError("inner_json") from None
+        if not all(isinstance(value[key], dict) for key in ("policy", "workflow")):
+            raise GenerationFormatError("inner_shape")
+    if isinstance(value, dict) and isinstance(value.get("policy"), dict) and isinstance(value.get("workflow"), dict):
+        return value
+    raise GenerationFormatError("wire_shape")
+
+
+CLAUDE_MODEL = "claude-opus-5-5"
+CLAUDE_FALLBACK_MODEL = "claude-sonnet-5-5"
+CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CLAUDE_EFFORT = "max"
+# Summarized thinking streams events while Claude reasons, so a silent stream is stalled.
+CLAUDE_THINKING = {"type": "adaptive", "display": "summarized"}
+# Thinking counts toward max_tokens. Policies reach 18-29k output tokens and plans about
+# 15k; the stage caps (at most 900 s) end a call long before this model limit.
+CLAUDE_MAX_TOKENS = 128000
+# Silence that ends a call as stalled: before message_start (large prompts), then between events.
+CLAUDE_STARTUP_STALL_SECONDS = 120
+CLAUDE_STALL_SECONDS = 300
+CLAUDE_POLL_SECONDS = 1.0
+# A transient API error is retried only while the call's allocation keeps this much time.
+CLAUDE_RETRY_MIN_SECONDS = 60
+CLAUDE_OVERLOADS_BEFORE_FALLBACK = 3
+# A request declined by a safety classifier reruns server-side on Anthropic's recommended model.
+CLAUDE_REFUSAL_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+
+def _claude_failure(exc: BaseException) -> str | None:
+    """Name a retryable Anthropic API failure, or None when retrying cannot help.
+
+    Classified by the SDK's APIStatusError status_code and body, so the unit suite
+    runs without the SDK installed.
+    """
+    try:
+        from anthropic import APIConnectionError
+    except ImportError:
+        APIConnectionError = ConnectionError
+    if isinstance(exc, (APIConnectionError, ConnectionError, TimeoutError)):
+        return "connection"
+    status = getattr(exc, "status_code", None)
+    if type(status) is not int:
+        return None
+    # A mid-stream SSE error arrives on an HTTP 200 response; its body names the kind.
+    body = getattr(exc, "body", None)
+    body = body if isinstance(body, dict) else {}
+    error = body.get("error") if isinstance(body.get("error"), dict) else body
+    kind = error.get("type")
+    if status in (403, 404):
+        return "unavailable"
+    if status == 429 or kind == "rate_limit_error":
+        return "rate_limited"
+    if status in (503, 529) or kind == "overloaded_error":
+        return "overloaded"
+    if status >= 500 or kind == "api_error":
+        return "server"
+    return None
+
+
+class ClaudeGenerator:
+    """Claude through the Anthropic Messages API: one streamed, tool-free, schema-bound call per stage."""
+
+    def __init__(self, output_dir: Path, trace: Trace, deadline: Deadline, model: str = CLAUDE_MODEL,
+                 reasoning_effort: str = CLAUDE_EFFORT, client: Any = None,
+                 fallback_model: str | None = CLAUDE_FALLBACK_MODEL, sleep: Callable[[float], None] = time.sleep):
+        self.output_dir, self.trace, self.deadline = Path(output_dir).resolve(), trace, deadline
+        self.model, self.reasoning_effort, self.fallback_model = model, reasoning_effort, fallback_model
+        self.client, self.sleep = client, sleep
+        self.active_model = model  # The fallback model, for the rest of the build, once Opus is unavailable.
+        self.refusal_fallback = True
+        self._checked = self._isolation_checked = False
+        self._catalog = None
+
+    def check_capabilities(self) -> None:
+        if self._checked:
+            return
+        if self.reasoning_effort not in CLAUDE_EFFORTS:
+            raise GenerationError("Claude effort must be one of " + ", ".join(CLAUDE_EFFORTS))
+        key = generation_environment(provider="claude").get("ANTHROPIC_API_KEY", "").strip()
+        if key and key not in self.trace.secrets:
+            self.trace.secrets = (*self.trace.secrets, key)  # Exact redaction, whatever the key format.
+        if self.client is None:
+            if not key:
+                raise GenerationError("ANTHROPIC_API_KEY is required for --provider claude; no generation prompt was sent")
             try:
-                plan = _strict_json(value["plan_json"])
-            except (json.JSONDecodeError, ValueError):
-                raise GenerationFormatError("inner_json") from None
-            if not isinstance(plan, dict):
-                raise GenerationFormatError("inner_shape")
-            return {"plan": plan, "contract_sha256": plan_contract_sha256}
-        if patch:
-            if not isinstance(value, dict) or set(value) != {"patch_json"} or not isinstance(value["patch_json"], str):
-                raise GenerationFormatError("wire_shape")
+                import anthropic
+            except ImportError:
+                raise GenerationError("--provider claude requires the anthropic Python SDK") from None
+            # Retries are ours, bounded by the build deadline and recorded in the trace.
+            self.client = anthropic.Anthropic(api_key=key, max_retries=0,
+                                              timeout=anthropic.Timeout(CLAUDE_STALL_SECONDS + 60, connect=30))
+        self._checked = True
+
+    def generation_catalog(self) -> tuple[str, dict]:
+        """The request configuration every call uses: provider, models, SDK version and no tools."""
+        if self._catalog is None:
             try:
-                value = _strict_json(value["patch_json"])
-            except (json.JSONDecodeError, ValueError):
-                raise GenerationFormatError("inner_json") from None
-            if not isinstance(value, dict):
-                raise GenerationFormatError("inner_shape")
-            return {"patch": value}
-        if isinstance(value, dict) and ("policy_json" in value or "workflow_json" in value):
-            if set(value) != {"policy_json", "workflow_json"}:
-                raise GenerationFormatError("wire_shape")
-            if not all(isinstance(value[key], str) for key in ("policy_json", "workflow_json")):
-                raise GenerationFormatError("wire_shape")
+                from importlib.metadata import version
+                sdk_version = version("anthropic")
+            except Exception:
+                sdk_version = None
+            config = {"provider": "anthropic", "api": "messages", "model": self.model,
+                      "fallback_model": self.fallback_model, "sdk": "anthropic-python", "sdk_version": sdk_version,
+                      "max_tokens": CLAUDE_MAX_TOKENS, "thinking": CLAUDE_THINKING, "tools": [],
+                      "refusal_fallback": "server_default" if self.refusal_fallback else None,
+                      "isolation_mode": "api_no_tools"}
+            document = json.dumps(config, sort_keys=True)
+            self._catalog = (document, {"source": "anthropic_messages_api", **config,
+                                        "generation_catalog_sha256": hashlib.sha256(document.encode()).hexdigest()})
+        return self._catalog
+
+    def prepare_catalog(self, directory: Path) -> dict:
+        document, evidence = self.generation_catalog()
+        (directory / "generation.model-catalog.json").write_text(document, encoding="utf-8")
+        return evidence
+
+    def _request(self, prompt: str, schema: dict, effort: str, model: str) -> dict:
+        # The installed SDK predates typed adaptive thinking and output_config: send them as body fields.
+        body = {"thinking": CLAUDE_THINKING,
+                "output_config": {"effort": effort, "format": {"type": "json_schema", "schema": schema}}}
+        headers = {}
+        if self.refusal_fallback:
+            body["fallbacks"] = "default"
+            headers["anthropic-beta"] = CLAUDE_REFUSAL_FALLBACK_BETA
+        return {"model": model, "max_tokens": CLAUDE_MAX_TOKENS, "messages": [{"role": "user", "content": prompt}],
+                "extra_body": body, "extra_headers": headers}
+
+    def check_isolation(self) -> None:
+        """Audit the exact request shape before any brief is sent.
+
+        A Messages API request is the model's whole context: there is no CLI, filesystem,
+        shell, MCP server or tool to probe with canaries, so the audit checks that the
+        request carries none and only the one user prompt, and records api_no_tools.
+        """
+        if self._isolation_checked:
+            return
+        _, catalog = self.generation_catalog()
+        request = self._request("isolation audit", GENERATION_SCHEMA, self.reasoning_effort, self.active_model)
+        body = {**{k: v for k, v in request.items() if not k.startswith("extra_")}, **request["extra_body"]}
+        exposed = sorted(set(body) & {"tools", "tool_choice", "mcp_servers", "container", "system", "context_management"})
+        failures = (["request_tools_or_context"] if exposed else []) + (
+            [] if [message["role"] for message in body["messages"]] == ["user"] else ["extra_messages"])
+        self.trace.emit("generation_isolation_audit", status="fail" if failures else "pass", provider="anthropic",
+                        isolation_mode="api_no_tools", failures=failures, request_fields=sorted(body),
+                        request_tools=exposed, model_catalog=catalog, remaining_seconds=round(self.deadline.remaining(), 2))
+        if failures:
+            raise GenerationError("Claude generation isolation audit failed; no banking brief was sent")
+        self._isolation_checked = True
+
+    def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *,
+                 max_seconds: float = 900, reserve_seconds: float = 300, reasoning_effort: str | None = None) -> dict:
+        return self._generate(prompt, purpose, GENERATION_SCHEMA, max_seconds=max_seconds,
+                              reserve_seconds=reserve_seconds, reasoning_effort=reasoning_effort)
+
+    def generate_policy_patch(self, prompt: str, *, max_seconds: float, reserve_seconds: float) -> dict:
+        return self._generate(prompt, "Repair rejected banking policy with a structured patch", PATCH_SCHEMA,
+                              max_seconds=max_seconds, reserve_seconds=reserve_seconds, patch=True)
+
+    def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
+        return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
+                              plan_generation_schema(contract_sha256), max_seconds=max_seconds,
+                              plan_contract_sha256=contract_sha256)
+
+    def _generate(self, prompt: str, purpose: str, schema: dict, *, max_seconds: float, reserve_seconds: float = 300,
+                  reasoning_effort: str | None = None, patch: bool = False,
+                  plan_contract_sha256: str | None = None) -> dict:
+        effort = reasoning_effort or self.reasoning_effort
+        if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
+            raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
+        if (type(reserve_seconds) not in {int, float} or not math.isfinite(reserve_seconds)
+                or reserve_seconds < 300):
+            raise GenerationError("Generation reserve must retain at least 300 export seconds")
+        if effort not in CLAUDE_EFFORTS:
+            raise GenerationError("Claude effort must be one of " + ", ".join(CLAUDE_EFFORTS))
+        self.deadline.require(seconds=1, reserve=reserve_seconds)
+        self.check_capabilities()
+        self.check_isolation()
+        self.deadline.require(seconds=1, reserve=reserve_seconds)
+        allocated = self.deadline.timeout(max_seconds, reserve=reserve_seconds)
+        started = time.monotonic()
+        model, attempt, overloads = self.active_model, 0, 0
+        while True:
+            attempt += 1
+            left = allocated - (time.monotonic() - started)
+            self.trace.emit("generation_model_catalog", **self.generation_catalog()[1])
+            self.trace.emit("model_call", provider="anthropic", model=model, purpose=purpose, reasoning_effort=effort,
+                            attempt=attempt, allocated_seconds=round(left, 2), prompt_characters=len(prompt),
+                            prompt_utf8_bytes=len(prompt.encode("utf-8")),
+                            response_schema_bytes=len(json.dumps(schema).encode("utf-8")),
+                            max_tokens=CLAUDE_MAX_TOKENS, reserve_seconds=reserve_seconds,
+                            remaining_seconds=round(self.deadline.remaining(), 2))
             try:
-                value = {"policy": _strict_json(value["policy_json"]),
-                         "workflow": _strict_json(value["workflow_json"])}
-            except (json.JSONDecodeError, ValueError):
-                raise GenerationFormatError("inner_json") from None
-            if not all(isinstance(value[key], dict) for key in ("policy", "workflow")):
-                raise GenerationFormatError("inner_shape")
-        if isinstance(value, dict) and isinstance(value.get("policy"), dict) and isinstance(value.get("workflow"), dict):
-            return value
-        raise GenerationFormatError("wire_shape")
+                message, stats = self._stream(self._request(prompt, schema, effort, model), left, effort)
+                break
+            except GenerationTimeout:
+                raise
+            except Exception as exc:
+                kind, status = _claude_failure(exc), getattr(exc, "status_code", None)
+                error = {"model": model, "attempt": attempt, "error_type": type(exc).__name__,
+                         "status_code": status, "error": str(exc)[:500]}
+                if kind is None and status == 400 and self.refusal_fallback and "fallback" in str(exc).lower():
+                    # An account without the refusal-fallback beta still builds, without it.
+                    self.refusal_fallback, self._catalog = False, None
+                    self.trace.emit("refusal_fallback_disabled", **error)
+                    continue
+                switch = bool(self.fallback_model) and model != self.fallback_model and (
+                    kind == "unavailable" or (kind == "overloaded" and overloads + 1 >= CLAUDE_OVERLOADS_BEFORE_FALLBACK))
+                if kind is None or (kind == "unavailable" and not switch):
+                    self.trace.emit("generation_api_error", **error)
+                    raise GenerationError(f"Claude generation failed: {type(exc).__name__} (status {status}); "
+                                          "see sanitized trace") from None
+                overloads = overloads + 1 if kind == "overloaded" and not switch else 0
+                delay = 0.0 if switch else self._retry_delay(exc, attempt)
+                left = allocated - (time.monotonic() - started)
+                if left - delay < CLAUDE_RETRY_MIN_SECONDS:
+                    self.trace.emit("generation_timeout", **error, error_kind=kind, allocated_seconds=round(allocated, 2),
+                                    elapsed_seconds=round(time.monotonic() - started, 2),
+                                    remaining_seconds=round(self.deadline.remaining(), 2))
+                    raise GenerationTimeout("Claude API errors left no time for another attempt in this allocation; "
+                                            "see sanitized trace") from None
+                self.trace.emit("generation_retry", **error, error_kind=kind, delay_seconds=delay,
+                                remaining_seconds=round(self.deadline.remaining(), 2))
+                if switch:
+                    self.trace.emit("model_fallback", from_model=model, to_model=self.fallback_model, reason=kind)
+                    model = self.fallback_model
+                    if kind == "unavailable":
+                        self.active_model = model
+                self.sleep(delay)
+        content = [block for block in message.content if getattr(block, "type", None) == "text"]
+        self.trace.emit("model_actual", model=message.model)
+        self.trace.emit("generation_result", provider="anthropic", model=model, served_model=message.model,
+                        purpose=purpose, reasoning_effort=effort, stop_reason=message.stop_reason,
+                        usage=message.usage.to_dict(), message_id=message.id,
+                        text_characters=sum(len(block.text) for block in content),
+                        thinking_blocks=sum(getattr(block, "type", None) in {"thinking", "redacted_thinking"}
+                                            for block in message.content),
+                        attempts=attempt, elapsed_seconds=round(time.monotonic() - started, 2), **stats,
+                        remaining_seconds=round(self.deadline.remaining(), 2))
+        if message.stop_reason == "refusal":
+            category = getattr(getattr(message, "stop_details", None), "category", None)
+            raise GenerationError(f"Claude declined the generation (refusal category {category}); see sanitized trace")
+        # After a mid-stream refusal fallback the next model continues the same text, so join every text block.
+        return _decode_output("".join(block.text for block in content), plan_contract_sha256=plan_contract_sha256,
+                              patch=patch)
+
+    @staticmethod
+    def _retry_delay(exc: BaseException, attempt: int) -> float:
+        try:
+            after = float(exc.response.headers["retry-after"])
+        except (AttributeError, KeyError, TypeError, ValueError):
+            after = -1.0
+        return min(60.0, after if after >= 0 else 2.0 ** attempt)
+
+    def _stream(self, request: dict, allocated: float, effort: str) -> tuple[Any, dict]:
+        """Consume one streamed call on a worker thread, so the allocation and stall guard bind exactly."""
+        stats = {"stream_events": 0, "thinking_characters": 0, "streamed_text_characters": 0,
+                 "first_event_seconds": None, "max_event_gap_seconds": 0.0, "last_event": "none"}
+        outcome, done, cancel, last = {}, threading.Event(), threading.Event(), [None]
+        started = time.monotonic()
+
+        def consume():
+            try:
+                with self.client.messages.stream(**request) as stream:
+                    outcome["stream"] = stream
+                    for event in stream:
+                        now = time.monotonic()
+                        if last[0] is None:
+                            stats["first_event_seconds"] = round(now - started, 2)
+                        else:
+                            stats["max_event_gap_seconds"] = max(stats["max_event_gap_seconds"], round(now - last[0], 2))
+                        last[0] = now
+                        stats["stream_events"] += 1
+                        stats["last_event"] = str(getattr(event, "type", "unknown"))
+                        delta = getattr(event, "delta", None)
+                        if getattr(delta, "type", None) == "thinking_delta":
+                            stats["thinking_characters"] += len(delta.thinking or "")
+                        elif getattr(delta, "type", None) == "text_delta":
+                            stats["streamed_text_characters"] += len(delta.text or "")
+                        if cancel.is_set():
+                            return
+                    outcome["message"] = stream.get_final_message()
+            except BaseException as exc:  # Raised again on the controller thread below.
+                outcome["error"] = exc
+            finally:
+                done.set()
+
+        threading.Thread(target=consume, name="claude-generation", daemon=True).start()
+        progress_at = 30.0
+        while not done.wait(CLAUDE_POLL_SECONDS):
+            now = time.monotonic()
+            elapsed = now - started
+            silence = elapsed if last[0] is None else now - last[0]
+            window = CLAUDE_STARTUP_STALL_SECONDS if last[0] is None else CLAUDE_STALL_SECONDS
+            if elapsed >= allocated or silence >= window:
+                cancel.set()
+                with contextlib.suppress(Exception):
+                    outcome["stream"].close()
+                fields = {**stats, "reasoning_effort": effort, "elapsed_seconds": round(elapsed, 2),
+                          "allocated_seconds": round(allocated, 2), "remaining_seconds": round(self.deadline.remaining(), 2)}
+                if elapsed >= allocated:
+                    self.trace.emit("generation_timeout", **fields)
+                    raise GenerationTimeout("Claude generation exceeded its allocated time; see sanitized trace")
+                self.trace.emit("stall_detected", **fields, window_seconds=window, silence_seconds=round(silence, 2),
+                                phase="before_first_event" if last[0] is None else "after_first_event")
+                raise GenerationStalled(f"Claude generation stalled: no stream event for {silence:.0f} s; "
+                                        "see sanitized trace")
+            if elapsed >= progress_at:
+                progress_at += 30
+                self.trace.emit("generation_progress", elapsed_seconds=round(elapsed, 2), **stats,
+                                remaining_seconds=round(self.deadline.remaining(), 2))
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["message"], dict(stats)

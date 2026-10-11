@@ -7,7 +7,7 @@ import re
 from typing import MutableMapping
 
 _KEYS = {"FREYA_API_KEY", "FREYA_API_KEY_2", "FREYA_API_URL", "FREYA_BANK_TEAM_KEY", "FREYA_WORKSPACE_ID",
-         "BUILDER_MODEL", "FREYA_BUILDER_MODEL", "FREYA_KEY"}
+         "BUILDER_MODEL", "FREYA_BUILDER_MODEL", "FREYA_KEY", "ANTHROPIC_API_KEY"}
 
 
 def read_local_environment(path: Path) -> dict[str, str]:

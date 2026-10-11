@@ -21,8 +21,10 @@ at transition level. Intent conditions use
 {operator:matches_intent,description:...}; fallback {operator:always}.
 Variable comparisons use outer {logic:or,conditions:[...]}; nested and/or groups
 are permitted. Operators: equals,not_equals,greater_than,less_than,contains,
-is_set,is_not_set. Avoid duplicate routes to the same target with incompatible
-conditions. Every conversation fallback and failure route targets a public node.
+is_set,is_not_set. Give each target one route per node: the host merges routes
+that share a target_node into one route whose condition is their OR, and which is
+unconditional if any of them is always. Every conversation fallback and failure
+route targets a public node.
 The host evaluates deterministic conditions (variable checks, always) before
 matches_intent and merges same-target routes, so list every ordinary
 deterministic route before every intent route and never follow intent routes
@@ -53,8 +55,12 @@ Entry scheduling follows the kit, not just graph reachability:
 - For required farewell, make the completion target the public guarded close
   action without waiting for another caller utterance. Speech, task-message
   routing instructions and an outgoing edge alone do not execute close_call.
-Keep tool-triggered and ordinary routes distinct; do not combine duplicate target
-routes with incompatible conditions or trigger modes.
+A completion (is_tool_call) and an ordinary route never share a target: the merge
+leaves one route, which cannot be both. When the dialogue model's completion and
+a caller answer must reach the same step, keep only the completion and let its
+description cover both cases (an unmatched caller turn stays in the node, where
+the dialogue model can still take it), or send the ordinary route to a different
+node.
 
 Action placeholder:
 {name,node_type:"guard_action",action,inputs:{semantic_field:public_variable},

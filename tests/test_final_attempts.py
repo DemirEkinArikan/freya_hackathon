@@ -252,6 +252,22 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertEqual([call.args[0][call.args[0].index('--output-dir') + 1] for call in popen.call_args_list],
                          ['artifacts/final/hidden-1/attempt-5', 'artifacts/final/hidden-1/attempt-6'])
 
+    def test_a_selected_deterministic_fallback_still_admits_both_rounds(self):
+        self.attempt('hidden-1', 1, fallback=True)
+        self.attempt('hidden-1', 2, status='failed', effort='medium')
+        self.assertEqual(self.select('hidden-1')[0], 0)
+        self.assertEqual((self.record()['selected'], self.record()['attempts'][0]['deterministic_fallback']), (1, True))
+        for round_number in ('2', '1'):
+            with self.subTest(round=round_number):
+                (code, _, error), popen = self.launch('--round', round_number, '--labels', 'hidden-1')
+                self.assertEqual(code, 0, error)
+                self.assertEqual(len(popen.call_args_list), 2)
+                self.alive = False
+                for number in (3, 4) if round_number == '2' else (5, 6):
+                    shutil.rmtree(self.root / f'artifacts/final/hidden-1/attempt-{number}')
+                    self.attempt('hidden-1', number, status='failed')
+                self.assertEqual(self.select('hidden-1')[0], 0)
+
     def test_no_round_starts_while_an_attempt_of_the_brief_still_runs(self):
         # select ran between the launcher's mkdir and its launch record: the new attempt looked finished.
         self.attempt('hidden-1', 1, status='failed')
@@ -269,7 +285,7 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def attempt(self, label, number, *, status='exported', errors=0, declared=0,
-                finished='2026-10-11T17:20:00+00:00', running=False, mode='strict', effort='high'):
+                finished='2026-10-11T17:20:00+00:00', running=False, mode='strict', effort='high', fallback=False):
         directory = self.root / 'artifacts/final' / label / f'attempt-{number}'
         run = directory / f'20261011T1700{number:02d}000000Z'
         run.mkdir(parents=True)
@@ -283,7 +299,8 @@ class FinalAttemptsTests(unittest.TestCase):
         if not running:
             events.append({'event': 'end', 'status': status, 'time': finished})
             (run / 'manifest.json').write_text(json.dumps({'status': status, 'error': 'synthetic failure'}
-                                                          if status == 'failed' else {'status': status}))
+                                                          if status == 'failed' else {'status': status, **(
+                                                              {'plan_origin': 'deterministic_fallback'} if fallback else {})}))
             (run / 'policy.json').write_text(json.dumps({'unsupported_constraints': ['synthetic'] * declared}))
             if status == 'exported':
                 (run / 'submission.workflow.json').write_text(json.dumps({'workflow_id': f'w{number}', 'agent_id': 'a',
@@ -318,6 +335,8 @@ class FinalAttemptsTests(unittest.TestCase):
             'local validation': ([dict(finished=early), dict(errors=2, finished=late)], {('attempt-1', 'local')}, 2),
             'package validation': ([dict(finished=early), dict(errors=2, finished=late)], {('attempt-1', 'package')}, 2),
             'strict before relaxed': ([dict(mode='relaxed', finished=early), dict(errors=2, declared=1, finished=late)], set(), 2),
+            'model plan before deterministic fallback, even relaxed': (
+                [dict(fallback=True, finished=early), dict(mode='relaxed', errors=2, finished=late)], set(), 2),
             'relaxed only without an eligible strict export': (
                 [dict(status='failed', finished=early), dict(errors=3, finished=late), dict(mode='relaxed', errors=1, finished=late)],
                 {('attempt-2', 'package')}, 3),

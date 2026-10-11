@@ -23,6 +23,32 @@ The wording supplies no confirmation permission. It does not change consent
 extraction, fresh-answer clearing, immutable terms, write ordering or API bodies.
 Unclear/refused/missing answers still send no request.
 
+## Read-back clauses
+
+An optional typed `confirmation_readback` rule is `{actions, clauses}`.
+`actions` is an explicit scope over the same three write roles. Each clause is
+copied verbatim and as whole words from the rule's own source quotation;
+`validate_policy` checks this, and so does the sealed compiler. The clauses
+contain no digits or other numerals, braces, control or format characters, or
+engine/credential prefixes, so they cannot add a numeral, a template or a field.
+The compiler checks only these literal properties, not meaning. A value written
+in words, or a clause cut out of a prohibition, is not detected; the guidance
+forbids both. Requests keep only their sealed fields either way. If the plan
+selects an action the rule names, that action must require confirmation;
+otherwise compilation fails rather than dropping the wording.
+
+Clauses are spoken verbatim after the protected terms, in the same fixed line:
+`Please confirm these exact terms: {{bg_readback}}; <clause>. Do you agree?`.
+With a scoped `confirmation_question` the line is
+`{{bg_readback}}; <clause>. <question>`. The line stays fixed text. A
+source-set conversation language for it is not represented and remains a
+recorded limitation.
+
+Without the rule, every compiled confirmation is byte-identical to before.
+`validation.py` lets only a `bg_*_confirm` node whose text equals the compiler's
+output read `bg_readback`, and only after byte-exact recompilation. The sealed
+kernel code is unchanged, so validator code-size headroom is unchanged.
+
 Tests use independently quoted English and Turkish questions and exact compiled
 consent transitions. These checks establish transport and guard invariants, not
 speech interpretation or multilingual conversation quality. Existing generated

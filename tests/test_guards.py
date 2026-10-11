@@ -499,8 +499,11 @@ class GuardExecutionTests(unittest.TestCase):
         self.advance("prepare", "commit_promises")
         self.advance("confirm", inputs={"consent": "yes"})
         # Neither operation_status_code nor node_status_code supplies evidence.
-        variables = {"bg_state": json.dumps(self.state),
-                     "create_promise_status_code": 200, "bg_commit_api_status_code": 200}
+        variables = {"customer_id": self.state["customer_id"], "now": self.state["now"]}
+        initializer = workflow["nodes"]["bg_init"]["pre_actions"][0]["function"]["parameters"]["properties"]["code"]["default"]
+        exec(initializer, {"vars": variables})
+        variables.update(bg_state=json.dumps(self.state),
+                         create_promise_status_code=200, bg_commit_api_status_code=200)
         for entry in node["response_mapping"]:
             variables[entry["variable"]] = result["data"].get(entry["path"][5:], "")
         source = workflow["nodes"]["bg_commit_result"]["pre_actions"][0]["function"]["parameters"]["properties"]["code"]["default"]

@@ -88,6 +88,8 @@ class NodeDisciplineTests(unittest.TestCase):
     def test_plan_prompt_keeps_step_procedure_out_of_the_system_prompt(self):
         text = " ".join((Path(__file__).resolve().parents[1] / "builder/prompts/workflow.txt").read_text().split())
         self.assertIn("Every step receives the whole system_prompt, so keep it short", text)
+        # Deceptive callers probe these in any step, so they stay in the shared prompt.
+        self.assertIn("the honesty, privacy and identity-verification rules that hold in every step", text)
         self.assertIn("Put each step's procedure, counts, offers and choices in that step's task_message", text)
         self.assertIn("recording notice as its own sentence about the call, never beside a statement that an action was recorded", text)
 

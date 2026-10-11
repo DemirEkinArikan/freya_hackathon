@@ -25,7 +25,8 @@ if __package__ in (None, ""):
 
 from .platform import FreyaClient, PlatformError
 from .contract import compile_policy_contract, PolicyContractError
-from .runtime import CodexGenerator, Deadline, DeadlineExceeded, GenerationFormatError, Trace
+from .runtime import (CodexGenerator, Deadline, DeadlineExceeded, GenerationFormatError, GenerationStalled,
+                      GenerationTimeout, Trace)
 from .safety import assert_no_secrets, canonical_json, digest, read_json, sanitize
 from .toolbindings import assert_live_contract, bind_controller_auth, derive_tools, operations, resolve_refs
 from .validation import validate_workflow
@@ -60,6 +61,12 @@ FIRST_WORKFLOW_RESERVE = 450
 REPAIR_BASE_SECONDS = 61
 REPAIR_SECONDS_PER_CHARACTER = 0.0044
 REPAIR_ADMISSION_FRACTION = 0.9
+# A first policy attempt that times out or stalls is retried once, admitted like a
+# format repair. Reasoning dominates call time (high first calls used 4.5-14k
+# reasoning tokens at 0.0384 s each; medium about 1k), so a high or xhigh attempt is
+# retried at medium. With no policy yet there is no workflow to reserve time for,
+# so the retry keeps only the export reserve.
+RETRY_REASONING_EFFORT = {"high": "medium", "xhigh": "medium"}
 FORMAT_REPAIR_GUIDANCE = ("Return only the exact required outer JSON object. Serialize each inner object "
                          "as a valid JSON string; escape quotes, backslashes and control characters once "
                          "for each JSON layer. Do not return commentary, duplicate keys or nonfinite numbers.")
@@ -207,24 +214,26 @@ def _stage_completed(trace, deadline, durations, stage, started, **fields):
 
 
 def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secrets, *, workflow_pending=True):
-    repair = failure = None
+    repair = failure = retry = None
     reserve = EXPORT_RESERVE + (FIRST_WORKFLOW_RESERVE if workflow_pending else 0)
     for attempt in range(MAX_REPAIRS + 1):
         cap = POLICY_INITIAL_CAP if attempt == 0 else POLICY_REPAIR_CAP
+        call_reserve = EXPORT_RESERVE if retry is not None and attempt == 1 else reserve
         if repair:
             _admit_repair(trace, deadline, "policy", attempt + 1, repair.get("previous_policy"), failure,
                           cap=cap, reserve=reserve)
-        deadline.require(seconds=1, reserve=reserve)
-        allocated = deadline.timeout(cap, reserve=reserve)
+        deadline.require(seconds=1, reserve=call_reserve)
+        allocated = deadline.timeout(cap, reserve=call_reserve)
         trace.emit("policy_generation_budget", attempt=attempt + 1, cap_seconds=cap,
-                   allocated_seconds=round(allocated, 2), reserve_seconds=reserve,
-                   first_workflow_reserve_seconds=FIRST_WORKFLOW_RESERVE if workflow_pending else 0,
+                   allocated_seconds=round(allocated, 2), reserve_seconds=call_reserve,
+                   first_workflow_reserve_seconds=call_reserve - EXPORT_RESERVE,
                    remaining_seconds=round(deadline.remaining(), 2))
         started = deadline.elapsed()
         try:
             extracted = generator.generate(make_policy_prompt(sources, openapi, repair),
                                            purpose="Extract banking policy and source/API bindings",
-                                           max_seconds=allocated, reserve_seconds=reserve)
+                                           max_seconds=allocated, reserve_seconds=call_reserve,
+                                           **(retry if retry is not None and attempt == 1 else {}))
         except GenerationFormatError as exc:
             _write_json(run_dir / f"policy.format-rejected-{attempt + 1}.json", {"format_error": exc.code})
             trace.emit("policy_format_validation", passed=False, format_error=exc.code, attempt=attempt + 1,
@@ -233,6 +242,19 @@ def _extract_policy(generator, sources, openapi, run_dir, trace, deadline, secre
                 raise
             failure = str(exc)
             repair = {"format_error": exc.code, "serialization_guidance": FORMAT_REPAIR_GUIDANCE}
+            continue
+        except GenerationTimeout as exc:
+            if attempt:
+                raise
+            failure = str(exc)
+            _admit_repair(trace, deadline, "policy", 2, None, failure, cap=POLICY_REPAIR_CAP, reserve=EXPORT_RESERVE)
+            effort = getattr(generator, "reasoning_effort", None)
+            effort = effort if isinstance(effort, str) else None
+            retry = {"reasoning_effort": RETRY_REASONING_EFFORT.get(effort, effort)}
+            trace.emit("policy_generation_retry", attempt=2, after="stall" if isinstance(exc, GenerationStalled) else "timeout",
+                       failed_reasoning_effort=effort, reasoning_effort=retry["reasoning_effort"],
+                       reserve_seconds=EXPORT_RESERVE, elapsed_seconds=round(deadline.elapsed() - started, 3),
+                       remaining_seconds=round(deadline.remaining(), 2))
             continue
         elapsed = round(deadline.elapsed() - started, 3)
         deadline.require(seconds=1, reserve=EXPORT_RESERVE)

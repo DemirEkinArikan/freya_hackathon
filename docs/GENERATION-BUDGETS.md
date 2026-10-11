@@ -17,7 +17,8 @@ same reserve. Extraction-only mode retains the 300 export/completion reserve
 without reserving a nonexistent workflow stage. The workflow stage still uses
 at most 900 seconds, clipped by the remaining global time and export reserve.
 The two-repair limit remains shared across policy and workflow validation.
-Timeouts remain failures; they do not automatically restart a model call.
+Timeouts remain failures, except that a first policy attempt that times out or
+stalls is retried once (see "Stall guard" below).
 
 Repair admission (11 Oct). A repair rewrites its whole document, so a policy
 or plan repair starts only when its allocation covers 90% of 61 seconds plus
@@ -90,6 +91,34 @@ guidance; plan repairs receive the same frozen contract and fixed guidance.
 Unaccepted raw output is retained in the original sanitized runtime trace, while
 only the fixed code enters repair context. Attempt records distinguish a format
 rejection from a validated or compiled proposal. Failed/incomplete/nonzero turns,
-unknown diagnostics or tool events, timeouts and frozen plan hash mismatches
-remain fatal. Additional checks cover those boundaries, unchanged policy hashes
-and the shared two-repair limit across policy and workflow format failures.
+unknown diagnostics or tool events, timeouts (other than the first-policy retry
+below) and frozen plan hash mismatches remain fatal. Additional checks cover
+those boundaries, unchanged policy hashes and the shared two-repair limit across
+policy and workflow format failures.
+
+Stall guard (11 Oct). Codex exec prints nothing between `turn.started` and its
+final message. None of the 182 calls that completed on 10-11 Oct printed a
+reasoning or partial item first, so a healthy call is silent for its whole
+duration. The runtime kills a call, with its process group, when it has not
+printed `turn.started` after 120 seconds (every retained call had by its first
+30-second progress check), or when a low or medium call stays silent for 600
+seconds after it. The slowest completed medium call took 346.5 seconds. The
+largest policy seen (83.4k characters) predicts about 490 seconds at medium,
+and heavy account concurrency adds up to 23%. High and xhigh calls have no
+silence window below the 900-second cap, because completed high calls took up
+to 800.4 seconds; their allocation stays the only bound. Replaying the rule over
+every retained call kills none of the 182 completed calls. A kill is a
+`stall_detected` trace event with its silence, window, phase and effort.
+
+First-policy retry (11 Oct). Two stress builds (stress-dev-11 and -12) spent
+their whole 900-second first policy call with no output after `turn.started`.
+Each then failed with about 893 seconds unused. A first policy attempt that
+stalls or times out is now retried once, and is admitted like a format repair:
+the 61-second base and the 450-second repair cap. The retry keeps only the
+300-second export reserve, because there is no policy yet to reserve plan time
+for. A high or xhigh attempt is retried at medium. Reasoning dominates call
+time: high first calls used 4.5-14k reasoning tokens at about 0.0384 seconds
+each, medium about 1k. `policy_generation_retry` records the decision, and the
+retry's `model_call` records its effort. Packaging and evidence-bundle checks
+accept that effort for the next model call only. Repairs, plan calls and the
+retry itself are not retried.

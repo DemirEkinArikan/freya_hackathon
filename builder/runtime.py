@@ -38,6 +38,39 @@ class GenerationFormatError(GenerationError):
         super().__init__("Codex completed output has invalid serialization: " + code)
 
 
+class GenerationTimeout(GenerationError):
+    """A call ended without a final message: its allocation ran out or its stream stalled."""
+
+
+class GenerationStalled(GenerationTimeout):
+    """The stall guard ended a call whose event stream stayed silent too long."""
+
+
+# Codex exec --json prints nothing between turn.started and its final message: none of
+# the 182 calls that completed on 10-11 Oct printed a reasoning or partial item first,
+# so a healthy call is silent for its whole duration. Every retained call had printed
+# turn.started by its first 30 s progress check.
+STARTUP_STALL_SECONDS = 120
+# Silence after turn.started that ends a call as stalled. Low/medium: the slowest
+# completed medium call took 346.5 s; the largest policy seen (83.4k characters, about
+# 21k output tokens at 0.0178 s, plus 3k reasoning tokens at 0.0384 s) predicts about
+# 490 s, and heavy account concurrency adds up to 23%. High/xhigh: completed calls took
+# up to 800.4 s, so no window below the 900 s stage cap is safe; the allocation stays
+# the only bound.
+STALL_WINDOW_SECONDS = {"low": 600, "medium": 600, "high": None, "xhigh": None}
+
+
+def _turn_started(text: str) -> bool:
+    for line in text.splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and value.get("type") == "turn.started":
+            return True
+    return False
+
+
 class Deadline:
     def __init__(self, seconds: float = 1800, clock: Callable[[], float] = time.monotonic):
         self.clock = clock
@@ -171,11 +204,12 @@ def run_bounded(argv: list[str], *, input: str | None = None, text: bool = True,
             if on_progress and interval < remaining and elapsed < timeout:
                 try:
                     on_progress(elapsed, exc.output, exc.stderr)
-                except BaseException:
+                except BaseException as failure:
                     with contextlib.suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
                     with contextlib.suppress(subprocess.TimeoutExpired):
                         process.communicate(timeout=2)
+                    failure.process_group_terminated = True
                     raise
                 remaining = timeout - elapsed
                 continue
@@ -348,7 +382,7 @@ class CodexGenerator:
             raise GenerationError("Installed Codex lacks required isolation controls: " + ", ".join(missing))
         self._checked = True
 
-    def argv(self, directory: Path, schema: Path) -> list[str]:
+    def argv(self, directory: Path, schema: Path, reasoning_effort: str | None = None) -> list[str]:
         # TOML table syntax is passed as one argv value; never interpolate shell commands.
         quoted = json.dumps(str(directory.resolve()))
         filesystem = '{":root"="deny",":minimal"="read",' + quoted + '="read"}'
@@ -362,7 +396,8 @@ class CodexGenerator:
                     "permissions.freya_generation.filesystem=" + filesystem,
                     "permissions.freya_generation.network.enabled=false", "features.skip_host_skill_discovery=true",
                     "model_catalog_json=" + json.dumps(str((directory / "generation.model-catalog.json").resolve())),
-                    "history.persistence=\"none\"", "model_reasoning_effort=" + json.dumps(self.reasoning_effort)]
+                    "history.persistence=\"none\"",
+                    "model_reasoning_effort=" + json.dumps(reasoning_effort or self.reasoning_effort)]
         for setting in settings:
             args.extend(["-c", setting])
         for feature in DISABLED_FEATURES:
@@ -396,15 +431,18 @@ class CodexGenerator:
         self._isolation_checked = True
 
     def generate(self, prompt: str, purpose: str = "Compile supplied banking brief and tool contract", *,
-                 max_seconds: float = 900, reserve_seconds: float = 300) -> dict:
-        return self._generate(prompt, purpose, max_seconds=max_seconds, reserve_seconds=reserve_seconds)
+                 max_seconds: float = 900, reserve_seconds: float = 300, reasoning_effort: str | None = None) -> dict:
+        return self._generate(prompt, purpose, max_seconds=max_seconds, reserve_seconds=reserve_seconds,
+                              reasoning_effort=reasoning_effort)
 
     def generate_plan(self, prompt: str, *, contract_sha256: str, max_seconds: float = 900) -> dict:
         return self._generate(prompt, "Generate restricted action plan from frozen banking policy contract",
                               max_seconds=max_seconds, plan_contract_sha256=contract_sha256)
 
     def _generate(self, prompt: str, purpose: str, *, max_seconds: float,
-                  plan_contract_sha256: str | None = None, reserve_seconds: float = 300) -> dict:
+                  plan_contract_sha256: str | None = None, reserve_seconds: float = 300,
+                  reasoning_effort: str | None = None) -> dict:
+        effort = reasoning_effort or self.reasoning_effort
         schema_value = plan_generation_schema(plan_contract_sha256) if plan_contract_sha256 else GENERATION_SCHEMA
         if type(max_seconds) not in {int, float} or not 0 < max_seconds <= 900:
             raise GenerationError("Generation stage cap must be positive and at most 900 seconds")
@@ -429,22 +467,46 @@ class CodexGenerator:
             allocated = self.deadline.timeout(max_seconds, reserve=reserve_seconds)
             started = time.monotonic()
             self.trace.emit("model_call", model=self.model or "codex-default; actual emitted model recorded when available",
-                            purpose=purpose, reasoning_effort=self.reasoning_effort,
+                            purpose=purpose, reasoning_effort=effort,
                             allocated_seconds=round(allocated, 2), prompt_characters=len(prompt),
                             prompt_utf8_bytes=len(prompt.encode("utf-8")),
                             response_schema_bytes=len(json.dumps(schema_value).encode("utf-8")),
                             reserve_seconds=reserve_seconds,
                             remaining_seconds=round(self.deadline.remaining(), 2))
+            quiet = {"characters": 0, "since": 0.0}
+            stall = {}
+
+            def progress(elapsed, stdout, stderr):
+                self._progress(elapsed, stdout, stderr)
+                text = self._text(stdout)
+                if len(text) != quiet["characters"]:
+                    quiet.update(characters=len(text), since=elapsed)
+                    return
+                started_turn = _turn_started(text)
+                window = STALL_WINDOW_SECONDS.get(effort) if started_turn else STARTUP_STALL_SECONDS
+                if window is not None and elapsed - quiet["since"] >= window:
+                    stall.update(stdout=stdout, stderr=stderr, window_seconds=window,
+                                 phase="after_turn_started" if started_turn else "before_turn_started",
+                                 silence_seconds=round(elapsed - quiet["since"], 2))
+                    raise GenerationStalled("Codex generation stalled: no stream event for "
+                                            f"{elapsed - quiet['since']:.0f} s; bounded sanitized partial output is in the trace")
             try:
-                result = self.run(self.argv(directory, schema), input=prompt, text=True, capture_output=True,
-                                  timeout=allocated, env=generation_environment(), cwd=directory, on_progress=self._progress)
+                result = self.run(self.argv(directory, schema, effort), input=prompt, text=True, capture_output=True,
+                                  timeout=allocated, env=generation_environment(), cwd=directory, on_progress=progress)
+            except GenerationStalled as exc:
+                self._record_output(stall.pop("stdout", ""), stall.pop("stderr", ""), partial=True)
+                self.trace.emit("stall_detected", **stall, reasoning_effort=effort,
+                                elapsed_seconds=round(time.monotonic() - started, 2), allocated_seconds=round(allocated, 2),
+                                process_group_terminated=getattr(exc, "process_group_terminated", None),
+                                remaining_seconds=round(self.deadline.remaining(), 2))
+                raise
             except subprocess.TimeoutExpired as exc:
                 self._record_output(exc.output, exc.stderr, partial=True)
                 self.trace.emit("generation_timeout", elapsed_seconds=round(time.monotonic() - started, 2),
                                 allocated_seconds=round(allocated, 2),
                                 process_group_terminated=getattr(exc, "process_group_terminated", None),
                                 remaining_seconds=round(self.deadline.remaining(), 2))
-                raise GenerationError("Codex generation exceeded its allocated time; bounded sanitized partial output is in the trace") from None
+                raise GenerationTimeout("Codex generation exceeded its allocated time; bounded sanitized partial output is in the trace") from None
             except OSError as exc:
                 raise GenerationError("Codex generation process could not start") from exc
         self._record_output(result.stdout, result.stderr)

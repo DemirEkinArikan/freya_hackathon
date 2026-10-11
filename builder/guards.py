@@ -2143,6 +2143,44 @@ def _bound_entries(nodes: dict, public_names: list[str]) -> None:
         nodes[gate] = _code_node(gate, _entry_budget_code(), [continue_route, _transition("bg_terminal")])
 
 
+_TOOL_RULES = ("No tool call is allowed in this turn.",
+               "The only tool call allowed in this turn is one offered completion. Call at most one tool per message and "
+               "speak after every tool result; never end a turn with neither words nor a tool call.")
+_SPEECH_RULE = " Say only words meant for the caller, never a tool call, a variable name or your reasoning."
+_COMPLETION_ONLY_RULE = (" Nothing in this step can capture a caller answer, so never ask a question and wait here: when the "
+                         "caller must be asked something, invoke in this same message the completion to the step that asks it. "
+                         "State only account facts and action results that the runtime view shows.")
+
+
+def _node_discipline(nodes: dict) -> None:
+    """Append the kit's per-node tool rules to every authored speaking node.
+
+    A completion-only step (LLM entry, no extraction, only completions) captures
+    no answer; when exactly one completion target is a speaking caller-answer
+    step, a silent relay sends a caller reply that arrives here to that step.
+    """
+    for name, node in list(nodes.items()):
+        if node.get("passthrough"):
+            continue
+        routes = node.setdefault("transitions", [])
+        completions = [route["target_node"] for route in routes if route.get("is_tool_call") is True]
+        text = _TOOL_RULES[bool(completions)] + _SPEECH_RULE
+        if (len(completions) == len(routes) > 0 and not node.get("extraction_schema")
+                and node.get("on_enter", {"type": "llm"}).get("type") == "llm"):
+            text += _COMPLETION_ONLY_RULE
+            answers = {target for target in completions if nodes.get(target, {}).get("extraction_schema")
+                       and not nodes[target].get("passthrough")
+                       and nodes[target].get("on_enter", {"type": "llm"}).get("type") != "silent"}
+            if len(answers) == 1:
+                target, relay = answers.pop(), PREFIX + name + "_reply"
+                nodes[relay] = {"name": relay, "node_type": "conversation", "on_enter": {"type": "silent"},
+                                "task_message": "Say nothing.", "passthrough": True,
+                                "passthrough_default_transition": target, "transitions": [_transition(target)]}
+                routes.append({"target_node": relay, "description": "caller replied in a step that captures no answer",
+                               "condition": {"operator": "always"}})
+        node["task_message"] = (node.get("task_message", "") + "\n\n" + text).lstrip()
+
+
 def _prompt_enforced(contract: dict, plan: dict, catalog: dict, nodes: dict) -> str:
     """Compile a relaxed contract's prompt-enforced limitations into dialogue text.
 
@@ -2222,6 +2260,7 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         for entry in node.get("extraction_schema", []):
             if entry["name"] in bound and "enum_values" not in entry and type(entry.get("min_confidence")) in (int, float):
                 entry["min_confidence"] = min(entry["min_confidence"], PROPOSAL_MIN_CONFIDENCE)
+    _node_discipline(nodes)
     rules = _prompt_enforced(contract, plan, catalog, nodes)
     nodes["bg_terminal"] = _terminal()
     # Initialization failures have no safe bank disposition or valid customer id.
@@ -2324,7 +2363,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
     for name, node in nodes.items():
         rows = node.get("transitions", [])
         target = nodes.get(rows[-1].get("target_node"), {}) if rows and not node.get("passthrough") else {}
-        exits = target.get("transitions", [])
+        # The node-discipline reply relay row runs only after a caller turn in the decision itself.
+        exits = [row for row in target.get("transitions", []) if row["target_node"] != PREFIX + rows[-1]["target_node"] + "_reply"]
         if (rows[-1:] and rows[-1]["condition"].get("operator") == "matches_intent" and exits
                 and not any(row.get("is_tool_call") or row.get("target_node") == rows[-1]["target_node"]
                             or "matches_intent" in canonical_json(row["condition"]) for row in rows[:-1])

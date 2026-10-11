@@ -161,7 +161,7 @@ class PromptEnforcedDialogueTests(unittest.TestCase):
         self.assertNotIn(AMBIGUOUS, talk)
         stripped = copy.deepcopy(workflow)
         del stripped["system_prompt"]
-        stripped["nodes"]["talk"]["task_message"] = context["plan"]["nodes"]["talk"]["task_message"]
+        stripped["nodes"]["talk"]["task_message"] = talk[:talk.index("\n\nBank rule for this step")]
         policy["unsupported_constraints"] = [entry("dialogue_only")]
         strict, _ = guarded(policy, sources, api)
         self.assertEqual(stripped, strict)

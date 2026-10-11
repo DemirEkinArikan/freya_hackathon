@@ -156,15 +156,32 @@ async function ledgers(storage) {
   return reply(200, { ok: true, customers: out, unknown_customer_calls: (await storage.get("orphans")) || [] });
 }
 
+// The answer in the contract's own fields: its success flag (boolean or "true"/"false"), its error field and declared codes.
+function shape(op, result) {
+  const o = op.shape;
+  if (!o) return result;
+  const { ok, error, ...rest } = result;
+  const r = o.ok ? { [o.ok]: ok === false ? o.no : o.yes } : {};
+  if (ok === false) r[o.error || "error"] = error === FAILED && o.fault_code ? o.fault_code : o.codes ? code(o.codes, error) : error;
+  for (const [k, v] of Object.entries(rest)) r[k] = o.bools[k] && typeof v === "boolean" ? o.bools[k][v ? 0 : 1] : v;
+  return r;
+}
+
+function code(codes, text) {
+  const want = text === FAILED ? /unavail|temporar|timeout|service|later|busy/ : /identity|verif/.test(text) ? /verif|denied|identity|auth|forbid/ : /invalid|request|valid|bad|format/;
+  return codes.find((c) => want.test(String(c).toLowerCase())) ?? codes[0];
+}
+
 async function operation(request, storage, op, params, url) {
+  const send = (status, result) => reply(status, shape(op, result));
   const raw = op.method === "GET" || op.method === "DELETE" ? {} : await body(request);
-  if (raw === null) return reply(op.error_status, { ok: false, error: "body must be a JSON object" });
+  if (raw === null) return send(op.error_status, { ok: false, error: "body must be a JSON object" });
   const args = { ...raw };
   for (const [k, v] of url.searchParams) if (!(k in args)) args[k] = v;
   Object.assign(args, params);
   const key = CONFIG.customer_key;
   const cid = args[key] == null ? "" : String(args[key]).trim();
-  if (!cid) return reply(op.error_status, { ok: false, error: key + " is required" });
+  if (!cid) return send(op.error_status, { ok: false, error: key + " is required" });
 
   const alias = await storage.get("a:" + cid);
   const template = alias ? alias.customer : cid;
@@ -173,7 +190,7 @@ async function operation(request, storage, op, params, url) {
     const orphans = ((await storage.get("orphans")) || []).slice(-99);
     orphans.push({ at: Date.now(), tool: op.name, args });
     await storage.put("orphans", orphans);
-    return reply(op.error_status, { ok: false, error: "unknown " + key });
+    return send(op.error_status, { ok: false, error: "unknown " + key });
   }
   const now = Date.now();
   const state = (await storage.get("c:" + cid)) || { customer_id: cid, case: template, sessions: [] };
@@ -186,7 +203,7 @@ async function operation(request, storage, op, params, url) {
   if (s.closed) result = { ok: false, error: "the call is already closed" };
   else if (fault && (s.failures[op.name] || 0) < (fault.fail_first_n || 0)) {
     s.failures[op.name] = (s.failures[op.name] || 0) + 1;
-    status = 500;
+    status = op.shape ? op.shape.fault_status : 500;
     result = { ok: false, error: FAILED };
   } else {
     const checked = validate(op, args);
@@ -198,7 +215,7 @@ async function operation(request, storage, op, params, url) {
   s.calls.push({ n: s.calls.length + 1, tool: op.name, args: logged, status, result, at: now });
   s.last_at = now;
   await storage.put("c:" + cid, state);
-  return reply(status, result);
+  return send(status, result);
 }
 
 function validate(op, args) {

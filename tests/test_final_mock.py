@@ -106,6 +106,42 @@ class GeneratorTest(unittest.TestCase):
 
 @unittest.skipUnless(shutil.which("node") and importlib.util.find_spec("yaml"), "node or PyYAML is not installed")
 class GenericWorkerTest(unittest.TestCase):
+    def test_contract_response_fields_and_declared_failure(self):
+        flag = {"type": "string", "enum": ["true", "false"]}
+        ok = {"type": "object", "required": ["accepted"], "properties": {"accepted": flag, "ref": {"type": "string", "minLength": 1},
+              "failure_code": {"type": "string", "enum": ["temporary_unavailable", "invalid_request"]}}}
+        down = {"type": "object", "properties": {"accepted": {"type": "string", "enum": ["false"]}, "failure_code": {"type": "string", "enum": ["temporary_unavailable"]}}}
+        op = lambda props: {"post": {"requestBody": {"content": {"application/json": {"schema": {"type": "object", "required": ["session_ref"],
+              "properties": {"session_ref": {"type": "string"}, **props}}}}}, "responses": {"200": {"content": {"application/json": {"schema": ok}}},
+              "503": {"content": {"application/json": {"schema": down}}}}}}
+        contract = {"openapi": "3.0.3", "paths": {"/book_slot": op({"day": {"type": "string", "format": "date"}}), "/close_call": op({})}}
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "contract.json").write_text(json.dumps(contract))
+            (d / "customers.csv").write_text("customer_id,name,fail_book_slot\nA1,Ada,1\nB2,Bo,\n")
+            subprocess.run([sys.executable, str(ROOT / "mock/build_mock.py"), str(d / "contract.json"), str(d / "customers.csv"), "--out", str(d / "out")],
+                           check=True, capture_output=True)
+            port = free_port()
+            server = subprocess.Popen(["node", str(ROOT / "mock/local_server.mjs"), str(d / "out"), str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                def call(tool, **args):
+                    req = urllib.request.Request(f"http://127.0.0.1:{port}/{tool}", data=json.dumps(args).encode(), method="POST")
+                    for _ in range(50):
+                        try:
+                            with urllib.request.urlopen(req, timeout=5) as r:
+                                return r.status, json.load(r)
+                        except urllib.error.HTTPError as e:
+                            return e.code, json.load(e)
+                        except urllib.error.URLError:
+                            time.sleep(0.1)
+                self.assertEqual(call("book_slot", session_ref="A1", day="2026-10-14"), (503, {"accepted": "false", "failure_code": "temporary_unavailable"}))
+                self.assertEqual(call("book_slot", session_ref="A1", day="2026-10-14"), (200, {"accepted": "true", "ref": "re1"}))
+                self.assertEqual(call("book_slot", session_ref="B2", day="14 Oct"), (200, {"accepted": "false", "failure_code": "invalid_request"}))
+                self.assertEqual(call("close_call", session_ref="B2"), (200, {"accepted": "true"}))
+            finally:
+                server.terminate()
+                server.wait()
+
     def test_other_contract_served_from_rows(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)

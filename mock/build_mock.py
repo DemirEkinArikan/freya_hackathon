@@ -94,8 +94,30 @@ def operations(doc):
             ok = next((responses[c] for c in ("200", "201") if c in responses), {})
             ops.append({"name": name, "method": method.upper(), "path": path, "body": body,
                         "response": json_schema(ok.get("content")), "codes": list(responses),
+                        "failures": {c: json_schema(r.get("content")) for c, r in responses.items() if c.startswith("5")},
                         "text": " ".join(str(spec.get(k, "")) for k in ("summary", "description"))})
     return ops
+
+
+def boolish(p):
+    e = {str(v).lower() for v in p.get("enum") or []}
+    return p.get("type") == "boolean" or bool(e) and e <= {"true", "false"}
+
+
+def response_shape(op):
+    """The contract's own success and error fields, so every answer carries the declared names, types and codes."""
+    resp, req = op["response"].get("properties", {}), op["response"].get("required", [])
+    ok = "ok" if "ok" in resp else next((k for k in req if k in resp and boolish(resp[k])), None) or next(
+        (k for k, p in resp.items() if boolish(p) and re.search(r"ok|success|accept|status|result", fold(k))), None)
+    err = "error" if "error" in resp else next((k for k, p in resp.items() if k != ok and p.get("type") == "string"
+                                                and re.search(r"error|fail|reason|hata|code", fold(k))), None)
+    lit = lambda k, b: b if resp[k].get("type") == "boolean" else next((v for v in resp[k]["enum"] if str(v).lower() == str(b).lower()), str(b).lower())
+    # A tool failure answers with the contract's declared failure response (a 5xx with its schema), else ok=false.
+    fcode = next((c for c in op["failures"] if op["failures"][c].get("properties")), next(iter(op["failures"]), None))
+    fault_codes = (op["failures"].get(fcode, {}).get("properties", {}).get(err) or {}).get("enum") if err else None
+    return {"fault_status": int(fcode) if fcode else (200 if ok else 500), "fault_code": fault_codes[0] if fault_codes else None,"ok": ok, "yes": lit(ok, True) if ok else None, "no": lit(ok, False) if ok else None, "error": err,
+            "codes": resp.get(err, {}).get("enum") if err else None,
+            "bools": {k: [lit(k, True), lit(k, False)] for k, p in resp.items() if p.get("type") != "boolean" and boolish(p)}}
 
 
 def kind_of(op):
@@ -256,7 +278,8 @@ def build(contract_path, customers_path, name, overrides):
     over_ops = overrides.get("operations", {})
     counts = Counter(k for op in ops for k in op["body"]["properties"])
     everywhere = [k for k, n in counts.most_common() if n == len(ops)] or [k for k, _ in counts.most_common()]
-    ckey = overrides.get("customer_key") or next((k for k in everywhere if re.search(r"customer|musteri|client", fold(k))), "customer_id")
+    in_all = [k for k, n in counts.items() if n == len(ops)]
+    ckey = overrides.get("customer_key") or next((k for k in everywhere if re.search(r"customer|musteri|client", fold(k))), in_all[0] if len(in_all) == 1 else "customer_id")
     for op in ops:
         op["kind"] = over_ops.get(op["name"], {}).get("kind") or kind_of(op)
         if op["kind"] not in ("identity", "read", "write", "close"):
@@ -283,6 +306,15 @@ def build(contract_path, customers_path, name, overrides):
 
     renames = {fold(k): v for k, v in overrides.get("columns", {}).items()}
     customers, skipped = customers_from(read_rows(customers_path), ckey, identity_fields, item_types, pid, renames)
+    for c in customers.values():   # behaviour columns such as fail_<operation> or faults=<operation>: that call fails that many times
+        for k in [k for k in c["variables"] if re.search(r"fail|fault|error|outage|unavail|hata", fold(k))]:
+            tools = [op["name"] for op in ops if op["name"] in fold(k)] or [op["name"] for op in ops if op["name"] in fold(c["variables"][k])]
+            v = c["variables"].pop(k) if tools else None
+            try:
+                times = int(number(v))
+            except (TypeError, ValueError):
+                times = 0 if fold(v) in ("", "no", "false", "hayir", "yok", "none") else 1
+            c["faults"] += [{"tool": t, "fail_first_n": times} for t in tools if times > 0]
     if not customers:
         sys.exit("customers: none found (is there a customer id column? map it with --overrides columns)")
 
@@ -310,18 +342,20 @@ def build(contract_path, customers_path, name, overrides):
     config_ops = []
     for op in ops:
         resp = op["response"].get("properties", {})
-        ok_style = "ok" in resp
+        shape = response_shape(op)
+        plain = ("ok", "error", shape["ok"], shape["error"])
         out = {"name": op["name"], "method": op["method"], "path": op["path"], "kind": op["kind"], "body": schema_for_worker(op["body"]),
-               "error_status": 200 if ok_style else int(next((c for c in op["codes"] if c in ("400", "422")), "400"))}
+               "error_status": 200 if shape["ok"] else int(next((c for c in op["codes"] if c in ("400", "422")), "400")), "shape": shape}
         text = fold(op["text"])
         props = op["body"]["properties"]
         product_ref = pid if pid in props else None
         gated = bool(identity_ops) and (bool(re.search(r"refused_until|until_.*(verified|passed)|after_.*verif|only_.*verified|dogrulan", text)))
         if op["kind"] == "identity":
             def find(pattern, typ=None, skip=()):
-                return next((k for k, p in resp.items() if k not in skip and k != "ok" and re.search(pattern, fold(k)) and (typ is None or p.get("type") == typ)), None)
+                return next((k for k, p in resp.items() if k not in skip + plain and re.search(pattern, fold(k))
+                             and (typ is None or (boolish(p) if typ == "boolean" else p.get("type") == typ))), None)
             all_v = find(r"^all|all_|fully|tum|hepsi", "boolean")
-            hint = find(r"hint|ipucu")
+            hint = find(r"hint|ipucu|guid")
             out["identity"] = {"field_param": op["field_param"], "answer_param": op["answer_param"], "fields": op["identity_fields"],
                                "hint_value": next((v for v in resp.get(hint, {}).get("enum", []) if "swap" in fold(v)), None) if hint else None,
                                "out": {"verified": find(r"verif|dogru|match|correct|valid", "boolean", (all_v,)),
@@ -329,7 +363,7 @@ def build(contract_path, customers_path, name, overrides):
         elif op["kind"] == "read":
             item_list = next((k for k, p in resp.items() if p.get("type") == "array"), None)
             lst = item_list if item_list == list_name else None
-            scalars = [k for k, p in resp.items() if k not in ("ok", "error") and p.get("type") not in ("array", "object")]
+            scalars = [k for k, p in resp.items() if k not in plain and p.get("type") not in ("array", "object")]
             objects = {k: list(flat(p).get("properties", {})) for k, p in resp.items() if p.get("type") == "object"}
             account = op["name"] == "get_account" or lst or gated or any(f in item_types or f in identity_fields for f in scalars + sum(objects.values(), []))
             out.update(requires_identity=bool(identity_ops) and bool(account), list=lst, item_fields=list(item_types), scalars=scalars,
@@ -337,7 +371,7 @@ def build(contract_path, customers_path, name, overrides):
         elif op["kind"] == "write":
             parts = op["name"].split("_")
             key = parts[0] + "s" if parts[0] in ("transfer", "escalate", "refund", "payment") else "_".join(parts[1:]) + "s" if len(parts) > 1 and parts[0] in VERBS else op["name"]
-            ids = [k for k in resp if k not in ("ok", "error") and re.search(r"(^|_)id$", fold(k))]
+            ids = [k for k, p in resp.items() if k not in plain and (re.search(r"(^|_)id$", fold(k)) or p.get("type") == "string" and not p.get("enum"))]
             out.update(requires_identity=bool(identity_ops) and (bool(product_ref) or gated), ledger_key=key, product_ref=product_ref,
                        unique=bool(re.search(r"one_per_(product|card|account|loan)|per_product|urun_basina|her_urun", text)),
                        ids=ids, id_prefix={k: fold(k)[:2] for k in ids})

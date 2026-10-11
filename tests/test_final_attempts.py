@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from builder.build import parser as builder_parser
 from tools import final_attempts as final
 from tools import package_submission as package
 
@@ -49,6 +50,10 @@ class FinalAttemptsTests(unittest.TestCase):
         self.client, self.sleep = MagicMock(), MagicMock()  # Staging probes and pauses never really happen here.
         self.builds, self.relaxed = [], ['--declarations', 'relaxed']  # Builder process counts; the builder's option.
         self.accounts = []  # Logged-in Codex accounts.
+        self.home = self.root / 'home'  # Holds the Claude key file, as ~/.freya-anthropic-key does.
+        self.home.mkdir()
+        (self.home / '.freya-anthropic-key').write_text('synthetic-claude-key\n')
+        self.anthropic, self.codex_cli, self.parser = object(), '/bin/codex', None  # SDK spec, Codex CLI, builder parser.
 
     def run_main(self, *argv):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
@@ -57,17 +62,19 @@ class FinalAttemptsTests(unittest.TestCase):
 
     def launch(self, *extra):
         popen = MagicMock(side_effect=[SimpleNamespace(pid=7100 + number) for number in range(20)])
-        with patch.object(final.subprocess, 'Popen', popen), patch.object(final.shutil, 'which', return_value='/bin/codex'), \
+        parser = patch.object(final, 'builder_parser', self.parser) if self.parser else contextlib.nullcontext()
+        with patch.object(final.subprocess, 'Popen', popen), patch.object(final.shutil, 'which', side_effect=lambda *_, **__: self.codex_cli), \
+             patch.object(final.importlib.util, 'find_spec', side_effect=lambda name: self.anthropic), parser, \
              patch.object(final, '_alive', side_effect=lambda pid: self.alive), \
              patch.object(final, '_codex_builds', side_effect=lambda: self.builds.pop(0) if self.builds else 0), \
              patch.object(final, '_codex_accounts', side_effect=lambda: self.accounts), \
              patch.object(final, '_relaxed_option', side_effect=lambda: self.relaxed), \
              patch.object(final, 'FreyaClient', self.client), patch.object(final.time, 'sleep', self.sleep), \
-             patch.dict(final.os.environ, {'OPENAI_API_KEY': 'synthetic-openai-value'}):
+             patch.dict(final.os.environ, {'OPENAI_API_KEY': 'synthetic-openai-value', 'HOME': str(self.home)}):
             final.os.environ.pop('FREYA_API_KEY', None)  # Only the --env-file supplies the key here.
             final.os.environ.pop('CODEX_HOME', None)
-            result = self.run_main('launch', '--env-file', str(self.env_file), '--model', 'synthetic-model',
-                                   '--simulation-lease', '/shared/.simulation.lock',
+            final.os.environ.pop('ANTHROPIC_API_KEY', None)  # Only the key file (or --env-file) supplies it.
+            result = self.run_main('launch', '--env-file', str(self.env_file), '--simulation-lease', '/shared/.simulation.lock',
                                    *([] if '--round' in extra else ['--round', '1']), *extra)
         return result, popen
 
@@ -81,37 +88,43 @@ class FinalAttemptsTests(unittest.TestCase):
         return {path.relative_to(self.root).as_posix(): path.read_bytes()
                 for path in (self.root / 'artifacts/final').rglob('*') if path.is_file() and path.name != 'selection.json'}
 
-    def test_round_one_starts_strict_high_and_medium_per_brief_in_own_directories_and_slots(self):
-        (code, _, _), popen = self.launch()
+    def test_round_one_starts_two_strict_claude_attempts_per_brief_in_own_directories_and_slots(self):
+        (code, out, _), popen = self.launch()
         self.assertEqual(code, 0)
         self.assertEqual(popen.call_count, 4)
         slots = set()
         for call in popen.call_args_list:
             argv, kwargs = call.args[0], call.kwargs
             self.assertEqual(argv[1], 'builder/build.py')
+            builder_parser().parse_args(argv[2:])  # The frozen builder's own parser accepts every launch argv.
             label = 'hidden-1' if argv[argv.index('--brief') + 1] == 'brief.md' else 'hidden-2'
             directory = argv[argv.index('--output-dir') + 1]
             self.assertRegex(directory, rf'^artifacts/final/{label}/attempt-[12]$')
             self.assertEqual(argv[argv.index('--tool-api') + 1], 'api.json')
             self.assertEqual(argv[argv.index('--simulation-lease') + 1], '/shared/.simulation.lock')
+            self.assertEqual(argv[argv.index('--provider'):argv.index('--reasoning-effort')],
+                             ['--provider', 'claude', '--model', 'claude-opus-5-5'])
             self.assertNotIn('--policy-file', argv)
             slots.add(argv[argv.index('--slot') + 1])
             self.assertEqual(kwargs['cwd'], self.root)
             self.assertIs(kwargs['start_new_session'], True)
             self.assertIs(kwargs['stdin'], subprocess.DEVNULL)
             self.assertEqual(kwargs['env']['FREYA_API_KEY'], 'synthetic-launch-key')
+            self.assertEqual(kwargs['env']['ANTHROPIC_API_KEY'], 'synthetic-claude-key')  # From the key file, stripped.
             self.assertNotIn('OPENAI_API_KEY', kwargs['env'])
-            self.assertNotIn('CODEX_HOME', kwargs['env'])  # No logged-in account found: Codex keeps its default.
+            self.assertNotIn('CODEX_HOME', kwargs['env'])
             record = json.loads((self.root / directory / 'launch.json').read_text())
             self.assertEqual(record['argv'], argv)
             self.assertEqual(record['pid'] - 7100, popen.call_args_list.index(call))
-            self.assertEqual((record['round'], record['mode'], record['reasoning_effort'], record['builder_processes_before_start'],
-                              record['codex_account']), (1, 'strict', argv[argv.index('--reasoning-effort') + 1], 0, None))
+            self.assertEqual((record['round'], record['provider'], record['model'], record['mode'], record['reasoning_effort'],
+                              record['builder_processes_before_start'], record['codex_account']),
+                             (1, 'claude', 'claude-opus-5-5', 'strict', 'xhigh', 0, None))
         self.assertEqual(len(slots), 4)
         self.assertNotEqual(final.os.environ.get('FREYA_API_KEY'), 'synthetic-launch-key')
-        # The matrix, interleaved and spread: both briefs start at high first, and starts are a pause apart.
-        self.assertEqual(self.started(popen), [('brief.md', 'high', []), ('brief-2.md', 'high', []),
-                                               ('brief.md', 'medium', []), ('brief-2.md', 'medium', [])])
+        self.assertNotIn('ANTHROPIC_API_KEY', final.os.environ)
+        # The matrix, interleaved and spread: both briefs start in turn, and starts are a pause apart.
+        self.assertEqual(self.started(popen), [('brief.md', 'xhigh', []), ('brief-2.md', 'xhigh', []),
+                                               ('brief.md', 'xhigh', []), ('brief-2.md', 'xhigh', [])])
         self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 3)
         # One staging probe before each start, recorded in its launch record and the health log.
         self.assertEqual(self.client.call_args.kwargs['api_key'], 'synthetic-launch-key')
@@ -119,25 +132,45 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertEqual([record['ok'] for record in health], [True] * 4)
         self.assertIs(json.loads((self.root / 'artifacts/final/hidden-2/attempt-2/launch.json').read_text())
                       ['staging_health']['ok'], True)
+        # The key is never printed or recorded.
+        written = out + ''.join(path.read_text() for path in (self.root / 'artifacts/final').rglob('*') if path.is_file())
+        self.assertNotIn('synthetic-claude-key', written)
 
-    def test_starts_spread_over_codex_accounts_and_never_wait_for_other_builds(self):
+    def test_codex_cells_only_on_request_and_spread_over_codex_accounts_without_waiting(self):
         self.accounts = [Path('/synthetic-home/.codex'), Path('/synthetic-home/.codex-acct2')]
-        self.builds = [5, 7, 4, 3]  # Builder processes seen before each start: recorded, never a reason to wait.
-        (code, out, _), popen = self.launch()
-        self.assertEqual((code, popen.call_count), (0, 4))
-        self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 3)
-        homes = [(argv[argv.index('--output-dir') + 1], call.kwargs['env']['CODEX_HOME'])
-                 for argv, call in ((call.args[0], call) for call in popen.call_args_list)]
-        # Each brief's two attempts use different accounts, and each account gets one high and one medium attempt.
-        self.assertEqual(homes, [('artifacts/final/hidden-1/attempt-1', '/synthetic-home/.codex'),
-                                 ('artifacts/final/hidden-2/attempt-1', '/synthetic-home/.codex-acct2'),
-                                 ('artifacts/final/hidden-1/attempt-2', '/synthetic-home/.codex-acct2'),
-                                 ('artifacts/final/hidden-2/attempt-2', '/synthetic-home/.codex')])
-        records = [json.loads((self.root / directory / 'launch.json').read_text()) for directory, _ in homes]
-        self.assertEqual([(record['codex_account'], record['builder_processes_before_start']) for record in records],
-                         [('.codex', 5), ('.codex-acct2', 7), ('.codex-acct2', 4), ('.codex', 3)])
+        self.builds = [5, 7, 4, 3, 6, 2, 1, 0]  # Builder processes seen before each start: recorded, never a reason to wait.
+        (code, out, _), popen = self.launch('--providers', 'claude', 'codex')
+        self.assertEqual((code, popen.call_count), (0, 8))
+        self.assertEqual([call.args for call in self.sleep.call_args_list], [(60,)] * 7)
+        starts = [(argv[argv.index('--output-dir') + 1], argv[argv.index('--provider') + 1], argv[argv.index('--model') + 1],
+                   argv[argv.index('--reasoning-effort') + 1], call.kwargs['env'].get('CODEX_HOME'),
+                   call.kwargs['env'].get('ANTHROPIC_API_KEY')) for argv, call in ((call.args[0], call) for call in popen.call_args_list)]
+        for argv in (call.args[0] for call in popen.call_args_list):
+            builder_parser().parse_args(argv[2:])
+        claude = ('claude', 'claude-opus-5-5', 'xhigh', None, 'synthetic-claude-key')
+        # Claude attempts never get a Codex account. Each brief's two Codex attempts use different accounts,
+        # and each account gets one high and one medium attempt.
+        self.assertEqual(starts, [('artifacts/final/hidden-1/attempt-1', *claude), ('artifacts/final/hidden-2/attempt-1', *claude),
+                                  ('artifacts/final/hidden-1/attempt-2', *claude), ('artifacts/final/hidden-2/attempt-2', *claude),
+                                  ('artifacts/final/hidden-1/attempt-3', 'codex', 'gpt-6.1-sol', 'high', '/synthetic-home/.codex', None),
+                                  ('artifacts/final/hidden-2/attempt-3', 'codex', 'gpt-6.1-sol', 'high', '/synthetic-home/.codex-acct2', None),
+                                  ('artifacts/final/hidden-1/attempt-4', 'codex', 'gpt-6.1-sol', 'medium', '/synthetic-home/.codex-acct2', None),
+                                  ('artifacts/final/hidden-2/attempt-4', 'codex', 'gpt-6.1-sol', 'medium', '/synthetic-home/.codex', None)])
+        records = [json.loads((self.root / start[0] / 'launch.json').read_text()) for start in starts]
+        self.assertEqual([(record['provider'], record['codex_account'], record['builder_processes_before_start']) for record in records],
+                         [('claude', None, 5), ('claude', None, 7), ('claude', None, 4), ('claude', None, 3),
+                          ('codex', '.codex', 6), ('codex', '.codex-acct2', 2), ('codex', '.codex-acct2', 1), ('codex', '.codex', 0)])
         self.assertEqual([json.loads(line)['codex_account'] for line in out.splitlines()],
-                         ['.codex', '.codex-acct2', '.codex-acct2', '.codex'])
+                         [None] * 4 + ['.codex', '.codex-acct2', '.codex-acct2', '.codex'])
+        # Codex alone (Claude unavailable) needs no Claude key; its model is explicit.
+        shutil.rmtree(self.root / 'artifacts/final')
+        (self.home / '.freya-anthropic-key').unlink()
+        (code, _, error), popen = self.launch('--providers', 'codex', '--codex-model', 'synthetic-codex-model', '--labels', 'hidden-1')
+        self.assertEqual((code, popen.call_count), (0, 2), error)
+        self.assertEqual([(call.args[0][call.args[0].index('--model') + 1], call.args[0][call.args[0].index('--reasoning-effort') + 1],
+                           call.kwargs['env']['CODEX_HOME']) for call in popen.call_args_list],
+                         [('synthetic-codex-model', 'high', '/synthetic-home/.codex'),
+                          ('synthetic-codex-model', 'medium', '/synthetic-home/.codex-acct2')])
         # The count is the rules' own: every process whose command line names builder/build.py.
         with patch.object(final.subprocess, 'run', return_value=SimpleNamespace(stdout='4101\n4102\n')) as run:
             self.assertEqual(final._codex_builds(), 2)
@@ -197,6 +230,36 @@ class FinalAttemptsTests(unittest.TestCase):
         self.assertIn('FREYA_API_KEY is not available', error)
         popen.assert_not_called()
         self.env_file.write_text('FREYA_API_KEY=synthetic-launch-key\n')
+        # Claude attempts need the key file or ANTHROPIC_API_KEY, and the anthropic package.
+        (self.home / '.freya-anthropic-key').unlink()
+        for anthropic in (object(), None):
+            self.anthropic = anthropic
+            (code, _, error), popen = self.launch('--labels', 'hidden-2')
+            self.assertEqual(code, 1)
+            self.assertIn('Claude attempts need ~/.freya-anthropic-key (or ANTHROPIC_API_KEY) and the anthropic package', error)
+            popen.assert_not_called()
+            (self.home / '.freya-anthropic-key').write_text('synthetic-claude-key')
+        self.anthropic = object()
+        # The Codex CLI matters only for requested Codex cells.
+        self.codex_cli = None
+        (code, _, error), popen = self.launch('--labels', 'hidden-2', '--providers', 'claude', 'codex')
+        self.assertEqual(code, 1)
+        self.assertIn('The Codex CLI is not on PATH', error)
+        popen.assert_not_called()
+        # A frozen builder without the Claude generator (no --provider, or not the matrix effort) cannot run the round.
+        for arguments in ((), (('--provider', ('claude', 'codex')),)):
+            def parser(arguments=arguments):
+                out = argparse.ArgumentParser()
+                out.add_argument('--reasoning-effort', choices=('low', 'medium', 'high') if arguments else ('high', 'xhigh'))
+                for name, choices in arguments:
+                    out.add_argument(name, choices=choices)
+                return out
+            self.parser = parser
+            (code, _, error), popen = self.launch('--labels', 'hidden-2')
+            self.assertEqual(code, 1)
+            self.assertIn('This builder cannot run every attempt of the round', error)
+            popen.assert_not_called()
+        self.parser = None
         (self.root / 'brief-2.md').unlink()
         (code, _, error), popen = self.launch('--labels', 'hidden-2')
         self.assertEqual(code, 1)
@@ -231,12 +294,14 @@ class FinalAttemptsTests(unittest.TestCase):
         self.relaxed = ['--declarations', 'relaxed']
         (code, _, _), popen = self.launch('--round', '2', '--labels', 'hidden-1')
         self.assertEqual(code, 0)
-        self.assertEqual(self.started(popen), [('brief.md', 'high', ['--declarations', 'relaxed']),
-                                               ('brief.md', 'medium', ['--declarations', 'relaxed'])])
+        self.assertEqual(self.started(popen), [('brief.md', 'xhigh', ['--declarations', 'relaxed']),
+                                               ('brief.md', 'xhigh', ['--declarations', 'relaxed'])])
+        for call in popen.call_args_list:
+            builder_parser().parse_args(call.args[0][2:])  # Including the builder's real relaxed option.
         launched = [json.loads((self.root / f'artifacts/final/hidden-1/attempt-{number}/launch.json').read_text())
                     for number in (3, 4)]
-        self.assertEqual([(record['round'], record['mode'], record['reasoning_effort']) for record in launched],
-                         [(2, 'relaxed', 'high'), (2, 'relaxed', 'medium')])
+        self.assertEqual([(record['round'], record['provider'], record['mode'], record['reasoning_effort']) for record in launched],
+                         [(2, 'claude', 'relaxed', 'xhigh'), (2, 'claude', 'relaxed', 'xhigh')])
         # The relaxed export is selected; then only another strict round could still improve the brief.
         for number in (3, 4):
             shutil.rmtree(self.root / f'artifacts/final/hidden-1/attempt-{number}')
@@ -467,20 +532,20 @@ class FinalAttemptsTests(unittest.TestCase):
                           'time': events[7]['time']})
         trace.write_text('\n'.join(json.dumps(event) for event in events))
         fixture.rebind_provenance('hidden-1')
-        place('hidden-1', 1, '20261011T170201000000Z')  # strict high, one diagnostic
+        place('hidden-1', 1, '20261011T170201000000Z')  # strict xhigh, one diagnostic
         shutil.rmtree(self.root / 'hidden-2')
         failed = fail('hidden-2', 1)  # Neither strict attempt of hidden-2 exports.
         fail('hidden-2', 2)
         fixture.evidence()
-        place('hidden-1', 2, '20261011T170202000000Z')  # strict medium, clean
+        place('hidden-1', 2, '20261011T170202000000Z')  # strict xhigh, clean
 
         git = patch.object(subprocess, 'run', return_value=SimpleNamespace(stdout='a' * 40, returncode=0))
         with git, patch.object(final.verifier, 'check_recompilation'):
             code, out, _ = self.run_main('select')
             self.assertEqual(code, 3, out)
             self.assertEqual((self.record()['selected'], self.record()['attempt_count']), (2, 2))
-            self.assertEqual([(entry['mode'], entry['reasoning_effort'], entry['diagnostics'])
-                              for entry in self.record()['attempts']], [('strict', 'high', 1), ('strict', 'medium', 0)])
+            self.assertEqual([(entry['provider'], entry['mode'], entry['reasoning_effort'], entry['diagnostics'])
+                              for entry in self.record()['attempts']], [('claude', 'strict', 'xhigh', 1), ('claude', 'strict', 'xhigh', 0)])
             self.assertIsNone(self.record('hidden-2')['selected'])
             # Round 2 only for the brief left without a strict export.
             (code, _, error), popen = self.launch('--round', '2')
@@ -489,15 +554,15 @@ class FinalAttemptsTests(unittest.TestCase):
             popen.assert_not_called()
             (code, _, _), popen = self.launch('--round', '2', '--labels', 'hidden-2')
             self.assertEqual(code, 0)
-            place('hidden-2', 3, '20261011T173003000000Z')  # relaxed high, clean
+            place('hidden-2', 3, '20261011T173003000000Z')  # relaxed xhigh, clean
             fail('hidden-2', 4)
             code, out, _ = self.run_main('select')
             self.assertEqual(code, 0, out)
             record = self.record('hidden-2')
             self.assertEqual((record['selected'], record['attempt_count']), (3, 4))
             self.assertEqual([(entry['mode'], entry['reasoning_effort'], entry['exported']) for entry in record['attempts']],
-                             [('strict', 'high', False), ('strict', 'medium', False), ('relaxed', 'high', True),
-                              ('relaxed', 'medium', False)])
+                             [('strict', 'xhigh', False), ('strict', 'xhigh', False), ('relaxed', 'xhigh', True),
+                              ('relaxed', 'xhigh', False)])
             self.assertEqual(self.run_main('manifest', '--team', 'synthetic')[0], 0)
             manifest_path = self.root / 'artifacts/submission/manifest.json'
             value = json.loads(manifest_path.read_text())
@@ -505,8 +570,10 @@ class FinalAttemptsTests(unittest.TestCase):
             self.assertTrue(value['runs']['hidden-2'].startswith('artifacts/final/hidden-2/attempt-3/'))
             commands = value['run_command'].splitlines()
             self.assertIn('--output-dir artifacts/final/hidden-1/attempt-2', commands[0])
-            self.assertTrue(commands[0].endswith('--reasoning-effort medium'))
-            self.assertTrue(commands[1].endswith('--reasoning-effort high --declarations relaxed'))
+            # The organizers can rerun each selected command with their own ANTHROPIC_API_KEY.
+            self.assertTrue(commands[0].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort xhigh'))
+            self.assertTrue(commands[1].endswith('--provider claude --model claude-opus-5-5 --reasoning-effort xhigh --declarations relaxed'))
+            self.assertNotIn('synthetic-claude-key', manifest_path.read_text())
             self.assertEqual(value['selections']['hidden-2'], 'artifacts/final/hidden-2/selection.json')
             retained = package.check_manifest(value)
             self.assertIn('selections/hidden-1.json', {name for _, name in retained})

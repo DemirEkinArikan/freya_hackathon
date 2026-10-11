@@ -209,9 +209,10 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    LEASE=$MAIN/artifacts/.simulation.lock
    T18_SOURCE_COMMIT=<from the T17 freeze>
    T18_SOURCE_INVENTORY_SHA256=<from the T17 freeze>
-   T18_BUILDER_MODEL=<from the T17 freeze>
+   T18_BUILDER_MODEL=claude-opus-5-5  # founder directive 18:05 Istanbul: Claude everywhere
+   # Only for optional Codex cells (--providers claude codex):
    export PATH="$PATH:/Users/demirekinarikan/.vscode/extensions/openai.chatgpt-26.1007.21434-darwin-arm64/bin/macos-aarch64"
-   unset OPENAI_API_KEY
+   unset OPENAI_API_KEY  # The launcher reads the Claude key from ~/.freya-anthropic-key; never export or print it here.
    withenv() { /opt/homebrew/bin/python3.11 -I -c 'import os, sys; sys.path.insert(0, os.getcwd()); from pathlib import Path; from builder.config import load_local_environment; load_local_environment(Path(sys.argv[1])); os.execv(sys.executable, [sys.executable, *sys.argv[2:]])' "$MAIN/.env" "$@"; }
    ```
 
@@ -226,6 +227,7 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    test "$(git rev-parse HEAD)" = "$T18_SOURCE_COMMIT" && git diff --quiet HEAD -- && test -z "$(git status --porcelain)"
    # then the python3.11 - "$T18_SOURCE_INVENTORY_SHA256" guard from T18-FINAL-WINDOW.md
    python3.11 -m builder.preflight
+   test -s "$HOME/.freya-anthropic-key" && python3.11 -c 'import anthropic; print(anthropic.__version__)'
    ```
 
 3. Write the two helper scripts. They live under ignored `artifacts/final-window/` and
@@ -284,13 +286,15 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    Record the receipt time and the sender of the files in a separate local note, not in
    `official-pins.json`.
 
-### About 20:02 (17:02 UTC): start round 1, strict high + strict medium per brief
+### About 20:02 (17:02 UTC): start round 1, two strict Claude attempts per brief
 
 6. Start round 1 of the [attempt matrix](T18-FINAL-WINDOW.md#attempt-matrix). That is
-   four builders, each in its own `artifacts/final/<label>/attempt-<k>/` with its own
-   new slot, spread over the logged-in Codex accounts. Starts alternate between the
+   four Claude builders (`--provider claude --model claude-opus-5-5 --reasoning-effort xhigh`),
+   each in its own `artifacts/final/<label>/attempt-<k>/` with its own new slot and
+   `ANTHROPIC_API_KEY` from `~/.freya-anthropic-key`. Starts alternate between the
    briefs, 60 s apart, so the launcher runs for about 3 minutes; `nohup` keeps it
-   going if the terminal closes:
+   going if the terminal closes. Add `--providers claude codex` only to run the old
+   Codex cells as well (8 builders):
 
    ```sh
    nohup python3.11 tools/final_attempts.py launch --env-file "$MAIN/.env" --simulation-lease "$LEASE" \
@@ -303,7 +307,7 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
    `python3.11 tools/final_attempts.py health --env-file "$MAIN/.env"; withenv tools/final_attempts.py select`.
    A failed attempt whose error names `HTTP 50x` hit a platform failure, not a
    builder fault (T18-FINAL-WINDOW.md).
-   It prints one JSON line per attempt (status, effort and the seven criteria) and exits 2
+   It prints one JSON line per attempt (status, provider, effort and the seven criteria) and exits 2
    while any attempt still runs. A brief whose attempts have all finished gets its
    `selection.json` even then. When that record selects no attempt, or selects a
    deterministic fallback export, start round 2 for that brief alone: in the step 6 command, replace `--round 1` with
@@ -391,8 +395,9 @@ Run every command from the frozen checkout. Times are Istanbul, with UTC in brac
 
 ## Still open before tonight
 
-- The T17 freeze record: source commit, inventory SHA-256, model and reasoning effort.
-  This needs an accepted candidate, so T07 fixes and then T15, T16 and T17 first.
+- The T17 freeze record: source commit and inventory SHA-256. The model and effort are
+  fixed: Claude `claude-opus-5-5` at `xhigh` (founder directive 18:05 Istanbul). The
+  frozen commit needs the builder's Claude generator (`--provider`).
 - The organizer email: submission channel, attachment names, team identifier and any
   credential/import rule.
 - One run of steps 8 and 10 on the first live exported pair from the accepted

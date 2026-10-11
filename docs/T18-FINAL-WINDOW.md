@@ -16,9 +16,11 @@ organizer instructions govern execution. Customer cases remain hidden.
   less than 30 minutes, permitted generation tools, `experimental-5` phone model,
   exact commit/configuration and critical cases passing all three repetitions.
   An open dependency or only a source/mock rehearsal is not this gate.
-- Record frozen source commit, Python 3.11 patch version, Codex executable/version,
-  explicit accessible builder model, reasoning effort, 1,800-second deadline,
-  300-second export reserve, bounded repairs, kit fingerprint and source inventory.
+- Record frozen source commit, Python 3.11 patch version, `anthropic` package
+  version, generation provider (`claude`), builder model (`claude-opus-5-5`),
+  reasoning effort, 1,800-second deadline, 300-second export reserve, bounded
+  repairs, kit fingerprint and source inventory. Record the Codex
+  executable/version only if Codex cells will run.
   Keep invocation-time `builder-source.json`; do not create it retrospectively.
 - Rehearse the manifest/ZIP/extraction procedure in
   [submission package documentation](SUBMISSION-PACKAGE.md). Reserve storage for
@@ -26,13 +28,18 @@ organizer instructions govern execution. Customer cases remain hidden.
   [attempt matrix](#attempt-matrix), and none is deleted. Each attempt publishes to its own new workflow, named
   `final-<label>-a<k>-<UTC launch time>`. Concurrent attempts must not share a
   workflow: an export fails if its workflow changed after publication. Tonight
-  needs at most 2 × 2 × (rounds) workflows, well under the workspace limit of 200.
+  needs at most 2 × 2 × (rounds) workflows (2 × 4 × (rounds) with the Codex cells),
+  well under the workspace limit of 200.
 - The frozen commit must contain `tools/final_attempts.py` with the attempt matrix
   and the packager's `selections` support ([PR 167](https://github.com/DemirEkinArikan/freya_hackathon/pull/167)). Both are tools, not runtime
-  source, so they do not change the builder source fingerprint. Round 2 also needs
+  source, so they do not change the builder source fingerprint. It must also
+  contain the builder's Claude generator (`--provider claude`); without it, or
+  without the matrix effort, the launcher refuses to start. Round 2 also needs
   the builder's relaxed declaration option (R1) in the frozen source; without it,
   round 2 refuses to start.
-- The T17 freeze must cover both efforts of the matrix, high and medium.
+- The freeze must cover the matrix's provider, model and effort: Claude
+  `claude-opus-5-5` at `xhigh`. Founder directive 18:05 Istanbul: Claude
+  everywhere, best version.
 - Obtain and read organizer submission instructions when supplied. Record the
   actual channel, permitted attachment layout, credential/import requirements,
   metadata, size limits and receipt mechanism. **No submission address is known
@@ -58,10 +65,10 @@ verified ZIP and organizer-ready attachments. Do not consume that buffer on test
 |---|---|---|
 | Before 17:00 | Before 20:00 | Finish broad tests, T17 acceptance/freeze and preparation gates; frozen checkout, guard and preflight |
 | 17:00–17:02 | 20:00–20:02 | Save both briefs/APIs as exact bytes with ordered amendments, write `spec.json` and pins; read submission instructions |
-| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: strict high + strict medium per brief, 4 builders, starts interleaved 60 s apart |
+| 17:02–17:05 | 20:02–20:05 | `tools/final_attempts.py launch --round 1`: two strict Claude attempts (`claude-opus-5-5`, `xhigh`) per brief, 4 builders, starts interleaved 60 s apart |
 | 17:02–17:35 | 20:02–20:35 | Attempts run; each stops itself at 1,800 s including audit, any own tests and export. Poll with `health` and `select` |
 | 17:20–17:40 | 20:20–20:40 | As soon as `select` shows a brief's round 1 finished with no selected attempt: `launch --round 2 --labels hidden-N` |
-| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (relaxed high + relaxed medium) |
+| 17:35–18:15 | 20:35–21:15 | Round 2 attempts run (two relaxed Claude attempts at `xhigh`) |
 | 17:35–18:40 | 20:35–21:40 | Once both briefs have a selection: `select`, `manifest`, pre-check, evidence commit, package, both verifiers, attachments; send once verified |
 | 18:15–19:15 | 21:15–22:15 | One more round only for a brief still without an eligible attempt: it starts by 21:45 and ends by 22:15 |
 | 19:15–19:45 | 22:15–22:45 | Select, package and verify retry results; prepare attachments |
@@ -83,8 +90,16 @@ tonight they run none.
 
 | Round | Briefs | Attempts per brief |
 |---|---|---|
-| 1 | both, at 20:02 | strict high, strict medium |
-| 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | relaxed high, relaxed medium |
+| 1 | both, at 20:02 | 2 × Claude `claude-opus-5-5`, strict, `xhigh` |
+| 2 | only a brief whose finished round 1 left no selected attempt, or selected a deterministic fallback export | 2 × Claude `claude-opus-5-5`, relaxed, `xhigh` |
+| optional, `--providers claude codex` | as the round | plus Codex (`--codex-model`, default `gpt-6.1-sol`) high and medium, in that round's mode |
+
+Every attempt passes `--provider claude --model claude-opus-5-5 --reasoning-effort xhigh`
+to the builder. `xhigh` is the strongest effort the packager accepts
+(`low`, `medium`, `high`, `xhigh`), and both attempts of a round use it: when
+both export, selection prefers the earlier finish, so a lower-effort second
+attempt would often replace the stronger agent. The builder still stops itself
+at 1,800 s.
 
 - **Strict** is the builder's default declaration handling. **Relaxed** is the
   builder's last-resort declaration mode (R1, issue 8 comment 6108951431). A
@@ -110,22 +125,27 @@ tonight they run none.
   because selection prefers a strict export. A brief whose selection is the
   builder's deterministic fallback plan (R5) may get either round, because every
   model-plan export ranks before it.
-- **Codex accounts.** The launcher spreads the attempts over the logged-in Codex
-  accounts: `~/.codex` and every `~/.codex-acct<N>` with an `auth.json` and no
-  `DISABLED` file. It passes each one to its builder as `CODEX_HOME`. With two
-  accounts, the two attempts of each brief use different accounts, and each
-  account runs one high and one medium attempt, so one account's outage cannot
-  fail a brief. At most four of tonight's builders run at once, two per brief
-  and two per account, because a brief's next round waits for all of its
-  attempts; `--max-running` (default 6) is a backstop. Tonight's attempts never
-  wait for other builds. Calls slow down
-  as more builds share an account (issue 19 comment 6108793427), so other lanes
-  start no build after 19:30. Builds take up to 30 minutes. Before 20:00, put a
-  `DISABLED` file in any account that cannot run the builder model.
-- **Records.** Each `launch.json` records the round, mode, effort, exact argv,
-  PID, Codex account name (never a token), the builder-process count before the
-  start and the staging probe.
-  `selection.json` lists every attempt with its mode and effort.
+- **Claude key.** Each Claude attempt gets `ANTHROPIC_API_KEY` from
+  `~/.freya-anthropic-key` (else an `ANTHROPIC_API_KEY` already in the launcher's
+  environment or `.env`), and no `CODEX_HOME`. The launcher never prints or
+  records the key. It refuses to start without the key or without the
+  `anthropic` package for its Python. All Claude attempts share the key's rate
+  limit with any other Claude work on it (Plan B, tests), so other lanes start
+  no build on that key after 19:30. At most four of tonight's builders run at
+  once, two per brief, because a brief's next round waits for all of its
+  attempts; `--max-running` (default 8) is a backstop. Tonight's attempts never
+  wait for other builds. Builds take up to 30 minutes.
+- **Optional Codex cells.** Only `--providers claude codex` (or `--providers codex`
+  alone, if Claude is unavailable) adds them. The launcher spreads them over the
+  logged-in Codex accounts: `~/.codex` and every `~/.codex-acct<N>` with an
+  `auth.json` and no `DISABLED` file, passed to each Codex builder as
+  `CODEX_HOME`. A brief's two Codex attempts use different accounts, and each
+  account runs one high and one medium attempt. The Codex CLI must be on `PATH`
+  only when Codex cells run.
+- **Records.** Each `launch.json` records the round, provider, model, mode,
+  effort, exact argv, PID, Codex account name (never a token; `null` for
+  Claude), the builder-process count before the start and the staging probe.
+  `selection.json` lists every attempt with its provider, mode and effort.
 
 ### Platform failures are infrastructure, not builder results
 
@@ -133,6 +153,7 @@ Freya staging returned 503/504 for about 40 minutes today (09:38–10:19 UTC).
 The builder does not retry platform errors. A 5xx during dry-run validation,
 save, publication, read-back or export ends that attempt, and its manifest
 error names the `HTTP 50x` request. Only the hosted test runner retries GETs.
+A Claude API rate-limit or overload error that ends an attempt counts the same way.
 Such an attempt is simply not eligible: it never counts as a builder result, and
 a brief left without an eligible attempt gets a retry round. If every strict
 attempt of a brief ended on such a platform error, that retry is another
@@ -195,8 +216,9 @@ path is local orchestration configuration, never generation input. Do not switch
 or edit another worker's active checkout. A local worktree artifact lock is not
 an acceptable substitute for the shared lease.
 
-Set `T18_SOURCE_COMMIT`, `T18_SOURCE_INVENTORY_SHA256` and `T18_BUILDER_MODEL`
-from the accepted T17 freeze. The efforts come from the attempt matrix. The inventory digest is the
+Set `T18_SOURCE_COMMIT` and `T18_SOURCE_INVENTORY_SHA256` from the accepted T17
+freeze. `T18_BUILDER_MODEL` is `claude-opus-5-5` (the launcher's default), and the
+efforts come from the attempt matrix. The inventory digest is the
 full allowlisted source inventory recorded by T17, not just runtime provenance.
 These are explicit nonsecret configuration values. Create a detached worktree
 from that accepted source commit. The guard below verifies HEAD, rejects staged
@@ -235,6 +257,7 @@ if actual != sys.argv[1]:
     raise SystemExit('Frozen source inventory differs from the accepted T17 freeze')
 print({'source_files': len(files), 'source_inventory_sha256': actual})
 PY
+test -s "$HOME/.freya-anthropic-key" || exit 1  # The launcher reads the Claude key; never print it.
 python3.11 tools/final_attempts.py launch --env-file /Users/demirekinarikan/VsCode/freya_hackathon/.env \
   --simulation-lease /Users/demirekinarikan/VsCode/freya_hackathon/artifacts/.simulation.lock \
   --model "$T18_BUILDER_MODEL" --round 1
@@ -244,14 +267,16 @@ The launcher reads `artifacts/hidden-inputs/spec.json`, which lists each label's
 briefs in the organizer's explicit order and its matching API. For each attempt
 it starts `builder/build.py` with `--brief` repeated in that order,
 `--output-dir artifacts/final/<label>/attempt-<k>`, its own slot, the shared
-lease, the model, the round's effort and, in round 2, the relaxed option. The child is detached, so closing the terminal
+lease, `--provider claude`, the model, the round's effort and, in round 2, the relaxed option. The child is detached, so closing the terminal
 does not stop it. `launch.json` in the attempt directory records the exact argv
 and PID, and `builder.log` keeps the builder's output. The launcher loads the
 private `.env` with the data-only parser into the children's environment, never
-its own, and removes `OPENAI_API_KEY`. It refuses Python other than 3.11, a
-missing `FREYA_API_KEY` or Codex CLI, a round the attempt matrix does not allow,
-and more running builders than
-`--max-running` (default 6). These commands are templates pending actual briefs,
+its own, removes `OPENAI_API_KEY` and adds the Claude key to each Claude attempt
+only. It refuses Python other than 3.11, a missing `FREYA_API_KEY`, a missing
+Claude key or `anthropic` package, a frozen builder without `--provider` or the
+matrix effort, a missing Codex CLI when Codex cells are requested, a round the
+attempt matrix does not allow, and more running builders than
+`--max-running` (default 8). These commands are templates pending actual briefs,
 not a claim they have run. Omit offline/generate-only modes for final builds.
 Do not supply an old `--policy-file`, fixture workflow or public-case evaluator
 whose bank facts do not match the final input. An approved compatible hosted
@@ -279,14 +304,18 @@ append-only `trace.jsonl`, canonical `submission.workflow.json`, original
 `builder-source.json` and `build-provenance.json`, plus selected attempt evidence.
 Read and correlate workflow/agent/published-version IDs, graph/export hashes,
 ordered input/API fingerprints, isolation audit, model calls with one-line purpose,
-start/end times and finite in-budget duration. Inspect that the published readback
+start/end times and finite in-budget duration. The trace and `builder-source.json`
+must name the provider, model and effort. Inspect that the published readback
 and final exported graph match the authored deployment. Preserve original failed
 readbacks, test results and overruns. Do not attach an older trace to a newer slot.
 
 The selected run per brief is the one `select` names in `selection.json`. Never
 pick a run by hand. `tools/final_attempts.py manifest --team <id>` writes the
 submission manifest from both records: the selected runs, their exact launch
-argv as `run_command`, the inputs and a `selections` mapping. The packager then
+argv as `run_command`, the inputs and a `selections` mapping. The organizers may
+rerun a builder from `run_command`: it needs `FREYA_API_KEY` and an
+`ANTHROPIC_API_KEY` (theirs) in the environment, and nothing else from this
+machine. The packager then
 requires each record to be the declared order's eligible choice, binds it to the
 selected run's raw bytes, and re-hashes every listed attempt's manifest and trace
 on disk. The ZIP stores each record as `selections/<label>.json`: every attempt is

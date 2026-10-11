@@ -644,6 +644,23 @@ def _catalogue(contract: dict, openapi: dict, bindings: dict | None) -> dict:
                 raise GuardCompileError(["get_account: product field aliases require explicit active product_fields"])
             catalog[name]["product_fields"] = mapping
             catalog[name]["product_schema"] = copy.deepcopy(product_schema)
+            # Declared non-2xx responses whose success flag can be false: the
+            # only shapes of definite negative account evidence, checked by
+            # guard_body against that exact status schema.
+            receipts = {}
+            for status, media in op["response_schemas"].items():
+                schema = next((s for s in media.values() if isinstance(s, dict) and "properties" in s), {})
+                properties = schema.get("properties", {})
+                flag = properties.get(results["ok"], {})
+                falsy = lambda v: v is False or v in ("false", "False")  # const is a one-value enum
+                if (re.fullmatch(r"[45][0-9]{2}", status) and flag.get("type") in ("boolean", "string")
+                        and any(map(falsy, flag.get("enum", [False]))) and falsy(flag.get("const", False))):
+                    roles = {s: a for s, a in results.items() if a in properties}
+                    receipts[status] = {"fields": dict(roles, _http_status="_http_status"), "request_schema": {
+                        "properties": dict({a: {} if s == "ok" else copy.deepcopy(properties[a]) for s, a in roles.items()},
+                                           _http_status={}),
+                        "required": [a for a in roles.values() if a in schema.get("required", [])]}}
+            catalog[name]["failure_receipts"] = receipts
     if bindings:
         _hash_checked(bindings, "action bindings")
         category_roles = {"outcomes": ("close_call", "outcome"), "reasons": ("close_call", "reason"),
@@ -917,7 +934,7 @@ def guard_new(customer_id, now, call_inputs=None):
     day = guard_date(text[:10]).isoformat()
     clock = datetime.datetime.fromisoformat(text.replace('Z', '+00:00')).strftime('%H:%M') if len(text) > 10 else ''
     return dict(customer_id=customer_id, now=day, now_time=clock, verified_fields=list(), wrong_answers=0,
-                identity_status='pending', products=list(), account_loaded=False,
+                identity_status='pending', products=list(), account_loaded=False, account_failed=False,
                 pending_promises=dict(), recorded_promises=dict(), pending_notes=dict(),
                 recorded_notes=dict(), promise_failures=dict(), attempts=dict(),
                 attempt_counts=dict(),
@@ -1008,6 +1025,14 @@ def guard_close(state, proposed, profile, maps):
             # which frozen callback choices can represent that evidence.
             unreached = (state['identity_status'] == 'pending' and not state['verified_fields']
                          and state['wrong_answers'] == 0)
+            # Without a recorded callback, each scope a proposal could still
+            # reach keeps its rows needing no evidence but that absence (a
+            # fixed row is phase evidence). If all leave the same single row
+            # that the absent callback decides, dialogue cannot change it; a
+            # `none` row stays language-derived and needs its proposal.
+            rows = [[row for row in profile.get('identity_close_choices', dict()).get(scope, [dict(table[scope], requires='no_recorded_callback')])
+                     if row.get('requires', 'none') in ('none', 'no_recorded_callback')]
+                    for scope in ('unreached', 'incomplete')[bool(state['verified_fields']):]]
             if state['callbacks']:
                 scope = 'unreached' if unreached else 'incomplete'
                 choices = profile.get('identity_close_choices', dict()).get(scope)
@@ -1021,6 +1046,8 @@ def guard_close(state, proposed, profile, maps):
                 if len(matching) != 1:
                     raise ValueError('recorded callback lacks one declared closing choice for the actual identity phase')
                 proposal = dict((key, value) for key, value in matching[0].items() if key != 'requires')
+            elif all(len(item) == 1 and item == rows[0] for item in rows) and rows[0][0].get('requires') == 'no_recorded_callback':
+                proposal = dict((key, value) for key, value in rows[0][0].items() if key != 'requires')
             else:
                 if not isinstance(proposed.get('outcome', ''), str):
                     raise ValueError('identity closing outcome proposal must be text')
@@ -1044,7 +1071,9 @@ def guard_close(state, proposed, profile, maps):
         else:
             # Identity is verified (and possibly the account loaded) without a
             # protected collections fact: only a sourced goal row may close.
-            phase = 'account_loaded' if state['account_loaded'] else 'verified'
+            # A recorded definite negative account receipt is final: its rows
+            # alone apply, whatever is said later.
+            phase = 'account_loaded' if state['account_loaded'] else 'account_failed' if state['account_failed'] else 'verified'
             # A recorded callback closes only through a recorded_callback row.
             rows = [row for row in profile.get('goal_close', dict()).get(phase, list())
                     if (row['requires'] == 'recorded_callback') == bool(state['callbacks'])]
@@ -1251,7 +1280,7 @@ def guard_prepare(state, action, inputs, profile, catalog, maps):
         operation = action
         semantic = dict(customer_id=state['customer_id'], field=field, answer=str(inputs['answer']))
     elif action == 'get_account':
-        if state['identity_status'] != 'verified' or state['account_loaded']:
+        if state['identity_status'] != 'verified' or state['account_loaded'] or state['account_failed']:
             raise ValueError('account requires verified identity and is read once')
         operation = action
         semantic = dict(customer_id=state['customer_id'])
@@ -1655,6 +1684,12 @@ def guard_result(state, data, profile, catalog, expected_action):
         return state, 'done' if guard_true(ok) else 'failure', dict(), ''
     if action == 'get_account':
         if not guard_true(ok):
+            if 'account_failed' in profile.get('goal_close', dict()):
+                # Only an exact declared non-2xx receipt valid for that status
+                # schema is definite; any other negative receipt raises, and
+                # the result handler quarantines it.
+                guard_body(dict((k, v) for k, v in data.items() if v not in ('', None)), str(status), catalog['get_account']['failure_receipts'])
+                state['account_failed'] = True
             return state, 'failure', dict(), ''
         products = data.get('products')
         if isinstance(products, str):
@@ -1874,6 +1909,8 @@ def _compile_guarded_workflow(plan: dict, contract: dict, openapi: dict, executi
         profile["nonpersistent_failures"] = {
             role: copy.deepcopy(failure_rules[op["name"]]) for role, op in catalog.items()
             if op["name"] in failure_rules}
+    if "account_failed" in profile.get("goal_close", {}) and not catalog.get("get_account", {}).get("failure_receipts"):
+        raise GuardCompileError(["goal_close account_failed needs get_account with a declared non-2xx response whose success flag can be false"])
     disclosure = _disclosure_schema(contract, profile, catalog)
     if "get_account" in catalog:
         catalog["get_account"]["disclosure_fields"] = disclosure

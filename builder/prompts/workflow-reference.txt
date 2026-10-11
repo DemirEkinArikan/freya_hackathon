@@ -68,7 +68,8 @@ Action placeholder:
 success_node,blocked_node,failure_node}. All three route targets are required.
 Inputs are variable names, not literals, API schemas, code or protected state.
 Supported roles and input keys:
-verify_identity: field,answer
+verify_identity: answer; the controller supplies the next factor itself, so bind
+  optional field only for an identity_factor_state latest_check correction
 get_account: none
 stage_promise: product_id,amount,date
 commit_promises: none; optional product_id when confirming separately
